@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import Toast from 'react-native-toast-message';
 
-// Import all screens
+// Import Screens
 import DashboardScreen from './screens/DashboardScreen';
 import CabinetScreen from './screens/CabinetScreen';
 import EmergencyScreen from './screens/EmergencyScreen';
@@ -24,13 +24,13 @@ import Header from './components/customHeader';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-// This is the simple 5-tab navigator. It does not have its own header.
+// 5-tab bottom navigator
 function AppTabs() {
   const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerShown: false, // All headers are now managed by the parent StackNavigator
+        header: (props) => <Header {...props} />, // custom header for all tabs
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           if (route.name === 'Dashboard') iconName = focused ? 'grid' : 'grid-outline';
@@ -42,10 +42,7 @@ function AppTabs() {
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.subtext,
-        tabBarStyle: { 
-          backgroundColor: colors.card, 
-          borderTopColor: colors.border,
-        },
+        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
@@ -57,16 +54,11 @@ function AppTabs() {
   );
 }
 
-// This is the main navigator for the entire logged-in experience.
-function RootStack() {
+// Root stack for logged-in user
+function MainStack() {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        // Use our custom header for ALL screens in this stack
-        header: (props) => <Header {...props} />,
-      }}
-    >
-      <Stack.Screen name="Main" component={AppTabs} />
+    <Stack.Navigator>
+      <Stack.Screen name="Main" component={AppTabs} options={{ headerShown: false }} />
       <Stack.Screen name="AddMedicine" component={AddMedicineScreen} />
       <Stack.Screen name="AddAppointment" component={AddAppointmentScreen} />
       <Stack.Screen name="EmergencyContact" component={EmergencyContactScreen} />
@@ -75,9 +67,6 @@ function RootStack() {
         component={NotificationScreen} 
         options={{ 
           presentation: 'modal',
-          // Modals can have a simpler, default header
-          header: null, 
-          headerShown: true,
           title: 'Notifications'
         }} 
       />
@@ -85,7 +74,7 @@ function RootStack() {
   );
 }
 
-// Auth Stack for login/signup
+// Auth stack
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -94,7 +83,7 @@ function AuthStack() {
   );
 }
 
-// Component that handles auth state and theme
+// Handles theme + auth state
 function AppContent() {
   const { theme, colors } = useTheme();
   const [user, setUser] = useState(null);
@@ -118,12 +107,12 @@ function AppContent() {
 
   return (
     <NavigationContainer theme={navigationTheme}>
-      {user ? <RootStack /> : <AuthStack />}
+      {user ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
 }
 
-// The root of our app
+// App root
 export default function App() {
   return (
     <ThemeProvider>
@@ -132,3 +121,4 @@ export default function App() {
     </ThemeProvider>
   );
 }
+c

@@ -46,31 +46,44 @@ export default function AddMedicineScreen({ navigation }) {
   };
 
   const handleSave = async () => {
-    const hasAllTimes = times.every(time => time !== null);
-    if (!name || times.length === 0 || !duration || !hasAllTimes) {
-      Alert.alert('Error', 'Please fill in all fields and select a time for each dose.');
-      return;
-    }
+  const hasAllTimes = times.every(time => time !== null);
+  if (!name || times.length === 0 || !duration || !hasAllTimes) {
+    Alert.alert('Error', 'Please fill in all fields and select a time for each dose.');
+    return;
+  }
 
-    try {
-      const medicineData = { name, duration: parseInt(duration, 10), times };
-      const notificationIds = await scheduleMedicineNotifications(medicineData);
+  try {
+    const medicineData = {
+      name,
+      duration: parseInt(duration, 10),
+      times, // The array of Date objects from the state
+    };
 
-      await addDoc(collection(db, 'medicines'), {
-        userId: auth.currentUser.uid,
-        name: medicineData.name,
-        duration: medicineData.duration,
-        times: medicineData.times.map(date => Timestamp.fromDate(date)),
-        notificationIds,
-        createdAt: Timestamp.now(), // Add the creation date
-      });
+    // First, save the document to Firestore to get its unique ID
+    const docRef = await addDoc(collection(db, 'medicines'), {
+      userId: auth.currentUser.uid,
+      name: medicineData.name,
+      duration: medicineData.duration,
+      times: medicineData.times.map(date => Timestamp.fromDate(date)),
+      createdAt: Timestamp.now(),
+      notificationIds: [], // Start with an empty array
+    });
 
-      navigation.goBack();
-    } catch (error) {
+    // Now, schedule notifications using the new document's ID
+    const notificationIds = await scheduleMedicineNotifications({ ...medicineData, id: docRef.id });
+    
+    // Finally, update the document with the notification IDs for later cancellation
+    await updateDoc(doc(db, 'medicines', docRef.id), {
+        notificationIds: notificationIds,
+    });
+    
+    Toast.show({type: 'success', text1: 'Medicine Saved', text2: 'Reminders have been set.'});
+    navigation.goBack();
+  } catch (error) {
       console.error("Save Error: ", error);
       Alert.alert("Error", "Could not save or schedule medicine reminders.");
-    }
-  };
+  }
+};
   
   const styles = createStyles(colors);
 

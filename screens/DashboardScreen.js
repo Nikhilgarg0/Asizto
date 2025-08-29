@@ -1,3 +1,4 @@
+// DashboardScreen.js (updated)
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
@@ -6,7 +7,11 @@ import {
   ActivityIndicator, 
   ScrollView, 
   TextInput, 
-  TouchableOpacity 
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { db, auth } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
@@ -179,85 +184,98 @@ export default function DashboardScreen({ navigation }) {
   const nextAppointment = appointments[0];
 
   return (
-    // FIX: Removed the extra SafeAreaView. The header from App.js now handles this.
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
-      <Text style={[styles.subGreeting, { color: colors.subtext }]}>Here's your health summary.</Text>
-      
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-          placeholder="Get quick info on any medicine..."
-          placeholderTextColor={colors.subtext}
-          value={searchText}
-          onChangeText={setSearchText}
-          onSubmitEditing={handleSearch}
-        />
-        <TouchableOpacity style={[styles.searchButton, { backgroundColor: colors.primary }]} onPress={handleSearch}>
-          <Ionicons name="search" size={22} color="#fff" />
-        </TouchableOpacity>
-      </View>
+    // KeyboardAvoidingView ensures content lifts above keyboard.
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80} // tweak if you have a header height
+    >
+      {/* TouchableWithoutFeedback dismisses keyboard when tapping outside */}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <ScrollView
+          contentContainerStyle={[styles.container, { flexGrow: 1 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
+          <Text style={[styles.subGreeting, { color: colors.subtext }]}>Here's your health summary.</Text>
+          
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+              placeholder="Get quick info on any medicine..."
+              placeholderTextColor={colors.subtext}
+              value={searchText}
+              onChangeText={setSearchText}
+              onSubmitEditing={handleSearch}
+            />
+            <TouchableOpacity style={[styles.searchButton, { backgroundColor: colors.primary }]} onPress={handleSearch}>
+              <Ionicons name="search" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-      {isSearching && <ActivityIndicator style={{ marginVertical: 20 }} color={colors.primary} />}
-      {searchResult && (
-        <Animatable.View animation="fadeIn" style={[styles.card, { borderColor: colors.primary, borderWidth: 1 }]}>
-          <Text style={[styles.cardTitle, { color: colors.primary }]}>Summary for {searchText}</Text>
-          <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{searchResult}</Text>
-        </Animatable.View>
-      )}
+          {isSearching && <ActivityIndicator style={{ marginVertical: 20 }} color={colors.primary} />}
+          {searchResult && (
+            <Animatable.View animation="fadeIn" style={[styles.card, { borderColor: colors.primary, borderWidth: 1 }]}>
+              <Text style={[styles.cardTitle, { color: colors.primary }]}>Summary for {searchText}</Text>
+              <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{searchResult}</Text>
+            </Animatable.View>
+          )}
 
-      <View style={styles.metricsContainer}>
-        <View style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardTitle, { color: colors.subtext }]}>Health Score</Text>
-          <Text style={[styles.metricValue, { color: getScoreColor() }]}>{healthScore ?? 'N/A'}{healthScore && '%'}</Text>
-        </View>
-        <View style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardTitle, { color: colors.subtext }]}>Your BMI</Text>
-          <Text style={[styles.metricValue, { color: colors.text }]}>{bmiData.value || 'N/A'}</Text>
-        </View>
-      </View>
+          <View style={styles.metricsContainer}>
+            <View style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}>
+              <Text style={[styles.cardTitle, { color: colors.subtext }]}>Health Score</Text>
+              <Text style={[styles.metricValue, { color: getScoreColor() }]}>{healthScore ?? 'N/A'}{healthScore && '%'}</Text>
+            </View>
+            <View style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}>
+              <Text style={[styles.cardTitle, { color: colors.subtext }]}>Your BMI</Text>
+              <Text style={[styles.metricValue, { color: colors.text }]}>{bmiData.value || 'N/A'}</Text>
+            </View>
+          </View>
 
-      {medicines.length > 0 && (
-        <Animatable.View animation="fadeInUp" duration={600} style={[styles.card, {backgroundColor: colors.card}]}>
-            <Text style={[styles.cardTitle, { color: colors.subtext }]}>Next Medicine</Text>
-            {nextDoseStatus ? (
-                <>
-                    <Text style={[styles.cardContent, {color: colors.text}]}>{nextDoseStatus.medicine.name}</Text>
-                    <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                      {nextDoseStatus.isDue 
-                        ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                        : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      }
-                    </Text>
-                    {nextDoseStatus.isDue && (
-                        // Show "Take HH:MM" only when dose is due (same behavior as MedicinesTab)
-                        <TouchableOpacity 
-                            style={[styles.button, {backgroundColor: colors.primary}]}
-                            onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
-                        >
-                            <Text style={styles.buttonText}>{`Take ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</Text>
-                        </TouchableOpacity>
-                    )}
-                </>
-            ) : (
-                <Text style={[styles.cardSubContent, { color: colors.subtext }]}>No more doses scheduled for today.</Text>
-            )}
-        </Animatable.View>
-      )}
+          {medicines.length > 0 && (
+            <Animatable.View animation="fadeInUp" duration={600} style={[styles.card, {backgroundColor: colors.card}]}>
+                <Text style={[styles.cardTitle, { color: colors.subtext }]}>Next Medicine</Text>
+                {nextDoseStatus ? (
+                    <>
+                        <Text style={[styles.cardContent, {color: colors.text}]}>{nextDoseStatus.medicine.name}</Text>
+                        <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+                          {nextDoseStatus.isDue 
+                            ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          }
+                        </Text>
+                        {nextDoseStatus.isDue && (
+                            <TouchableOpacity 
+                                style={[styles.button, {backgroundColor: colors.primary}]}
+                                onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
+                            >
+                                <Text style={styles.buttonText}>{`Take ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</Text>
+                            </TouchableOpacity>
+                        )}
+                    </>
+                ) : (
+                    <Text style={[styles.cardSubContent, { color: colors.subtext }]}>No more doses scheduled for today.</Text>
+                )}
+            </Animatable.View>
+          )}
 
-      {appointments.length > 0 && (
-        <Animatable.View animation="fadeInUp" duration={600} delay={100} style={[styles.card, {backgroundColor: colors.card}]}>
-            <Text style={[styles.cardTitle, { color: colors.subtext }]}>Upcoming Appointment</Text>
-            <Text style={[styles.cardContent, {color: colors.text}]}>{nextAppointment.doctorName}</Text>
-            <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{nextAppointment.date}</Text>
-        </Animatable.View>
-      )}
+          {appointments.length > 0 && (
+            <Animatable.View animation="fadeInUp" duration={600} delay={100} style={[styles.card, {backgroundColor: colors.card}]}>
+                <Text style={[styles.cardTitle, { color: colors.subtext }]}>Upcoming Appointment</Text>
+                <Text style={[styles.cardContent, {color: colors.text}]}>{nextAppointment.doctorName}</Text>
+                <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{nextAppointment.date}</Text>
+            </Animatable.View>
+          )}
 
-      <View style={[styles.card, {backgroundColor: colors.card}]}>
-        <Text style={[styles.cardTitle, { color: colors.subtext }]}>Health Fact</Text>
-        <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{randomFact}</Text>
-      </View>
-    </ScrollView>
+          <View style={[styles.card, {backgroundColor: colors.card}]}>
+            <Text style={[styles.cardTitle, { color: colors.subtext }]}>Health Fact</Text>
+            <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{randomFact}</Text>
+          </View>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 

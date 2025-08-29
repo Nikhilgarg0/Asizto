@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 
 // This function will schedule all notifications for a given medicine course
 export const scheduleMedicineNotifications = async (medicine) => {
-  const { name, dosage, times, duration } = medicine;
+  const { name, times, duration, id: medicineId } = medicine;
   const notificationIds = [];
 
   const now = new Date();
@@ -17,7 +17,7 @@ export const scheduleMedicineNotifications = async (medicine) => {
       triggerDate.setMinutes(time.getMinutes());
       triggerDate.setSeconds(0);
 
-      // If the calculated time is in the past for today, skip it
+      // If the calculated time is in the past for today, skip it to avoid immediate triggers
       if (triggerDate < now) {
         continue;
       }
@@ -25,7 +25,8 @@ export const scheduleMedicineNotifications = async (medicine) => {
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: {
           title: "💊 Time for your medicine!",
-          body: `Remember to take ${name} (${dosage}).`,
+          body: `Remember to take your dose of ${name}.`,
+          data: { medicineId: medicineId }, // Pass data to the notification
         },
         trigger: triggerDate, // Schedule for the specific future date and time
       });
@@ -33,6 +34,6 @@ export const scheduleMedicineNotifications = async (medicine) => {
     }
   }
 
-  console.log(`Scheduled ${notificationIds.length} notifications.`);
+  console.log(`Scheduled ${notificationIds.length} notifications for ${name}.`);
   return notificationIds;
 };
