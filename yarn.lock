@@ -3105,7 +3105,7 @@ expo-firebase-core@~6.0.0:
 
 expo-firebase-recaptcha@^2.3.1:
   version "2.3.1"
-  resolved "https://registry.npmjs.org/expo-firebase-recaptcha/-/expo-firebase-recaptcha-2.3.1.tgz"
+  resolved "https://registry.yarnpkg.com/expo-firebase-recaptcha/-/expo-firebase-recaptcha-2.3.1.tgz#4d06032963fdc421c48588753944ca4a3b3527c7"
   integrity sha512-1v2hUytjq26CVSa4uhBt8xoAfZ8ryHCEjjJSdqzAs0gtpwnSrGHPKZcqll4aZUinZ0HVSW8/ZvEmToAF6zysCw==
   dependencies:
     expo-firebase-core "~6.0.0"

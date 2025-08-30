@@ -1,38 +1,58 @@
+// components/customHeader.js
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Image, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 
 export default function Header() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme(); // theme expected to be 'dark' or 'light'
   const navigation = useNavigation();
-
   const canGoBack = navigation.canGoBack();
 
+  // Choose logo based on theme
+  const logo = theme === 'dark'
+    ? require('../assets/Brandkit/headerlogo_dark.png')
+    : require('../assets/Brandkit/headerlogo_light.png');
+
   return (
-    <SafeAreaView style={{ backgroundColor: colors.card }} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.card }]} edges={['top']}>
       <View style={[styles.container, { borderBottomColor: colors.border }]}>
-        {/* Left Side: Back Arrow or Empty Space */}
-        <View style={styles.sideContainer}>
-          {canGoBack && (
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+        {/* Left: back button (fixed width so center stays centered) */}
+        <View style={styles.side}>
+          {canGoBack ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.iconButton}
+              accessibilityLabel="Go back"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <Ionicons name="arrow-back-outline" size={26} color={colors.text} />
             </TouchableOpacity>
+          ) : (
+            <View style={styles.iconPlaceholder} />
           )}
         </View>
 
-        {/* Center: Branding */}
-        <View style={styles.centerContainer}>
-          <Text style={[styles.title, { color: colors.text }]}>Asizto</Text>
+        {/* Center: logo */}
+        <View style={styles.center}>
+          <Image
+            source={logo}
+            style={styles.logo}
+            resizeMode="contain"
+            accessible
+            accessibilityLabel="Asizto"
+          />
         </View>
 
-        {/* Right Side: Notifications Icon */}
-        <View style={[styles.sideContainer, { justifyContent: 'flex-end' }]}>
+        {/* Right: notifications (fixed width) */}
+        <View style={[styles.side, { justifyContent: 'flex-end' }]}>
           <TouchableOpacity
             onPress={() => navigation.navigate('Notifications')}
             style={styles.iconButton}
+            accessibilityLabel="Notifications"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="notifications-outline" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -43,28 +63,33 @@ export default function Header() {
 }
 
 const styles = StyleSheet.create({
+  safeArea: {},
   container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 10,
     height: 60,
     borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
   },
-  sideContainer: {
-    flex: 1,
+  side: {
+    width: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  centerContainer: {
-    flex: 2,
+  center: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   iconButton: {
-    padding: 5,
+    padding: 6,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
+  iconPlaceholder: {
+    width: 26,
+    height: 26,
+  },
+  logo: {
+    width: Platform.OS === 'ios' ? 150 : 140,
+    height: 36,
   },
 });
