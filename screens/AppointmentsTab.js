@@ -1,10 +1,12 @@
+// screens/AppointmentsTab.js
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { db, auth } from '../firebaseConfig';
-import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
-import { useTheme } from '../context/ThemeContext';
+import { db, auth } from '../firebaseConfig'; // <- fixed path
+import { collection, query, where, onSnapshot, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { useTheme } from '../context/ThemeContext'; // <- fixed path
+import * as Notifications from 'expo-notifications';
 
 export default function AppointmentsTab() {
   const { colors } = useTheme();
@@ -38,10 +40,27 @@ export default function AppointmentsTab() {
       "Are you sure you want to delete this appointment?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
+        {
+          text: "Delete",
           onPress: async () => {
-            await deleteDoc(doc(db, "appointments", appointmentId));
+            try {
+              const apptDocRef = doc(db, 'appointments', appointmentId);
+              const apptSnap = await getDoc(apptDocRef);
+              const data = apptSnap.exists() ? apptSnap.data() : null;
+              const ids = data?.notificationIds || [];
+              for (const nid of ids) {
+                try {
+                  await Notifications.cancelScheduledNotificationAsync(nid);
+                } catch (e) {
+                  console.warn('Failed to cancel notification', nid, e);
+                }
+              }
+
+              await deleteDoc(apptDocRef);
+            } catch (err) {
+              console.error('Delete appointment error', err);
+              Alert.alert('Error', 'Could not delete appointment.');
+            }
           },
           style: "destructive"
         }
@@ -85,7 +104,7 @@ export default function AppointmentsTab() {
       justifyContent: 'center',
       right: 20,
       bottom: 20,
-      backgroundColor: colors.primary, // THEME FIX
+      backgroundColor: colors.primary,
       borderRadius: 28,
       elevation: 5,
     },
@@ -98,10 +117,10 @@ export default function AppointmentsTab() {
 
   if (loading) {
     return (
-      <ActivityIndicator 
-        size="large" 
-        color={colors.primary} 
-        style={{ flex: 1, backgroundColor: colors.background }} 
+      <ActivityIndicator
+        size="large"
+        color={colors.primary}
+        style={{ flex: 1, backgroundColor: colors.background }}
       />
     );
   }
@@ -112,17 +131,20 @@ export default function AppointmentsTab() {
         data={appointments}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View style={styles.appointmentItem}>
-            <View>
-              <Text style={styles.appointmentDoctor}>{item.doctorName}</Text>
-              <Text style={styles.appointmentDate}>{item.date}</Text>
+        renderItem={({ item }) => {
+          const displayDate = item.date && item.date.toDate ? item.date.toDate().toLocaleString() : (item.date || '');
+          return (
+            <View style={styles.appointmentItem}>
+              <View>
+                <Text style={styles.appointmentDoctor}>{item.doctorName || item.with || 'Appointment'}</Text>
+                <Text style={styles.appointmentDate}>{displayDate}</Text>
+              </View>
+              <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                <Ionicons name="trash-outline" size={24} color={colors.accent || '#E57373'} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => handleDelete(item.id)}>
-              <Ionicons name="trash-outline" size={24} color={colors.accent || '#E57373'} />
-            </TouchableOpacity>
-          </View>
-        )}
+          );
+        }}
         ListEmptyComponent={<Text style={styles.emptyText}>No appointments added yet.</Text>}
       />
 

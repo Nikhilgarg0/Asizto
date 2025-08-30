@@ -1,11 +1,13 @@
+// AddMedicineScreen.js
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, Platform, ScrollView } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { db, auth } from '../firebaseConfig';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { scheduleMedicineNotifications } from '../utils/NotificationManager';
+import Toast from 'react-native-toast-message';
 
 export default function AddMedicineScreen({ navigation }) {
   const { colors } = useTheme();
@@ -16,12 +18,18 @@ export default function AddMedicineScreen({ navigation }) {
   const [times, setTimes] = useState([]);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerIndex, setPickerIndex] = useState(0);
+  const [saving, setSaving] = useState(false);
 
   const handleTimesPerDayChange = (text) => {
     setTimesPerDay(text);
     const count = parseInt(text, 10);
-    if (!isNaN(count) && count > 0 && count <= 5) { // Limit to 5 doses a day
-      setTimes(Array(count).fill(null));
+    if (!isNaN(count) && count > 0 && count <= 5) {
+      // preserve any previously selected times when possible
+      const newArr = Array(count).fill(null);
+      for (let i = 0; i < Math.min(times.length, count); i++) {
+        newArr[i] = times[i];
+      }
+      setTimes(newArr);
     } else {
       setTimes([]);
     }
@@ -42,54 +50,114 @@ export default function AddMedicineScreen({ navigation }) {
   };
 
   const formatTime = (date) => {
+    if (!date) return '';
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Try to get a friendly user name: prefer displayName, else Firestore users/{uid}.firstName or name
+  const getUserName = async () => {
+    try {
+      const displayName = auth.currentUser?.displayName;
+      if (displayName && displayName.trim().length > 0) {
+        return displayName;
+      }
+      const uid = auth.currentUser?.uid;
+      if (!uid) return '';
+      const userSnap = await getDoc(doc(db, 'users', uid));
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        return data.firstName || data.name || '';
+      }
+      return '';
+    } catch (e) {
+      console.warn('getUserName error', e);
+      return '';
+    }
+  };
+
   const handleSave = async () => {
-  const hasAllTimes = times.every(time => time !== null);
-  if (!name || times.length === 0 || !duration || !hasAllTimes) {
-    Alert.alert('Error', 'Please fill in all fields and select a time for each dose.');
-    return;
-  }
+    if (!auth.currentUser) {
+      Alert.alert('Not signed in', 'Please sign in to save medicines.');
+      return;
+    }
 
-  try {
-    const medicineData = {
-      name,
-      duration: parseInt(duration, 10),
-      times, // The array of Date objects from the state
-    };
+    const hasAllTimes = times.length > 0 && times.every(time => time instanceof Date && !isNaN(time));
+    if (!name || times.length === 0 || !duration || !hasAllTimes) {
+      Alert.alert('Error', 'Please fill in all fields and select a time for each dose.');
+      return;
+    }
 
-    // First, save the document to Firestore to get its unique ID
-    const docRef = await addDoc(collection(db, 'medicines'), {
-      userId: auth.currentUser.uid,
-      name: medicineData.name,
-      duration: medicineData.duration,
-      times: medicineData.times.map(date => Timestamp.fromDate(date)),
-      createdAt: Timestamp.now(),
-      notificationIds: [], // Start with an empty array
-    });
+    const parsedDuration = parseInt(duration, 10);
+    if (isNaN(parsedDuration) || parsedDuration <= 0) {
+      Alert.alert('Error', 'Please enter a valid duration (days).');
+      return;
+    }
 
-    // Now, schedule notifications using the new document's ID
-    const notificationIds = await scheduleMedicineNotifications({ ...medicineData, id: docRef.id });
-    
-    // Finally, update the document with the notification IDs for later cancellation
-    await updateDoc(doc(db, 'medicines', docRef.id), {
+    setSaving(true);
+
+    try {
+      const medicineData = {
+        name: name.trim(),
+        duration: parsedDuration,
+        times // Date objects
+      };
+
+      // Save to Firestore first
+      const docRef = await addDoc(collection(db, 'medicines'), {
+        userId: auth.currentUser.uid,
+        name: medicineData.name,
+        duration: medicineData.duration,
+        times: medicineData.times.map(d => Timestamp.fromDate(d)),
+        createdAt: Timestamp.now(),
+        notificationIds: [],
+        takenTimestamps: []
+      });
+
+      // get user name to personalize notification
+      const userName = await getUserName();
+
+      // Schedule notifications and get back array of scheduled IDs
+      let notificationIds = [];
+      try {
+        notificationIds = await scheduleMedicineNotifications(
+          {
+            id: docRef.id,
+            name: medicineData.name,
+            times: medicineData.times,
+            duration: medicineData.duration,
+          },
+          userName // pass user name - your NotificationManager should accept this param
+        );
+      } catch (schedulingError) {
+        console.error('Scheduling error:', schedulingError);
+        // clean up the created document if scheduling failed
+        try {
+          await deleteDoc(doc(db, 'medicines', docRef.id));
+        } catch (e) {
+          console.warn('Failed to delete medicine doc after scheduling failure', e);
+        }
+        throw schedulingError;
+      }
+
+      // Save notification IDs back to Firestore for later cancellation
+      await updateDoc(doc(db, 'medicines', docRef.id), {
         notificationIds: notificationIds,
-    });
-    
-    Toast.show({type: 'success', text1: 'Medicine Saved', text2: 'Reminders have been set.'});
-    navigation.goBack();
-  } catch (error) {
-      console.error("Save Error: ", error);
-      Alert.alert("Error", "Could not save or schedule medicine reminders.");
-  }
-};
-  
+      });
+
+      Toast.show({ type: 'success', text1: 'Medicine Saved', text2: 'Reminders have been set.' });
+      navigation.goBack();
+    } catch (error) {
+      console.error('Save Error: ', error);
+      Alert.alert('Error', error.message || 'Could not save or schedule medicine reminders.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const styles = createStyles(colors);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-
       <Text style={styles.label}>Medicine Name</Text>
       <TextInput
         style={styles.input}
@@ -98,7 +166,7 @@ export default function AddMedicineScreen({ navigation }) {
         value={name}
         onChangeText={setName}
       />
-      
+
       <Text style={styles.label}>How many times a day?</Text>
       <TextInput
         style={styles.input}
@@ -121,8 +189,8 @@ export default function AddMedicineScreen({ navigation }) {
       />
 
       {times.map((time, index) => (
-        <TouchableOpacity 
-          key={index} 
+        <TouchableOpacity
+          key={index}
           style={styles.timeButton}
           onPress={() => showTimePickerFor(index)}
         >
@@ -143,8 +211,12 @@ export default function AddMedicineScreen({ navigation }) {
         />
       )}
 
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Medicine</Text>
+      <TouchableOpacity
+        style={[styles.saveButton, saving && { opacity: 0.7 }]}
+        onPress={handleSave}
+        disabled={saving}
+      >
+        <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Medicine'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

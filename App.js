@@ -1,3 +1,4 @@
+// App.js
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -7,6 +8,7 @@ import { auth } from './firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import Toast from 'react-native-toast-message';
+import * as Notifications from 'expo-notifications';
 
 // Import Screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -21,6 +23,8 @@ import AddAppointmentScreen from './screens/AddAppointmentScreen';
 import EmergencyContactScreen from './screens/EmergencyContactScreen';
 import Header from './components/customHeader';
 
+import { navigationRef } from './RootNavigation';
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -30,7 +34,7 @@ function AppTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        header: (props) => <Header {...props} />, // custom header for all tabs
+        header: (props) => <Header {...props} />,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
           if (route.name === 'Dashboard') iconName = focused ? 'grid' : 'grid-outline';
@@ -62,13 +66,13 @@ function MainStack() {
       <Stack.Screen name="AddMedicine" component={AddMedicineScreen} />
       <Stack.Screen name="AddAppointment" component={AddAppointmentScreen} />
       <Stack.Screen name="EmergencyContact" component={EmergencyContactScreen} />
-      <Stack.Screen 
-        name="Notifications" 
-        component={NotificationScreen} 
-        options={{ 
+      <Stack.Screen
+        name="Notifications"
+        component={NotificationScreen}
+        options={{
           presentation: 'modal',
           title: 'Notifications'
-        }} 
+        }}
       />
     </Stack.Navigator>
   );
@@ -83,14 +87,40 @@ function AuthStack() {
   );
 }
 
-// Handles theme + auth state
+// Handles theme + auth state and notification tapping
 function AppContent() {
   const { theme, colors } = useTheme();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
-    return unsubscribe;
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
+    return unsubscribeAuth;
+  }, []);
+
+  // Notification tap handler -> deep link to right screen
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      try {
+        const data = (response?.notification?.request?.content?.data) || {};
+        // data examples: { type: 'medicine', medicineId } or { type: 'appointment', appointmentId }
+        const type = data.type;
+        if (type === 'medicine' && data.medicineId) {
+          navigationRef.current?.navigate('Main', { screen: 'Cabinet', params: { screen: 'Medicines' }});
+          // then navigate deeper to MedicineDetails if you have such a screen:
+          // navigationRef.current?.navigate('MedicineDetails', { id: data.medicineId });
+        } else if (type === 'appointment' && data.appointmentId) {
+          navigationRef.current?.navigate('Main', { screen: 'Cabinet', params: { screen: 'Appointments' }});
+          // then open detail if available:
+          // navigationRef.current?.navigate('AppointmentDetails', { id: data.appointmentId });
+        } else {
+          navigationRef.current?.navigate('Main');
+        }
+      } catch (e) {
+        console.warn('Notification response handler error', e);
+      }
+    });
+
+    return () => sub.remove();
   }, []);
 
   const navigationTheme = {
@@ -106,7 +136,7 @@ function AppContent() {
   };
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
       {user ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   );
