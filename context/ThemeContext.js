@@ -6,7 +6,7 @@ export const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
   const systemScheme = useColorScheme();
-  const [theme, setTheme] = useState(systemScheme);
+  const [theme, setTheme] = useState(systemScheme || 'light');
 
   useEffect(() => {
     const loadTheme = async () => {
@@ -43,7 +43,7 @@ export const ThemeProvider = ({ children }) => {
     },
   };
 
-  const currentTheme = themeColors[theme];
+  const currentTheme = themeColors[theme] || themeColors.light;
 
   useEffect(() => {
     // This helps third-party components respect the theme
@@ -51,10 +51,30 @@ export const ThemeProvider = ({ children }) => {
   }, [theme]);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, colors: currentTheme }}>
+    <ThemeContext.Provider value={{ theme: theme || 'light', toggleTheme, colors: currentTheme }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
-export const useTheme = () => useContext(ThemeContext);
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    // Fallback theme if context is not available
+    console.warn('useTheme must be used within a ThemeProvider');
+    return {
+      theme: 'light',
+      toggleTheme: () => {},
+      colors: {
+        primary: '#83b271',
+        accent: '#689c54',
+        background: '#f4f4f8',
+        card: '#ffffff',
+        text: '#1f1f1f',
+        subtext: '#6e6e6e',
+        border: '#e0e0e0',
+      }
+    };
+  }
+  return context;
+};

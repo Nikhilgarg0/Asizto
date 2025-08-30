@@ -66,31 +66,46 @@ export default function EmergencyScreen({ navigation }) {
   }, []);
 
   useEffect(() => {
-    // ripple1 loops immediately; ripple2 is delayed for stagger
-    const loop1 = Animated.loop(
-      Animated.timing(ripple1, {
-        toValue: 1,
-        duration: 2200,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      })
-    );
-    const loop2 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(900),
-        Animated.timing(ripple2, {
+    // Only run animations when screen is focused to save battery
+    let isActive = true;
+    
+    const startAnimations = () => {
+      if (!isActive) return;
+      
+      const loop1 = Animated.loop(
+        Animated.timing(ripple1, {
           toValue: 1,
           duration: 2200,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
-        }),
-      ])
-    );
-    loop1.start();
-    loop2.start();
+        })
+      );
+      const loop2 = Animated.loop(
+        Animated.sequence([
+          Animated.delay(900),
+          Animated.timing(ripple2, {
+            toValue: 1,
+            duration: 2200,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      
+      loop1.start();
+      loop2.start();
+      
+      return { loop1, loop2 };
+    };
+    
+    const animationRefs = startAnimations();
+    
     return () => {
-      loop1.stop();
-      loop2.stop();
+      isActive = false;
+      if (animationRefs) {
+        animationRefs.loop1.stop();
+        animationRefs.loop2.stop();
+      }
     };
   }, [ripple1, ripple2]);
 
@@ -160,7 +175,14 @@ export default function EmergencyScreen({ navigation }) {
         .filter(Boolean);
 
       if (recipients.length === 0) {
-        Alert.alert('No contacts', 'Please add at least one emergency contact.');
+        Alert.alert(
+          'No Emergency Contacts', 
+          'Please add at least one emergency contact before using SOS.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Contact', onPress: () => navigation.navigate('EmergencyContact') }
+          ]
+        );
         return;
       }
 
@@ -281,7 +303,16 @@ export default function EmergencyScreen({ navigation }) {
         <Pressable
           onPressIn={onPressIn}
           onPressOut={onPressOut}
-          onLongPress={handleLongPressSOS}
+          onLongPress={() => {
+            Alert.alert(
+              'Confirm SOS',
+              'Are you sure you want to send an emergency SOS message? This will contact all your emergency contacts.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Send SOS', style: 'destructive', onPress: handleLongPressSOS }
+              ]
+            );
+          }}
           delayLongPress={1500}
           disabled={contacts.length === 0}
         >

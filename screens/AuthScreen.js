@@ -184,6 +184,15 @@ export default function AuthScreen() {
   const isDark = scheme === 'dark';
   const { width, height } = useWindowDimensions();
 
+  // Safety check to prevent rendering before dimensions are available
+  if (!width || !height || !scheme) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
   // Responsive tokens
   const CARD_MAX_WIDTH = 680;
   const cardWidth = Math.min(CARD_MAX_WIDTH, Math.round(width * 0.94));
@@ -408,6 +417,15 @@ export default function AuthScreen() {
   const logoSource = isDark ? (logoDark || logoLight || logoFallback) : (logoLight || logoDark || logoFallback);
 
   const styles = createStyles({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled });
+  
+  // Safety check to prevent rendering with undefined styles
+  if (!styles || !styles.safeArea || !styles.container) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f8' }}>
+        <ActivityIndicator size="large" color="#83b271" />
+      </View>
+    );
+  }
 
   // small pressable with haptic
   const ActionButton = ({ title, onPress, disabled, loading, style }) => (
@@ -836,6 +854,23 @@ export default function AuthScreen() {
 
 // styles factory
 const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled }) => {
+  // Safety check for required parameters
+  if (width === undefined || height === undefined) {
+    // Return minimal styles for initial render
+    return StyleSheet.create({
+      safeArea: { flex: 1, backgroundColor: '#f4f4f8' },
+      container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    });
+  }
+  
+  // Set defaults for missing parameters
+  isDark = isDark ?? false;
+  cardWidth = cardWidth || width * 0.9;
+  cardMinHeight = cardMinHeight || 360;
+  cardMaxHeight = cardMaxHeight || 800;
+  cardShiftY = cardShiftY || 10;
+  glassEnabled = glassEnabled ?? true;
+  
   const colors = {
     text: isDark ? '#E6EEF3' : '#0E1724',
     subtext: isDark ? '#9FB3C8' : '#6B7280',

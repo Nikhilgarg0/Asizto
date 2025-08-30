@@ -49,7 +49,7 @@ export default function SignupScreen({ navigation }) {
       marginBottom: 12,
       paddingLeft: 8,
       color: colors.text,
-      backgroundColor: colors.input,
+      backgroundColor: colors.card,
     },
   });
 
