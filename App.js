@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
+import { Alert } from 'react-native';
 
 // Import Screens
 import DashboardScreen from './screens/DashboardScreen';
@@ -22,6 +23,7 @@ import AddMedicineScreen from './screens/AddMedicineScreen';
 import AddAppointmentScreen from './screens/AddAppointmentScreen';
 import EmergencyContactScreen from './screens/EmergencyContactScreen';
 import Header from './components/customHeader';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import { navigationRef } from './RootNavigation';
 
@@ -93,7 +95,17 @@ function AppContent() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        console.log('User authenticated:', currentUser.uid);
+      } else {
+        console.log('User signed out');
+      }
+    }, (error) => {
+      console.error('Auth state change error:', error);
+      Alert.alert('Authentication Error', 'There was an issue with authentication. Please try again.');
+    });
     return unsubscribeAuth;
   }, []);
 
@@ -102,21 +114,39 @@ function AppContent() {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       try {
         const data = (response?.notification?.request?.content?.data) || {};
-        // data examples: { type: 'medicine', medicineId } or { type: 'appointment', appointmentId }
         const type = data.type;
+        
         if (type === 'medicine' && data.medicineId) {
-          navigationRef.current?.navigate('Main', { screen: 'Cabinet', params: { screen: 'Medicines' }});
-          // then navigate deeper to MedicineDetails if you have such a screen:
-          // navigationRef.current?.navigate('MedicineDetails', { id: data.medicineId });
+          // Navigate to medicines tab with highlight
+          navigationRef.current?.navigate('Main', { 
+            screen: 'Cabinet',
+            params: { 
+              screen: 'Medicines',
+              params: { 
+                highlightMedicine: data.medicineId,
+                searchQuery: data.medicineName || ''
+              }
+            }
+          });
         } else if (type === 'appointment' && data.appointmentId) {
-          navigationRef.current?.navigate('Main', { screen: 'Cabinet', params: { screen: 'Appointments' }});
-          // then open detail if available:
-          // navigationRef.current?.navigate('AppointmentDetails', { id: data.appointmentId });
+          // Navigate to appointments tab
+          navigationRef.current?.navigate('Main', { 
+            screen: 'Cabinet',
+            params: { 
+              screen: 'Appointments',
+              params: { 
+                highlightAppointment: data.appointmentId 
+              }
+            }
+          });
         } else {
+          // Default navigation to main screen
           navigationRef.current?.navigate('Main');
         }
       } catch (e) {
         console.warn('Notification response handler error', e);
+        // Fallback navigation
+        navigationRef.current?.navigate('Main');
       }
     });
 
@@ -145,9 +175,11 @@ function AppContent() {
 // App root
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-      <Toast />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AppContent />
+        <Toast />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
