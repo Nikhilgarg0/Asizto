@@ -623,18 +623,23 @@ export default function AuthScreen() {
               style={styles.dropdown}
               placeholderStyle={{ color: styles.placeholderColor.color, fontSize: 16 }}
               selectedTextStyle={{ color: styles.textColor.color, fontSize: 16 }}
-              // give dropdown list a readable background based on theme and allow it to render above card
-              containerStyle={{ zIndex: 9999, elevation: 10 }} // wrapper ordering
+              // ensure wrapper has high stacking order
+              containerStyle={{ zIndex: 9999, elevation: 20 }}
+              // make the dropdown list render as an overlay above other elements
               dropdownStyle={{
-                backgroundColor: isDark ? '#0f1724' : '#ffffff',
+                position: 'absolute',
+                top: -8,
+                left: 0,
+                right: 0,
+                backgroundColor: isDark ? '#0B2F20' : '#ffffff',
                 borderRadius: 8,
-                maxHeight: 200,
-                zIndex: 9999,
-                elevation: 10,
+                maxHeight: 240,
+                zIndex: 99999,
+                elevation: 24,
                 shadowColor: '#000',
-                shadowOpacity: 0.12,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 6 }
+                shadowOpacity: 0.18,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 8 }
               }}
               data={bloodGroupData}
               labelField="label"
@@ -832,7 +837,13 @@ export default function AuthScreen() {
                     ) : (
                       <>
                         {/* Signup steps */}
-                        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: Math.round(height * 0.52), marginTop: 6 }}>
+                        <ScrollView
+                          showsVerticalScrollIndicator={false}
+                          style={{ marginTop: 6 }}
+                          contentContainerStyle={{ paddingBottom: 12 }}
+                          nestedScrollEnabled={true}
+                          keyboardShouldPersistTaps="handled"
+                        >
                           {renderSignupStep()}
                         </ScrollView>
 
@@ -942,7 +953,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       height: undefined,
       borderRadius: 18,
       // Allow dropdown lists to render outside the card bounds
-      overflow: 'visible', // <<< changed from 'hidden' to 'visible' so dropdown isn't clipped
+  overflow: 'visible', // <<< changed from 'hidden' to 'visible' so dropdown isn't clipped
       backgroundColor: glassEnabled ? 'transparent' : (isDark ? 'rgba(6,9,12,0.62)' : 'rgba(255,255,255,0.9)'),
       borderWidth: 1,
       borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)') : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)'),
@@ -1028,7 +1039,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     ghostButton: { padding: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', backgroundColor: 'transparent', minWidth: 110 },
     ghostButtonText: { color: colors.text, fontWeight: '600' },
 
-    actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, zIndex: 5 },
 
     avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 },
     avatar: { width: 64, height: 64, borderRadius: 32, margin: 6 },
