@@ -1,5 +1,4 @@
-
-
+// AuthScreen.js
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Pressable, ScrollView, Image,
@@ -624,13 +623,26 @@ export default function AuthScreen() {
               style={styles.dropdown}
               placeholderStyle={{ color: styles.placeholderColor.color, fontSize: 16 }}
               selectedTextStyle={{ color: styles.textColor.color, fontSize: 16 }}
-              containerStyle={{ backgroundColor: 'transparent' }}
+              // give dropdown list a readable background based on theme and allow it to render above card
+              containerStyle={{ zIndex: 9999, elevation: 10 }} // wrapper ordering
+              dropdownStyle={{
+                backgroundColor: isDark ? '#0f1724' : '#ffffff',
+                borderRadius: 8,
+                maxHeight: 200,
+                zIndex: 9999,
+                elevation: 10,
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 6 }
+              }}
               data={bloodGroupData}
               labelField="label"
               valueField="value"
               placeholder="Select Blood Group"
               value={bloodGroup}
               onChange={item => { setBloodGroup(item.value); setFieldErrors(prev => ({ ...prev, bloodGroup: undefined })); }}
+              dropdownPosition="auto"
             />
             {fieldErrors.bloodGroup ? <Text style={styles.inlineError}>{String(fieldErrors.bloodGroup)}</Text> : null}
 
@@ -929,7 +941,8 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       width: '100%',
       height: undefined,
       borderRadius: 18,
-      overflow: 'hidden',
+      // Allow dropdown lists to render outside the card bounds
+      overflow: 'visible', // <<< changed from 'hidden' to 'visible' so dropdown isn't clipped
       backgroundColor: glassEnabled ? 'transparent' : (isDark ? 'rgba(6,9,12,0.62)' : 'rgba(255,255,255,0.9)'),
       borderWidth: 1,
       borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)') : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)'),
