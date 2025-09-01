@@ -12,7 +12,11 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "workflow": "managed",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "autoIncrement": false
     }
   },
   "submit": {
