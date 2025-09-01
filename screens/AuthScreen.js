@@ -10,7 +10,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Dropdown } from 'react-native-element-dropdown';
 import { auth, db } from '../firebaseConfig';
 import {
   signInWithEmailAndPassword,
@@ -238,6 +237,8 @@ export default function AuthScreen() {
   const [successText, setSuccessText] = useState('');
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [isEmailRegistered, setIsEmailRegistered] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
+  const [showBloodList, setShowBloodList] = useState(false);
   const emailCheckTimeout = useRef(null);
 
   useEffect(() => {
@@ -353,7 +354,12 @@ export default function AuthScreen() {
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       setSuccessText('Login successful.');
     } catch (e) {
-      setErrorText(getAuthErrorMessage(e, 'login') || '');
+  const friendly = getAuthErrorMessage(e, 'login') || '';
+  // set field-level errors for common cases
+  const code = e?.code || '';
+  if (code === 'auth/wrong-password') setFieldErrors(prev => ({ ...prev, password: 'Incorrect password.' }));
+  if (code === 'auth/invalid-email' || code === 'auth/user-not-found') setFieldErrors(prev => ({ ...prev, email: friendly }));
+  setErrorText(friendly);
     } finally {
       setIsLoading(false);
     }
@@ -394,7 +400,11 @@ export default function AuthScreen() {
       setGender(null); setHeight(''); setWeight(''); setBloodGroup(null);
       setConditions(''); setSelectedAvatarKey(null); setPassword('');
     } catch (e) {
-      setErrorText(getAuthErrorMessage(e, 'signup'));
+  const friendly = getAuthErrorMessage(e, 'signup');
+  const code = e?.code || '';
+  if (code === 'auth/email-already-in-use') setFieldErrors(prev => ({ ...prev, email: friendly }));
+  if (code === 'auth/weak-password') setFieldErrors(prev => ({ ...prev, password: friendly }));
+  setErrorText(friendly);
     } finally {
       setIsLoading(false);
     }
@@ -441,6 +451,22 @@ export default function AuthScreen() {
       {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{title}</Text>}
     </Pressable>
   );
+
+  // dismissible error banner (friendly UI for auth/firebase errors)
+  const ErrorBanner = ({ message, onClose }) => {
+    if (!message) return null;
+    return (
+      <Animatable.View animation="fadeInDown" duration={280} style={styles.errorBanner}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Ionicons name="alert-circle" size={18} color={styles.danger.color} style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{String(message)}</Text>
+        </View>
+        <Pressable onPress={onClose} style={{ padding: 6 }}>
+          <Ionicons name="close" size={18} color={styles.placeholderColor.color} />
+        </Pressable>
+      </Animatable.View>
+    );
+  };
 
   const renderSignupStep = () => {
     const trimmed = (email || '').trim().toLowerCase();
@@ -619,36 +645,30 @@ export default function AuthScreen() {
             />
 
             <Text style={styles.smallLabel}>Blood group</Text>
-            <Dropdown
-              style={styles.dropdown}
-              placeholderStyle={{ color: styles.placeholderColor.color, fontSize: 16 }}
-              selectedTextStyle={{ color: styles.textColor.color, fontSize: 16 }}
-              // ensure wrapper has high stacking order
-              containerStyle={{ zIndex: 9999, elevation: 20 }}
-              // make the dropdown list render as an overlay above other elements
-              dropdownStyle={{
-                position: 'absolute',
-                top: -8,
-                left: 0,
-                right: 0,
-                backgroundColor: isDark ? '#0B2F20' : '#ffffff',
-                borderRadius: 8,
-                maxHeight: 240,
-                zIndex: 99999,
-                elevation: 24,
-                shadowColor: '#000',
-                shadowOpacity: 0.18,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 8 }
-              }}
-              data={bloodGroupData}
-              labelField="label"
-              valueField="value"
-              placeholder="Select Blood Group"
-              value={bloodGroup}
-              onChange={item => { setBloodGroup(item.value); setFieldErrors(prev => ({ ...prev, bloodGroup: undefined })); }}
-              dropdownPosition="auto"
-            />
+            {/* Custom inline expandable list to avoid clipping/overlay issues */}
+            <Pressable
+              onPress={() => setShowBloodList(prev => !prev)}
+              style={[styles.dropdown, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+            >
+              <Text style={{ color: bloodGroup ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>{bloodGroup || 'Select Blood Group'}</Text>
+              <Ionicons name={showBloodList ? 'chevron-up' : 'chevron-down'} size={18} color={styles.placeholderColor.color} />
+            </Pressable>
+            {showBloodList ? (
+              <View style={[styles.dropdownListContainer, { backgroundColor: isDark ? 'rgba(0,0,0,0.04)' : 'transparent' }]}> 
+                {bloodGroupData.map(item => {
+                  const selected = item.value === bloodGroup;
+                  return (
+                    <Pressable
+                      key={item.value}
+                      onPress={() => { setBloodGroup(item.value); setFieldErrors(prev => ({ ...prev, bloodGroup: undefined })); setShowBloodList(false); }}
+                      style={[styles.dropdownItem, selected ? { backgroundColor: styles.toggleLink.color, borderBottomColor: 'transparent' } : null]}
+                    >
+                      <Text style={[styles.dropdownItemText, selected ? { color: '#fff', fontWeight: '700' } : null]}>{item.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
             {fieldErrors.bloodGroup ? <Text style={styles.inlineError}>{String(fieldErrors.bloodGroup)}</Text> : null}
 
             <Text style={styles.smallLabel}>Existing conditions</Text>
@@ -792,19 +812,21 @@ export default function AuthScreen() {
                     </View>
 
                     {successText ? <Text style={styles.successText}>{String(successText)}</Text> : null}
-                    {errorText ? <Text style={styles.inlineError}>{String(errorText)}</Text> : null}
+                    <ErrorBanner message={errorText} onClose={() => setErrorText('')} />
 
                     {isLoginView ? (
                       <Animatable.View animation="fadeInRight" duration={300}>
                         <Text style={styles.fieldLabel}>Email</Text>
                         <TextInput
-                          style={styles.input}
+                          style={[styles.input, focusedField === 'email' ? styles.focusedInput : null]}
                           placeholder="Email"
                           placeholderTextColor={styles.placeholderColor.color}
                           value={email}
                           onChangeText={setEmail}
                           keyboardType="email-address"
                           autoCapitalize="none"
+                          onFocus={() => setFocusedField('email')}
+                          onBlur={() => setFocusedField(null)}
                         />
 
                         <Text style={styles.fieldLabel}>Password</Text>
@@ -816,6 +838,8 @@ export default function AuthScreen() {
                             value={password}
                             onChangeText={setPassword}
                             secureTextEntry={!showPassword}
+                            onFocus={() => setFocusedField('password')}
+                            onBlur={() => setFocusedField(null)}
                           />
                           <Pressable onPress={() => setShowPassword(s => !s)} style={styles.iconPress}>
                             <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={styles.placeholderColor.color} />
@@ -901,6 +925,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     placeholder: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(16,24,40,0.35)',
     success: '#22c55e',
     danger: '#ef4444',
+  brand: '#6DBF6A'
   };
 
   const padding = Math.max(12, Math.round(cardWidth * 0.036));
@@ -988,6 +1013,14 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       fontSize: 16,
     },
 
+    focusedInput: {
+      borderColor: colors.brand,
+      shadowColor: colors.brand,
+      shadowOpacity: 0.12,
+      shadowOffset: { width: 0, height: 6 },
+      shadowRadius: 8,
+    },
+
     // input with right-side affix (spinner/tick/cross)
     inputAffixContainer: {
       flexDirection: 'row',
@@ -1031,6 +1064,10 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       backgroundColor: 'rgba(255,255,255,0.01)'
     },
 
+    dropdownItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
+    dropdownItemText: { color: colors.text, fontSize: 16 },
+  dropdownListContainer: { borderRadius: 8, marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)' },
+
     button: { backgroundColor: colors.primary, padding: 12, borderRadius: 12, alignItems: 'center', height: inputHeight, justifyContent: 'center', minWidth: 140 },
     buttonPressed: { transform: [{ scale: 0.985 }] },
     buttonDisabled: { opacity: 0.6 },
@@ -1063,6 +1100,8 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     suggestionText: { color: colors.subtext },
 
     inlineError: { color: '#ff6b6b', fontSize: 13, marginBottom: 8 },
+  errorBanner: { backgroundColor: isDark ? 'rgba(255,100,100,0.06)' : 'rgba(255,230,230,0.9)', borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  errorBannerText: { color: isDark ? '#ffd6d6' : '#7b1a1a', flex: 1 },
     successText: { color: '#6ddf7a', fontSize: 14, marginBottom: 8, textAlign: 'center' },
     subtleText: { color: colors.subtext, fontSize: 12, marginBottom: 6 },
 
