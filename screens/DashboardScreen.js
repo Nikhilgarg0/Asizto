@@ -74,95 +74,138 @@ export default function DashboardScreen({ navigation }) {
   const screenTimer = useMemo(() => performanceMonitor.startScreenLoad('Dashboard'), []);
 
   // Memoized health score calculation
-  const calculateHealthScore = useCallback((userMedicines, profile) => {
+  const calculateHealthScore = useCallback((userMedicines = [], profile = {}, appts = []) => {
     try {
-      let score = 0;
-      let factors = 0;
+      // Component weights (tunable): sum should be > 0
+      const weights = {
+        adherence: 25,
+        profileCompleteness: 15,
+        appointments: 15,
+        bmi: 30,
+        ageFactor: 15
+      };
 
-      // Medicine adherence (30% of score)
-      if (userMedicines.length > 0) {
-        const totalDoses = userMedicines.reduce((sum, med) => sum + (med.quantity || 0), 0);
+      const totalWeight = Object.values(weights).reduce((s, v) => s + v, 0);
+      let weightedSum = 0;
+
+      // 1) Medicine adherence -> 0-100
+      let adherencePct = 100;
+      if (userMedicines && userMedicines.length > 0) {
+        const totalDoses = userMedicines.reduce((sum, med) => sum + (Number(med.quantity) || 0), 0);
         const takenDoses = userMedicines.reduce((sum, med) => sum + (med.takenTimestamps?.length || 0), 0);
-        const adherence = totalDoses > 0 ? (takenDoses / totalDoses) * 100 : 100;
-        score += (adherence * 0.3);
-        factors++;
+        adherencePct = totalDoses > 0 ? Math.max(0, Math.min(100, (takenDoses / totalDoses) * 100)) : 100;
+      }
+      weightedSum += adherencePct * weights.adherence;
+
+      // 2) Profile completeness -> fields presence
+      const profileFields = ['age', 'weight', 'height', 'conditions', 'gender', 'bloodGroup'];
+      const completed = profileFields.filter(f => profile[f] !== undefined && profile[f] !== null && profile[f] !== '').length;
+      const profilePct = Math.round((completed / profileFields.length) * 100);
+      weightedSum += profilePct * weights.profileCompleteness;
+
+      // 3) Appointments attendance in last 90 days
+      let apptPct = 100;
+      if (appts && appts.length > 0) {
+        const recentWindow = 90 * 24 * 60 * 60 * 1000; // 90 days
+        const recent = appts.filter(apt => {
+          const d = apt.date?.toDate ? apt.date.toDate() : new Date(apt.date);
+          return d && (d >= new Date(Date.now() - recentWindow));
+        }).length;
+        apptPct = appts.length > 0 ? Math.round((recent / appts.length) * 100) : 100;
+      }
+      weightedSum += apptPct * weights.appointments;
+
+      // 4) BMI score (age-aware)
+      let bmiPct = 75; // neutral default
+      const weightVal = profile.weight ? parseFloat(profile.weight) : null;
+      const heightVal = profile.height ? parseFloat(profile.height) : null;
+      // compute age from profile.age or profile.dob
+      let age = null;
+      if (profile.age) age = Number(profile.age);
+      else if (profile.dob) {
+        try {
+          const dob = profile.dob.toDate ? profile.dob.toDate() : new Date(profile.dob);
+          const diff = Date.now() - dob.getTime();
+          age = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+        } catch (e) { age = null; }
       }
 
-      // Profile completeness (20% of score)
-      const profileFields = ['age', 'weight', 'height', 'conditions'];
-      const completedFields = profileFields.filter(field => profile[field]).length;
-      const profileScore = (completedFields / profileFields.length) * 100;
-      score += (profileScore * 0.2);
-      factors++;
-
-      // Appointment attendance (25% of score)
-      if (appointments.length > 0) {
-        const recentAppointments = appointments.filter(apt => {
-          const aptDate = apt.date?.toDate ? apt.date.toDate() : new Date(apt.date);
-          return aptDate > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
-        });
-        const attendanceScore = recentAppointments.length > 0 ? 100 : 80;
-        score += (attendanceScore * 0.25);
-        factors++;
+      if (weightVal && heightVal) {
+        const bmi = weightVal / Math.pow(heightVal / 100, 2);
+        // Adult ranges
+        if (age === null || age >= 18) {
+          if (bmi >= 18.5 && bmi <= 24.9) bmiPct = 100;
+          else if (bmi >= 25 && bmi <= 29.9) bmiPct = 80;
+          else if (bmi >= 17.5 && bmi < 18.5) bmiPct = 70;
+          else if (bmi >= 30 && bmi <= 34.9) bmiPct = 60;
+          else bmiPct = 50;
+        } else {
+          // For children/adolescents we can't compute percentiles here reliably; use a conservative neutral score
+          bmiPct = 75;
+        }
       }
+      weightedSum += bmiPct * weights.bmi;
 
-      // Health metrics (25% of score)
-      if (profile.weight && profile.height) {
-        const bmi = parseFloat(profile.weight) / Math.pow(parseFloat(profile.height) / 100, 2);
-        let bmiScore = 100;
-        if (bmi < 18.5 || bmi > 30) bmiScore = 60;
-        else if (bmi < 20 || bmi > 28) bmiScore = 80;
-        score += (bmiScore * 0.25);
-        factors++;
+      // 5) Age factor: older adults may get small adjustment
+      let agePct = 100;
+      if (age !== null) {
+        if (age >= 75) agePct = 80;
+        else if (age >= 65) agePct = 88;
+        else if (age <= 16) agePct = 92;
+        else agePct = 100;
       }
+      weightedSum += agePct * weights.ageFactor;
 
-      // Normalize score if we have factors
-      const finalScore = factors > 0 ? Math.round(score / factors) : 75;
-      setHealthScore(finalScore);
-      
-      logger.info('Health score calculated', { score: finalScore, factors });
-    } catch (error) {
-      logger.error('Error calculating health score', error);
-      setHealthScore(75); // Fallback
+      // Final normalized percentage
+      const finalScore = Math.round(weightedSum / totalWeight);
+      setHealthScore(Math.max(0, Math.min(100, finalScore)));
+      logger.info('Health score calculated', { score: finalScore, components: { adherencePct, profilePct, apptPct, bmiPct, agePct } });
+    } catch (err) {
+      logger.error('Error calculating health score', err);
+      setHealthScore(75);
     }
-  }, [appointments]);
+  }, []);
 
   // Enhanced BMI calculation with validation
   const bmiData = useMemo(() => {
-    if (!userProfile.weight || !userProfile.height) {
-      return { value: null, category: "N/A", status: "incomplete" };
-    }
-    
+    // include age awareness and clearer categories
     try {
-      const h = parseFloat(userProfile.height) / 100;
-      const w = parseFloat(userProfile.weight);
-      
-      if (h === 0 || w === 0) return { value: null, category: "N/A", status: "invalid" };
-      
-      const bmi = (w / (h * h)).toFixed(1);
-      let category = "Unknown";
-      let status = "normal";
-      
-      if (bmi < 18.5) {
-        category = "Underweight";
-        status = "warning";
-      } else if (bmi >= 18.5 && bmi <= 24.9) {
-        category = "Normal Weight";
-        status = "healthy";
-      } else if (bmi >= 25 && bmi <= 29.9) {
-        category = "Overweight";
-        status = "warning";
-      } else {
-        category = "Obesity";
-        status = "critical";
+      const weight = userProfile.weight ? parseFloat(userProfile.weight) : null;
+      const height = userProfile.height ? parseFloat(userProfile.height) : null;
+      let age = null;
+      if (userProfile.age) age = Number(userProfile.age);
+      else if (userProfile.dob) {
+        try { const dob = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)); } catch (e) { age = null; }
       }
-      
-      return { value: bmi, category, status };
-    } catch (error) {
-      logger.error('BMI calculation error', error);
-      return { value: null, category: "Error", status: "error" };
+
+      if (!weight || !height) return { value: null, category: 'N/A', status: 'incomplete', age };
+
+      if (height === 0 || weight === 0) return { value: null, category: 'N/A', status: 'invalid', age };
+
+      const bmi = +(weight / Math.pow(height / 100, 2)).toFixed(1);
+      let category = 'Unknown';
+      let status = 'normal';
+
+      if (age !== null && age < 18) {
+        // Pediatric BMI interpretation requires percentiles; provide a safe message
+        category = 'Use pediatric chart';
+        status = 'warning';
+      } else {
+        if (bmi < 16) { category = 'Severe Thinness'; status = 'critical'; }
+        else if (bmi >= 16 && bmi < 18.5) { category = 'Underweight'; status = 'warning'; }
+        else if (bmi >= 18.5 && bmi <= 24.9) { category = 'Normal weight'; status = 'healthy'; }
+        else if (bmi >= 25 && bmi <= 29.9) { category = 'Overweight'; status = 'warning'; }
+        else if (bmi >= 30 && bmi <= 34.9) { category = 'Obesity I'; status = 'critical'; }
+        else if (bmi >= 35 && bmi <= 39.9) { category = 'Obesity II'; status = 'critical'; }
+        else { category = 'Obesity III'; status = 'critical'; }
+      }
+
+      return { value: bmi, category, status, age };
+    } catch (err) {
+      logger.error('BMI calculation error', err);
+      return { value: null, category: 'Error', status: 'error', age: null };
     }
-  }, [userProfile.weight, userProfile.height]);
+  }, [userProfile.weight, userProfile.height, userProfile.age, userProfile.dob]);
 
   // Optimized next dose calculation
   const nextDoseStatus = useMemo(() => {
