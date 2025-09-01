@@ -8,8 +8,17 @@ import {
   TouchableOpacity, 
   KeyboardAvoidingView, 
   Platform, 
-  ActivityIndicator 
+  ActivityIndicator,
+  Alert
 } from 'react-native';
+// Use a guarded require for clipboard so the app doesn't crash if the package isn't installed.
+let Clipboard = null;
+try {
+  // eslint-disable-next-line global-require
+  Clipboard = require('expo-clipboard');
+} catch (e) {
+  Clipboard = null;
+}
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GEMINI_API_KEY } from '../apiKeys';
@@ -25,10 +34,12 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import Toast from 'react-native-toast-message';
 
 const INITIAL_MESSAGE = { 
   role: 'model', 
-  content: 'Hello! I am Asizto. Ask me a health question and I will use your profile context to give a personalized response.\n\nDisclaimer: I am not a medical professional. Always consult a doctor for medical advice.\n' 
+  content: 'Hello! I am Asizto. Ask me a health question and I will use your profile context to give a personalized response.\n\nDisclaimer: I am not a medical professional. Always consult a doctor for medical advice.\n',
+  timestamp: Date.now(),
 };
 
 // Enhanced typing animation component with performance optimization
@@ -39,23 +50,30 @@ const AnimatedChatMessage = ({ content, onComplete }) => {
 
   useEffect(() => {
     if (!content || content.length === 0) return;
-    
+
+    // Reset displayed text when content changes
+    setDisplayedText('');
+    setIsTyping(true);
+
+    // Use Array.from to correctly handle surrogate pairs (emojis) and composed characters
+    const chars = Array.from(content);
     let i = 0;
     const interval = setInterval(() => {
-      setDisplayedText(prev => prev + content.charAt(i));
+      // Build the substring from chars to avoid missing letters
+      setDisplayedText(chars.slice(0, i + 1).join(''));
       i++;
-      if (i >= content.length) {
+      if (i >= chars.length) {
         clearInterval(interval);
         setIsTyping(false);
         onComplete?.();
       }
-    }, 20); // Slightly slower for better readability
-    
+    }, 20);
+
     return () => clearInterval(interval);
   }, [content, onComplete]);
 
-  // Skip animation for very long messages (>200 chars)
-  if (content.length > 200) {
+  // Keep animation for most messages; only skip for extremely long content
+  if (content.length > 1000) {
     return (
       <Text style={{ color: colors.text }}>
         {content}
@@ -78,6 +96,7 @@ export default function ChatbotScreen({ route }) {
 
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
+  const [inputHeight, setInputHeight] = useState(40);
   const [isLoading, setIsLoading] = useState(false);
   const flatListRef = useRef(null);
 
@@ -140,7 +159,7 @@ export default function ChatbotScreen({ route }) {
     // Rate limiting - prevent multiple rapid requests
     if (isLoading) return;
     
-    const userMessage = { role: 'user', content: input };
+  const userMessage = { role: 'user', content: input, timestamp: Date.now() };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
@@ -174,8 +193,8 @@ export default function ChatbotScreen({ route }) {
         throw new Error(data.error.message || 'API returned an error');
       }
       
-      const botMessageContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that. Please try rephrasing your question.";
-      const botMessage = { role: 'model', content: botMessageContent };
+  const botMessageContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that. Please try rephrasing your question.";
+  const botMessage = { role: 'model', content: botMessageContent, timestamp: Date.now() };
       setMessages(prev => [...prev, botMessage]);
       
       // Log successful interaction
@@ -194,7 +213,7 @@ export default function ChatbotScreen({ route }) {
         errorMessage = "Network connection issue. Please check your internet connection.";
       }
       
-      const errorMsg = { role: 'model', content: errorMessage };
+  const errorMsg = { role: 'model', content: errorMessage, timestamp: Date.now() };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
@@ -252,6 +271,28 @@ export default function ChatbotScreen({ route }) {
       alignItems: 'center', 
       marginLeft: 10 
     },
+    copyButton: {
+      marginLeft: 4,
+      padding: 4,
+      borderRadius: 6,
+    },
+    timestampRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      marginTop: 6,
+      alignSelf: 'flex-end',
+    },
+    sendButtonDisabled: {
+      opacity: 0.6,
+    },
+    timestampText: {
+      marginTop: 0,
+      marginRight: 4,
+      fontSize: 11,
+      color: colors.subtext || '#888',
+      alignSelf: 'center'
+    },
   });
 
   return (
@@ -278,21 +319,78 @@ export default function ChatbotScreen({ route }) {
           renderItem={({ item, index }) => {
             const isLastMessage = index === messages.length - 1;
             return (
-              <View style={[
-                styles.messageBubble, 
-                item.role === 'user' ? styles.userBubble : styles.botBubble
-              ]}>
-                {item.role === 'model' && isLastMessage ? (
-                  <AnimatedChatMessage content={item.content} />
-                ) : (
-                  <Text style={item.role === 'user' ? styles.userText : styles.botText}>
-                    {item.content}
-                  </Text>
-                )}
-              </View>
+                <TouchableOpacity
+                activeOpacity={0.9}
+                onLongPress={async () => {
+                  try {
+                    if (Clipboard && Clipboard.setStringAsync) {
+                      await Clipboard.setStringAsync(item.content || '');
+                      Alert.alert('Copied', 'Message copied to clipboard');
+                    } else if (Clipboard && Clipboard.setString) {
+                      // Some versions expose setString
+                      Clipboard.setString(item.content || '');
+                      Alert.alert('Copied', 'Message copied to clipboard');
+                    } else {
+                      // Fallback: show the content in an alert so user can copy manually
+                      Alert.alert('Copy not available', 'Clipboard support is not installed. Message:\n\n' + (item.content || ''));
+                    }
+                  } catch (e) {
+                    console.warn('Copy failed', e);
+                    Alert.alert('Copy failed', 'Could not copy message');
+                  }
+                }}
+              >
+                <View style={[
+                  styles.messageBubble, 
+                  item.role === 'user' ? styles.userBubble : styles.botBubble
+                ]}>
+                  {item.role === 'model' && isLastMessage ? (
+                    <AnimatedChatMessage content={item.content} onComplete={() => {
+                      if (flatListRef.current) {
+                        setTimeout(() => flatListRef.current.scrollToEnd({ animated: true }), 50);
+                      }
+                    }} />
+                  ) : (
+                    <Text style={item.role === 'user' ? styles.userText : styles.botText}>
+                      {item.content}
+                    </Text>
+                  )}
+
+                  {/* Timestamp row: timestamp + copy button aligned to the right */}
+                  {item.timestamp ? (
+                    <View style={styles.timestampRow}>
+                      <Text style={styles.timestampText}>{new Date(item.timestamp).toLocaleTimeString()}</Text>
+                      {item.role === 'model' ? (
+                        <TouchableOpacity
+                          style={styles.copyButton}
+                          onPress={async () => {
+                            try {
+                              if (Clipboard && Clipboard.setStringAsync) {
+                                await Clipboard.setStringAsync(item.content || '');
+                                Toast.show({ type: 'success', text1: 'Copied', text2: 'Response copied to clipboard' });
+                              } else if (Clipboard && Clipboard.setString) {
+                                Clipboard.setString(item.content || '');
+                                Toast.show({ type: 'success', text1: 'Copied', text2: 'Response copied to clipboard' });
+                              } else {
+                                Toast.show({ type: 'error', text1: 'Copy not available', text2: 'Clipboard support is not installed.' });
+                              }
+                            } catch (e) {
+                              console.warn('Copy failed', e);
+                              Toast.show({ type: 'error', text1: 'Copy failed', text2: 'Could not copy message' });
+                            }
+                          }}
+                        >
+                          <Ionicons name="copy" size={16} color={colors.subtext || '#888'} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
             );
           }}
           contentContainerStyle={styles.messageList}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           keyboardShouldPersistTaps="handled"
         />
 
@@ -301,18 +399,24 @@ export default function ChatbotScreen({ route }) {
         {/* Input field pinned at bottom */}
         <View style={styles.inputContainer}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { height: Math.max(40, inputHeight) }]}
             value={input}
             onChangeText={setInput}
             placeholder="Ask a health question..."
             placeholderTextColor={colors.subtext || '#999'}
+            multiline
+            onContentSizeChange={(e) => setInputHeight(e.nativeEvent.contentSize.height)}
+            accessibilityLabel="Chat input"
+            returnKeyType="send"
+            onSubmitEditing={() => { if (!isLoading && input.trim()) handleSend(); }}
           />
           <TouchableOpacity 
-            style={styles.sendButton} 
+            style={[styles.sendButton, isLoading && styles.sendButtonDisabled]} 
             onPress={handleSend} 
             disabled={isLoading}
+            accessibilityLabel="Send message"
           >
-            <Ionicons name="send" size={24} color="#fff" />
+            <Ionicons name="send" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
       </SafeAreaView>

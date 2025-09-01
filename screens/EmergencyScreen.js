@@ -9,7 +9,6 @@ import {
   Linking,
   Animated,
   Easing,
-  Alert,
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
@@ -29,7 +28,7 @@ import {
 import * as SMS from 'expo-sms';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
-import { CurrentRenderContext } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 
 // Keep only Ambulance & Women Helpline
 const emergencyServices = [
@@ -41,6 +40,11 @@ export default function EmergencyScreen({ navigation }) {
   const { colors } = useTheme();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  // In-screen banner state (replaces popups)
+  const [banner, setBanner] = useState({ visible: false, text: '', type: 'info', action: null });
+  const bannerTimeout = useRef(null);
+  // Two-tap delete confirmation id
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   // Anim values for ripples + press scale
   const ripple1 = useRef(new Animated.Value(0)).current;
@@ -65,64 +69,75 @@ export default function EmergencyScreen({ navigation }) {
     return unsubscribe;
   }, []);
 
+  const isFocused = useIsFocused();
+
   useEffect(() => {
-    // Only run animations when screen is focused to save battery
-    let isActive = true;
-    
-    const startAnimations = () => {
-      if (!isActive) return;
-      
-      const loop1 = Animated.loop(
+    // Run ripple animations only while the screen is focused to save battery.
+    if (!isFocused) {
+      // ensure values reset when screen not focused
+      ripple1.setValue(0);
+      ripple2.setValue(0);
+      return;
+    }
+
+    const loop1 = Animated.loop(
+      Animated.sequence([
         Animated.timing(ripple1, {
           toValue: 1,
           duration: 2200,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
-        })
-      );
-      const loop2 = Animated.loop(
-        Animated.sequence([
-          Animated.delay(900),
-          Animated.timing(ripple2, {
-            toValue: 1,
-            duration: 2200,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-        ])
-      );
-      
-      loop1.start();
-      loop2.start();
-      
-      return { loop1, loop2 };
-    };
-    
-    const animationRefs = startAnimations();
-    
+        }),
+        Animated.timing(ripple1, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    );
+
+    const loop2 = Animated.loop(
+      Animated.sequence([
+        Animated.delay(900),
+        Animated.timing(ripple2, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ripple2, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    );
+
+    loop1.start();
+    loop2.start();
+
     return () => {
-      isActive = false;
-      if (animationRefs) {
-        animationRefs.loop1.stop();
-        animationRefs.loop2.stop();
-      }
+      loop1.stop();
+      loop2.stop();
+      ripple1.setValue(0);
+      ripple2.setValue(0);
     };
-  }, [ripple1, ripple2]);
+  }, [isFocused, ripple1, ripple2]);
 
   const handleDeletePersonalContact = (contactId) => {
-    Alert.alert('Delete Contact', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        onPress: () => deleteDoc(doc(db, 'emergencyContacts', contactId)),
-        style: 'destructive',
-      },
-    ]);
+    // Two-tap confirmation using in-screen banner: first tap asks to tap again to confirm
+    if (deleteConfirmId !== contactId) {
+      setDeleteConfirmId(contactId);
+      showBanner('Tap delete again to confirm', 'info');
+      // reset confirmation after 4s
+      setTimeout(() => setDeleteConfirmId((id) => (id === contactId ? null : id)), 4000);
+      return;
+    }
+
+    // confirmed: delete
+    deleteDoc(doc(db, 'emergencyContacts', contactId))
+      .then(() => showBanner('Contact deleted', 'success'))
+      .catch((e) => {
+        console.error('Delete error', e);
+        showBanner('Could not delete contact', 'error');
+      });
   };
 
   const handleQuickDial = (number) => {
     Linking.openURL(`tel:${number}`).catch(() =>
-      Alert.alert('Error', 'Could not open the dialer.')
+  showBanner('Could not open the dialer.', 'error')
     );
   };
 
@@ -130,16 +145,13 @@ export default function EmergencyScreen({ navigation }) {
     try {
       const smsAvailable = await SMS.isAvailableAsync();
       if (!smsAvailable) {
-        Alert.alert('Error', 'SMS is not available on this device.');
+  showBanner('SMS is not available on this device.', 'error');
         return;
       }
 
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(
-          'Permission Denied',
-          'Location permission denied. Cannot send SOS.'
-        );
+  showBanner('Location permission denied. Cannot send SOS.', 'error');
         return;
       }
 
@@ -170,31 +182,46 @@ export default function EmergencyScreen({ navigation }) {
 
       const message = msgLines.join('\n');
 
+      // Normalize phone numbers: trim and remove internal spaces
       const recipients = contacts
-        .map((c) => (c.phone ? String(c.phone).trim() : null))
+        .map((c) => {
+          if (!c.phone) return null;
+          const p = String(c.phone).trim().replace(/\s+/g, '');
+          return p.length ? p : null;
+        })
         .filter(Boolean);
 
       if (recipients.length === 0) {
-        Alert.alert(
-          'No Emergency Contacts', 
-          'Please add at least one emergency contact before using SOS.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Add Contact', onPress: () => navigation.navigate('EmergencyContact') }
-          ]
-        );
+        showBanner('Please add at least one emergency contact before using SOS.', 'info', {
+          label: 'Add Contact',
+          onPress: () => navigation.navigate('EmergencyContact'),
+        });
         return;
       }
 
       // Note: Expo SMS opens Messages app with recipients+text.
       await SMS.sendSMSAsync(recipients, message);
 
-      Alert.alert('SOS Ready', 'Message prepared in Messages app.');
+      showBanner('Message prepared in Messages app.', 'success');
     } catch (e) {
       console.error('SOS Error:', e);
-      Alert.alert('Error', 'Could not send the SOS message.');
+      showBanner('Could not send the SOS message.', 'error');
     }
   };
+
+  // Banner helper: type = 'info' | 'success' | 'error', optional action {label,onPress}
+  const showBanner = (text, type = 'info', action = null, duration = 4000) => {
+    // clear existing
+    if (bannerTimeout.current) clearTimeout(bannerTimeout.current);
+    setBanner({ visible: true, text, type, action });
+    bannerTimeout.current = setTimeout(() => setBanner((b) => ({ ...b, visible: false })), duration);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (bannerTimeout.current) clearTimeout(bannerTimeout.current);
+    };
+  }, []);
 
   const onPressIn = () => {
     Animated.spring(pressScale, {
@@ -303,16 +330,8 @@ export default function EmergencyScreen({ navigation }) {
         <Pressable
           onPressIn={onPressIn}
           onPressOut={onPressOut}
-          onLongPress={() => {
-            Alert.alert(
-              'Confirm SOS',
-              'Are you sure you want to send an emergency SOS message? This will contact all your emergency contacts.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Send SOS', style: 'destructive', onPress: handleLongPressSOS }
-              ]
-            );
-          }}
+          // Directly trigger SOS on long press (no confirmation popup)
+          onLongPress={handleLongPressSOS}
           delayLongPress={1500}
           disabled={contacts.length === 0}
         >
