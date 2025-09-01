@@ -12,7 +12,6 @@
       "distribution": "internal"
     },
     "production": {
-      "workflow": "managed",
       "android": {
         "buildType": "app-bundle"
       },
