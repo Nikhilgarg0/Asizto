@@ -963,25 +963,32 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       justifyContent: 'center',
       marginVertical: 8,
     },
+    // outer stroke acts as a subtle frame; remove heavy shadow to avoid dark halo
     cardStroke: {
-      borderRadius: 20,
-      padding: 2,
-      shadowColor: '#000',
-      shadowOpacity: isDark ? 0.25 : 0.12,
-      shadowRadius: 28,
-      shadowOffset: { width: 0, height: 16 },
-      elevation: 14,
-      backgroundColor: 'transparent'
+      borderRadius: 24,
+      padding: 3,
+      // remove shadowColor/shadowOpacity to avoid dark halo in both themes
+      shadowColor: 'transparent',
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 0,
+      // emulate a soft frame using a slightly tinted border that adapts to theme
+      backgroundColor: 'transparent',
+      borderWidth: 0.6,
+      borderColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(16,24,40,0.06)'
     },
     card: {
       width: '100%',
       height: undefined,
-      borderRadius: 18,
+  // slightly larger corner radius for a softer appearance
+  borderRadius: 20,
       // Allow dropdown lists to render outside the card bounds
   overflow: 'visible', // <<< changed from 'hidden' to 'visible' so dropdown isn't clipped
-      backgroundColor: glassEnabled ? 'transparent' : (isDark ? 'rgba(6,9,12,0.62)' : 'rgba(255,255,255,0.9)'),
-      borderWidth: 1,
-      borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.12)') : (isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)'),
+  backgroundColor: glassEnabled ? 'transparent' : (isDark ? 'rgba(6,9,12,0.62)' : 'rgba(255,255,255,0.96)'),
+  // thinner, subtler border to avoid harsh lines
+  borderWidth: 0.8,
+  borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.10)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
     },
 
     // glass blur covers card
@@ -1003,9 +1010,10 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       width: '100%',
       height: inputHeight,
       backgroundColor: 'rgba(255,255,255,0.02)',
-      borderColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 1,
-      borderRadius: 12,
+  borderColor: 'rgba(255,255,255,0.03)',
+  borderWidth: 1,
+  // slightly softer input corners match the card
+  borderRadius: 14,
       marginBottom: 8,
       paddingHorizontal: 14,
       color: colors.text,
