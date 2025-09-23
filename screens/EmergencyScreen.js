@@ -1,3 +1,4 @@
+// EmergencyScreen.js
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -12,6 +13,7 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -31,8 +33,9 @@ import * as Battery from 'expo-battery';
 import { useIsFocused } from '@react-navigation/native';
 
 // Keep only Ambulance & Women Helpline
+// Ambulance icon changed to a plus icon ('add' / '+')
 const emergencyServices = [
-  { name: 'Ambulance', number: '108', icon: 'medical-outline' },
+  { name: 'Ambulance', number: '108', icon: 'add' },          // changed icon to '+'
   { name: 'Women Helpline', number: '1091', icon: 'woman-outline' },
 ];
 
@@ -40,16 +43,14 @@ export default function EmergencyScreen({ navigation }) {
   const { colors } = useTheme();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
-  // In-screen banner state (replaces popups)
   const [banner, setBanner] = useState({ visible: false, text: '', type: 'info', action: null });
   const bannerTimeout = useRef(null);
-  // Two-tap delete confirmation id
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
-  // Anim values for ripples + press scale
   const ripple1 = useRef(new Animated.Value(0)).current;
   const ripple2 = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
+  const sosPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!auth.currentUser) {
@@ -72,9 +73,7 @@ export default function EmergencyScreen({ navigation }) {
   const isFocused = useIsFocused();
 
   useEffect(() => {
-    // Run ripple animations only while the screen is focused to save battery.
     if (!isFocused) {
-      // ensure values reset when screen not focused
       ripple1.setValue(0);
       ripple2.setValue(0);
       return;
@@ -84,7 +83,7 @@ export default function EmergencyScreen({ navigation }) {
       Animated.sequence([
         Animated.timing(ripple1, {
           toValue: 1,
-          duration: 2200,
+          duration: 1600,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
@@ -94,10 +93,10 @@ export default function EmergencyScreen({ navigation }) {
 
     const loop2 = Animated.loop(
       Animated.sequence([
-        Animated.delay(900),
+        Animated.delay(700),
         Animated.timing(ripple2, {
           toValue: 1,
-          duration: 2200,
+          duration: 1600,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
@@ -105,28 +104,34 @@ export default function EmergencyScreen({ navigation }) {
       ])
     );
 
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sosPulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sosPulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+
     loop1.start();
     loop2.start();
+    pulseLoop.start();
 
     return () => {
       loop1.stop();
       loop2.stop();
+      pulseLoop.stop();
       ripple1.setValue(0);
       ripple2.setValue(0);
     };
-  }, [isFocused, ripple1, ripple2]);
+  }, [isFocused, ripple1, ripple2, sosPulse]);
 
   const handleDeletePersonalContact = (contactId) => {
-    // Two-tap confirmation using in-screen banner: first tap asks to tap again to confirm
     if (deleteConfirmId !== contactId) {
       setDeleteConfirmId(contactId);
       showBanner('Tap delete again to confirm', 'info');
-      // reset confirmation after 4s
       setTimeout(() => setDeleteConfirmId((id) => (id === contactId ? null : id)), 4000);
       return;
     }
 
-    // confirmed: delete
     deleteDoc(doc(db, 'emergencyContacts', contactId))
       .then(() => showBanner('Contact deleted', 'success'))
       .catch((e) => {
@@ -137,52 +142,130 @@ export default function EmergencyScreen({ navigation }) {
 
   const handleQuickDial = (number) => {
     Linking.openURL(`tel:${number}`).catch(() =>
-  showBanner('Could not open the dialer.', 'error')
+      showBanner('Could not open the dialer.', 'error')
     );
   };
 
+  // helper to extract DOB (supports Firestore Timestamp or Date/string)
+  const computeAgeFromDOB = (dob) => {
+    if (!dob) return null;
+    let d = dob;
+    if (dob.toDate && typeof dob.toDate === 'function') {
+      d = dob.toDate();
+    } else if (typeof dob === 'string' || typeof dob === 'number') {
+      d = new Date(dob);
+    }
+    if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) {
+      age -= 1;
+    }
+    return age;
+  };
+
+  /**
+   * handleLongPressSOS
+   * - Ensures we request/check location permissions safely (so we don't crash with "Not authorized" errors).
+   * - Attempts last known position first (wrapped in try/catch), falls back to current position with a short timeout.
+   * - If no location is available or permission denied, proceeds without location.
+   * - Builds a richer SOS message using profile fields (blood group, meds, allergies, age, phone, emergency contacts).
+   */
   const handleLongPressSOS = async () => {
     try {
+      showBanner('Sending SOS...', 'info', null, 1200);
+
       const smsAvailable = await SMS.isAvailableAsync();
       if (!smsAvailable) {
-  showBanner('SMS is not available on this device.', 'error');
+        showBanner('SMS is not available on this device.', 'error');
         return;
       }
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-  showBanner('Location permission denied. Cannot send SOS.', 'error');
-        return;
+      // Safe location flow:
+      let position = null;
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status === 'granted') {
+          try {
+            position = await Location.getLastKnownPositionAsync();
+          } catch (lkErr) {
+            console.warn('getLastKnownPositionAsync failed:', lkErr);
+            position = null;
+          }
+          const now = Date.now();
+          const freshEnough = position && position.timestamp && (now - position.timestamp) < 120000; // 2 minutes
+          if (!freshEnough) {
+            try {
+              position = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+                timeout: 5000,
+              });
+            } catch (currErr) {
+              console.warn('getCurrentPositionAsync quick lookup failed:', currErr);
+            }
+          }
+        } else {
+          showBanner('Location permission denied. Proceeding without location.', 'info');
+          position = null;
+        }
+      } catch (permErr) {
+        console.warn('Location permission/request error:', permErr);
+        showBanner('Could not access location services. Proceeding without location.', 'info');
+        position = null;
       }
 
-      const position = await Location.getCurrentPositionAsync({});
-      const battery = await Battery.getBatteryLevelAsync();
+      // Battery & user lookup
+      const battery = await Battery.getBatteryLevelAsync().catch((e) => {
+        console.warn('Battery read failed', e);
+        return null;
+      });
+
       const userId = auth.currentUser?.uid;
       const userSnap = userId ? await getDoc(doc(db, 'users', userId)) : null;
       const user = userSnap?.exists() ? userSnap.data() : {};
       const name =
         user.firstName ||
         user.name ||
-        (auth.currentUser?.email
-          ? auth.currentUser.email.split('@')[0]
-          : 'User');
+        (auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'User');
 
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
+      // Build location link only if we have valid coords
+      const lat = position?.coords?.latitude;
+      const lon = position?.coords?.longitude;
+      const mapsUrl = (typeof lat === 'number' && typeof lon === 'number')
+        ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+        : null;
 
-      // working Google Maps link
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+      // Collect emergency contacts summary (names + phones) for inclusion in message
+      const emergencyContactList = contacts
+        .map((c) => {
+          if (!c.phone) return null;
+          const p = String(c.phone).trim().replace(/\s+/g, '');
+          const nm = c.name ? c.name : p;
+          return `${nm}: ${p}`;
+        })
+        .filter(Boolean)
+        .slice(0, 5) // limit to first 5 to avoid massive messages
+        .join('; ');
 
+      const age = computeAgeFromDOB(user?.dob);
+
+      // Build message lines with extra patient info (only include if available)
       const msgLines = [
-        `🚨 EMERGENCY SOS from ${name}`,
-        `📍 Location: ${mapsUrl}`,
-        user.conditions ? `⚠️ Conditions: ${user.conditions}` : null,
-        `🔋 Battery: ${Math.round(battery * 100)}%`,
+        `🚨 EMERGENCY SOS from ${name}${age ? ` (${age} yrs)` : ''}`,
+        mapsUrl ? `📍 Location: ${mapsUrl}` : null,
+        user?.bloodGroup ? `🩸 Blood: ${user.bloodGroup}` : null,
+        user?.conditions ? `⚠️ Conditions: ${user.conditions}` : null,
+        user?.medications ? `💊 Meds: ${user.medications}` : null,
+        user?.allergies ? `🤧 Allergies: ${user.allergies}` : null,
+        user?.phone ? `📞 Phone: ${user.phone}` : null,
+        emergencyContactList ? `👥 Emergency contacts: ${emergencyContactList}` : null,
+        battery != null ? `🔋 Battery: ${Math.round(battery * 100)}%` : null,
+        `🕘 Time: ${new Date().toLocaleString()}`,
       ].filter(Boolean);
 
       const message = msgLines.join('\n');
 
-      // Normalize phone numbers: trim and remove internal spaces
       const recipients = contacts
         .map((c) => {
           if (!c.phone) return null;
@@ -192,26 +275,31 @@ export default function EmergencyScreen({ navigation }) {
         .filter(Boolean);
 
       if (recipients.length === 0) {
-        showBanner('Please add at least one emergency contact before using SOS.', 'info', {
-          label: 'Add Contact',
-          onPress: () => navigation.navigate('EmergencyContact'),
-        });
-        return;
+        // No personal contacts — fallback to dialing 112 instantly
+        try {
+          Linking.openURL('tel:112');
+          return;
+        } catch (e) {
+          showBanner('Please add at least one emergency contact before using SOS.', 'info', {
+            label: 'Add Contact',
+            onPress: () => navigation.navigate('EmergencyContact'),
+          });
+          return;
+        }
       }
 
-      // Note: Expo SMS opens Messages app with recipients+text.
+      // Send SMS via the device Messages app (opens composer)
       await SMS.sendSMSAsync(recipients, message);
 
       showBanner('Message prepared in Messages app.', 'success');
+      Keyboard.dismiss();
     } catch (e) {
       console.error('SOS Error:', e);
       showBanner('Could not send the SOS message.', 'error');
     }
   };
 
-  // Banner helper: type = 'info' | 'success' | 'error', optional action {label,onPress}
   const showBanner = (text, type = 'info', action = null, duration = 4000) => {
-    // clear existing
     if (bannerTimeout.current) clearTimeout(bannerTimeout.current);
     setBanner({ visible: true, text, type, action });
     bannerTimeout.current = setTimeout(() => setBanner((b) => ({ ...b, visible: false })), duration);
@@ -237,7 +325,6 @@ export default function EmergencyScreen({ navigation }) {
     }).start();
   };
 
-  // Ripple shared shape
   const rippleCommon = {
     position: 'absolute',
     width: 220,
@@ -252,8 +339,8 @@ export default function EmergencyScreen({ navigation }) {
   };
   const ripple2Style = {
     ...rippleCommon,
-    opacity: ripple2.interpolate({ inputRange: [0, 1], outputRange: [0.14, 0] }),
-    transform: [{ scale: ripple2.interpolate({ inputRange: [0, 1], outputRange: [1, 2.3] }) }],
+    opacity: ripple2.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0] }),
+    transform: [{ scale: ripple2.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
   };
 
   if (loading) {
@@ -266,12 +353,10 @@ export default function EmergencyScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* removed extra top spacing: content begins immediately under SafeArea */}
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 220 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Quick Dial (only Ambulance & Women Helpline) */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Dial Services</Text>
 
         <View style={styles.quickRow}>
@@ -289,7 +374,6 @@ export default function EmergencyScreen({ navigation }) {
           ))}
         </View>
 
-        {/* Contacts Card */}
         <View style={[styles.contactsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.contactsHeader}>
             <Text style={[styles.contactsTitle, { color: colors.text }]}>Your Contacts</Text>
@@ -299,7 +383,17 @@ export default function EmergencyScreen({ navigation }) {
           </View>
 
           {contacts.length === 0 ? (
-            <Text style={[styles.emptyText, { color: colors.subtext }]}>No personal contacts added yet.</Text>
+            <View style={{ alignItems: 'center', paddingVertical: 18 }}>
+              <Text style={[styles.emptyText, { color: colors.subtext }]}>No personal contacts added yet.</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.subtext, marginTop: 6 }]}>No contacts saved..... Call 112</Text>
+              <TouchableOpacity
+                style={[styles.addContactButton, { backgroundColor: colors.primary, marginTop: 14 }]}
+                onPress={() => navigation.navigate('EmergencyContact')}
+                accessibilityRole="button"
+              >
+                <Text style={styles.addContactText}>Add Contact</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <FlatList
               data={contacts}
@@ -322,7 +416,6 @@ export default function EmergencyScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      {/* SOS Button — lowered for easy thumb access and Apple-like soft shadow */}
       <View style={styles.sosAbsoluteWrap}>
         <Animated.View pointerEvents="none" style={ripple1Style} />
         <Animated.View pointerEvents="none" style={ripple2Style} />
@@ -330,24 +423,25 @@ export default function EmergencyScreen({ navigation }) {
         <Pressable
           onPressIn={onPressIn}
           onPressOut={onPressOut}
-          // Directly trigger SOS on long press (no confirmation popup)
           onLongPress={handleLongPressSOS}
-          delayLongPress={1500}
-          disabled={contacts.length === 0}
+          delayLongPress={1000}
+          disabled={false}
         >
           <Animated.View
             style={[
               styles.sosButton,
               {
-                backgroundColor: colors.primary,
-                shadowColor: '#000',
+                shadowColor: colors.primary,
                 transform: [{ scale: pressScale }],
-                opacity: contacts.length === 0 ? 0.55 : 1,
+                opacity: contacts.length === 0 ? 0.95 : 1,
+                backgroundColor: colors.primary,
               },
             ]}
           >
             <Ionicons name="warning" size={46} color="#fff" />
-            <Text style={styles.sosText}>HOLD FOR SOS</Text>
+            <Animated.Text style={[styles.sosText, { opacity: sosPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] }) }]}>
+              HOLD FOR SOS
+            </Animated.Text>
           </Animated.View>
         </Pressable>
       </View>
@@ -361,14 +455,12 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 0 },
 
   sectionTitle: {
-  fontSize: 20,
-  fontWeight: "600",
-  marginTop: 20,   // 👈 gives breathing room from above
-  marginBottom: 10, // 👈 space below the heading
-  paddingHorizontal: 12, // 👈 aligns text nicely with cards
-},
-
-
+    fontSize: 20,
+    fontWeight: "600",
+    marginTop: 20,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+  },
 
   quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
   quickCard: {
@@ -408,13 +500,16 @@ const styles = StyleSheet.create({
   sep: { height: StyleSheet.hairlineWidth, width: '100%' },
 
   emptyText: { textAlign: 'center', paddingVertical: 16 },
+  emptySubtitle: { textAlign: 'center', fontSize: 14 },
+  addContactButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, elevation: 2 },
+  addContactText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  hintText: { textAlign: 'center', marginTop: 8, fontWeight: '700' },
 
-  // SOS absolute wrapper — lowered for easy reach
   sosAbsoluteWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 28, // lowered for thumb reach; tweak this number if you want it lower/higher
+    bottom: 28,
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'box-none',

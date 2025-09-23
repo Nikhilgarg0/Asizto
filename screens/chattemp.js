@@ -70,8 +70,8 @@ export default function EmergencyScreen({ navigation }) {
         const userName = userData.firstName || "User";
   
         const message = `🚨 EMERGENCY SOS from ${userName}:
-  📍 Location: https://www.google.com/maps?q=${location.coords.latitude},${location.coords.longitude}
-  🔋 Battery: ${(batteryLevel * 100).toFixed(0)}%`;
+        📍 Location: https://www.google.com/maps?q=${location.coords.latitude},${location.coords.longitude}
+        🔋 Battery: ${(batteryLevel * 100).toFixed(0)}%`;
   
         for (const contact of contacts) {
           if (contact.phone) {

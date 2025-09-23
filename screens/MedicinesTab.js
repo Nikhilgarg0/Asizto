@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { db, auth } from '../firebaseConfig';
@@ -275,6 +275,11 @@ const MedicineDoseStatus = ({ medicine, handleDelete }) => {
 export default function MedicinesTab({ route }) {
   const { colors } = useTheme();
   const navigation = useNavigation();
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [medicineToDelete, setMedicineToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [requireConfirmTyping, setRequireConfirmTyping] = useState(true);
+  const [confirmText, setConfirmText] = useState('');
   const [allMedicines, setAllMedicines] = useState([]);
   const [filteredMedicines, setFilteredMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -336,34 +341,46 @@ export default function MedicinesTab({ route }) {
     setFilteredMedicines(memoizedFilteredMedicines);
   }, [memoizedFilteredMedicines]);
 
-  const handleDelete = useCallback(async (medicine) => {
-    Alert.alert("Delete Medicine", "Are you sure? This will cancel all future reminders.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete", 
-        onPress: async () => {
-          try {
-            // Cancel notifications first
-            if (medicine.notificationIds && medicine.notificationIds.length > 0) {
-              for (const id of medicine.notificationIds) {
-                await Notifications.cancelScheduledNotificationAsync(id);
-              }
-            }
-            
-            // Also cancel any notifications managed by our NotificationManager
-            await cancelMedicineNotifications(medicine.id);
-            
-            // Delete from database
-            await deleteDoc(doc(db, "medicines", medicine.id));
-          } catch (error) {
-            console.error('Error deleting medicine:', error);
-            Alert.alert('Error', 'Failed to delete medicine. Please try again.');
-          }
-        },
-        style: "destructive"
-      }
-    ]);
+  const handleDelete = useCallback((medicine) => {
+    // open confirm modal
+    setMedicineToDelete(medicine);
+    setDeleteModalVisible(true);
   }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!medicineToDelete) return;
+    setIsDeleting(true);
+    try {
+      const medicine = medicineToDelete;
+      // Cancel notifications first
+      if (medicine.notificationIds && medicine.notificationIds.length > 0) {
+        for (const id of medicine.notificationIds) {
+          try {
+            await Notifications.cancelScheduledNotificationAsync(id);
+          } catch (e) {
+            console.warn('Failed to cancel scheduled notification', id, e);
+          }
+        }
+      }
+
+      // Also cancel any notifications managed by our NotificationManager
+      try {
+        await cancelMedicineNotifications(medicine.id);
+      } catch (e) {
+        console.warn('NotificationManager cancel failed', e);
+      }
+
+      // Delete from database
+      await deleteDoc(doc(db, "medicines", medicine.id));
+      setDeleteModalVisible(false);
+      setMedicineToDelete(null);
+    } catch (error) {
+      console.error('Error deleting medicine:', error);
+      Alert.alert('Error', 'Failed to delete medicine. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [medicineToDelete]);
 
   if (loading) {
     return (
@@ -405,6 +422,13 @@ export default function MedicinesTab({ route }) {
             <Text style={styles.emptySubtitle}>
               {searchQuery ? 'Try adjusting your search terms' : 'Add your first medicine to get started'}
             </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('AddMedicine')}
+              style={[styles.emptyActionButton, { backgroundColor: colors.primary }]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.emptyActionText]}>Add Medicine</Text>
+            </TouchableOpacity>
           </View>
         }
         contentContainerStyle={styles.listContainer}
@@ -413,6 +437,60 @@ export default function MedicinesTab({ route }) {
         maxToRenderPerBatch={10}
         windowSize={10}
       />
+      {/* Delete confirmation modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isDeleting) setDeleteModalVisible(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Ionicons name="warning-outline" size={48} color={colors.accent} />
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Medicine</Text>
+            <Text style={[styles.modalMessage, { color: colors.subtext }]}>This will cancel all future reminders. This action cannot be undone.</Text>
+
+            {/* Optional type-to-confirm flow */}
+            {requireConfirmTyping && (
+              <View style={{ width: '100%', marginTop: 12 }}>
+                <Text style={{ color: colors.subtext, marginBottom: 6, textAlign: 'center' }}>Type <Text style={{ fontWeight: '700' }}>DELETE</Text> to confirm</Text>
+                <TextInput
+                  placeholder="Type DELETE to confirm"
+                  placeholderTextColor={colors.subtext}
+                  value={confirmText}
+                  onChangeText={setConfirmText}
+                  style={[styles.confirmInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                  autoCapitalize="characters"
+                />
+              </View>
+            )}
+
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.background }]}
+                onPress={() => {
+                  if (!isDeleting) {
+                    setDeleteModalVisible(false);
+                    setConfirmText('');
+                  }
+                }}
+                disabled={isDeleting}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.accent, opacity: (isDeleting || (requireConfirmTyping && confirmText !== 'DELETE')) ? 0.6 : 1 }]}
+                onPress={confirmDelete}
+                disabled={isDeleting || (requireConfirmTyping && confirmText !== 'DELETE')}
+              >
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>{isDeleting ? 'Deleting...' : 'Delete'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('AddMedicine')}
@@ -508,6 +586,18 @@ const createStyles = (colors) => StyleSheet.create({
     color: colors.subtext,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  emptyActionButton: {
+    marginTop: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    elevation: 2,
+  },
+  emptyActionText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
   },
   card: {
     backgroundColor: colors.card,
@@ -617,5 +707,55 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 13, 
     color: colors.subtext,
     fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  modalMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 18,
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    marginHorizontal: 6,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+    confirmInput: {
+    width: '100%',
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    marginTop: 6,
   },
 });

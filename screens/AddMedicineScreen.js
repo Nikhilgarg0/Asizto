@@ -96,10 +96,14 @@ export default function AddMedicineScreen({ navigation }) {
     setSaving(true);
 
     try {
+      const dosesPerDay = times.length;
+      const totalQuantity = parsedDuration * dosesPerDay; // total doses = days * doses per day
+
       const medicineData = {
         name: name.trim(),
         duration: parsedDuration,
-        times // Date objects
+        times, // Date objects
+        quantity: totalQuantity,
       };
 
       // Save to Firestore first
@@ -107,6 +111,7 @@ export default function AddMedicineScreen({ navigation }) {
         userId: auth.currentUser.uid,
         name: medicineData.name,
         duration: medicineData.duration,
+        quantity: medicineData.quantity,
         times: medicineData.times.map(d => Timestamp.fromDate(d)),
         createdAt: Timestamp.now(),
         notificationIds: [],
@@ -125,6 +130,7 @@ export default function AddMedicineScreen({ navigation }) {
             name: medicineData.name,
             times: medicineData.times,
             duration: medicineData.duration,
+            quantity: medicineData.quantity,
           },
           userName // pass user name - your NotificationManager should accept this param
         );

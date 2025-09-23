@@ -222,6 +222,10 @@ export default function AuthScreen() {
   const [bloodGroup, setBloodGroup] = useState(null);
   const [conditions, setConditions] = useState('');
   const [selectedAvatarKey, setSelectedAvatarKey] = useState(null);
+  const [smoking, setSmoking] = useState('no');
+  const [drinking, setDrinking] = useState('no');
+  const [smokingFreq, setSmokingFreq] = useState('');
+  const [drinkingFreq, setDrinkingFreq] = useState('');
 
   // Glass stays enabled (toggle removed)
   const glassEnabled = true;
@@ -321,7 +325,7 @@ export default function AuthScreen() {
   const handleContentLayout = (event) => { // <-- ANIM
     const measured = Math.round(event.nativeEvent.layout.height);
     // Add small buffer to avoid clipping; this buffer compensates for paddings/margins
-    const buffer = 26;
+    const buffer = 64;
     const desired = Math.max(cardMinHeight, Math.min(cardMaxHeight, measured + buffer));
     // avoid redundant animations when difference tiny
     if (lastMeasuredHeight.current === desired) return;
@@ -371,7 +375,7 @@ export default function AuthScreen() {
     const ok2 = validateStep2();
     if (!ok1) { setSignupStep(1); return; }
     if (!ok2) { setSignupStep(2); return; }
-    if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); setSignupStep(4); return; }
+  if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); setSignupStep(5); return; }
     if (!bloodGroup) { setFieldErrors(prev => ({ ...prev, bloodGroup: 'Please select blood group.' })); setSignupStep(3); return; }
 
     setIsLoading(true);
@@ -390,6 +394,10 @@ export default function AuthScreen() {
         weight: weightVal ? Number(weightVal) : null,
         bloodGroup,
         conditions: conditions || null,
+        smoking: smoking || 'no',
+        smokingFreq: smokingFreq || null,
+        drinking: drinking || 'no',
+        drinkingFreq: drinkingFreq || null,
         avatarKey: selectedAvatarKey,
         createdAt: Timestamp.now()
       });
@@ -399,6 +407,7 @@ export default function AuthScreen() {
       setFirstName(''); setLastName(''); setPhone(''); setDob(null);
       setGender(null); setHeight(''); setWeight(''); setBloodGroup(null);
       setConditions(''); setSelectedAvatarKey(null); setPassword('');
+  setSmoking('no'); setDrinking('no'); setSmokingFreq(''); setDrinkingFreq('');
     } catch (e) {
   const friendly = getAuthErrorMessage(e, 'signup');
   const code = e?.code || '';
@@ -476,7 +485,7 @@ export default function AuthScreen() {
     switch (signupStep) {
       case 1:
         return (
-          <Animatable.View animation="fadeInRight" duration={320}>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <Text style={styles.smallLabel}>First name</Text>
             <TextInput
               style={styles.input}
@@ -558,11 +567,11 @@ export default function AuthScreen() {
                 disabled={isCheckingEmail || isEmailRegistered}
               />
             </View>
-          </Animatable.View>
+          </Animated.View>
         );
       case 2:
         return (
-          <Animatable.View animation="fadeInRight" duration={320}>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <Text style={styles.smallLabel}>Gender</Text>
             <View style={styles.genderSelector}>
               <Pressable style={[styles.genderButton, gender === 'male' && styles.genderButtonSelected]}
@@ -620,11 +629,11 @@ export default function AuthScreen() {
               </Pressable>
               <ActionButton title="Next" onPress={goNextFromStep2} />
             </View>
-          </Animatable.View>
+          </Animated.View>
         );
       case 3:
         return (
-          <Animatable.View animation="fadeInRight" duration={320}>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <Text style={styles.smallLabel}>Height (cm)</Text>
             <TextInput
               style={styles.input}
@@ -687,6 +696,8 @@ export default function AuthScreen() {
               ))}
             </View>
 
+            {/* Smoking & drinking moved to its own mini-card below to avoid clipping */}
+
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
@@ -696,11 +707,69 @@ export default function AuthScreen() {
               </Pressable>
               <ActionButton title="Next" onPress={() => setSignupStep(4)} />
             </View>
-          </Animatable.View>
+          </Animated.View>
         );
       case 4:
         return (
-          <Animatable.View animation="fadeInRight" duration={320}>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+            <Text style={styles.smallLabel}>Do you smoke?</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Pressable style={[styles.smallPill, smoking === 'no' && styles.smallPillSelected]} onPress={() => setSmoking('no')}>
+                <Text style={[styles.smallPillText, smoking === 'no' && styles.smallPillTextSelected]}>No</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, smoking === 'occasionally' && styles.smallPillSelected]} onPress={() => setSmoking('occasionally')}>
+                <Text style={[styles.smallPillText, smoking === 'occasionally' && styles.smallPillTextSelected]}>Occasionally</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, smoking === 'daily' && styles.smallPillSelected]} onPress={() => setSmoking('daily')}>
+                <Text style={[styles.smallPillText, smoking === 'daily' && styles.smallPillTextSelected]}>Daily</Text>
+              </Pressable>
+            </View>
+            {smoking === 'occasionally' && (
+              <TextInput
+                style={styles.input}
+                placeholder="How many per day / week? (optional)"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={smokingFreq}
+                onChangeText={setSmokingFreq}
+              />
+            )}
+
+            <Text style={[styles.smallLabel, { marginTop: 8 }]}>Do you drink alcohol?</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Pressable style={[styles.smallPill, drinking === 'no' && styles.smallPillSelected]} onPress={() => setDrinking('no')}>
+                <Text style={[styles.smallPillText, drinking === 'no' && styles.smallPillTextSelected]}>No</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, drinking === 'occasionally' && styles.smallPillSelected]} onPress={() => setDrinking('occasionally')}>
+                <Text style={[styles.smallPillText, drinking === 'occasionally' && styles.smallPillTextSelected]}>Occasionally</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, drinking === 'daily' && styles.smallPillSelected]} onPress={() => setDrinking('daily')}>
+                <Text style={[styles.smallPillText, drinking === 'daily' && styles.smallPillTextSelected]}>Daily</Text>
+              </Pressable>
+            </View>
+            {drinking === 'occasionally' && (
+              <TextInput
+                style={styles.input}
+                placeholder="How many units per week? (optional)"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={drinkingFreq}
+                onChangeText={setDrinkingFreq}
+              />
+            )}
+
+            <View style={styles.actionRow}>
+              <Pressable
+                style={styles.ghostButton}
+                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(3); }}
+              >
+                <Text style={styles.ghostButtonText}>Back</Text>
+              </Pressable>
+              <ActionButton title="Next" onPress={() => setSignupStep(5)} />
+            </View>
+          </Animated.View>
+        );
+      case 5:
+        return (
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <Text style={{ textAlign: 'center', marginBottom: 12, color: styles.placeholderColor.color }}>Choose your avatar</Text>
             <View style={styles.avatarGrid}>
               {avatarKeys.map(key => (
@@ -714,18 +783,30 @@ export default function AuthScreen() {
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(3); }}
+                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(4); }}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
               <ActionButton title="Create Account" onPress={handleSignUpFinal} loading={isLoading} />
             </View>
-          </Animatable.View>
+          </Animated.View>
         );
       default:
         return null;
     }
   };
+
+  // Step animation value: drives opacity/translate for signup steps
+  const stepAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    stepAnim.setValue(0);
+    Animated.timing(stepAnim, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [signupStep]);
 
   return (
     <SafeAreaView style={[styles.safeArea]}>
@@ -815,7 +896,7 @@ export default function AuthScreen() {
                     <ErrorBanner message={errorText} onClose={() => setErrorText('')} />
 
                     {isLoginView ? (
-                      <Animatable.View animation="fadeInRight" duration={300}>
+                      <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [6,0] }) }] }}>
                         <Text style={styles.fieldLabel}>Email</Text>
                         <TextInput
                           style={[styles.input, focusedField === 'email' ? styles.focusedInput : null]}
@@ -857,7 +938,7 @@ export default function AuthScreen() {
                         >
                           <Text style={styles.toggleText}>Don't have an account? <Text style={styles.toggleLink}>Sign Up</Text></Text>
                         </Pressable>
-                      </Animatable.View>
+                      </Animated.View>
                     ) : (
                       <>
                         {/* Signup steps */}
@@ -886,6 +967,8 @@ export default function AuthScreen() {
                 </View>
               </Animated.View>
             </Animatable.View>
+
+            {/* smoking/drinking are handled as a separate signup step (inserted below as case 4) */}
 
             {isLoading && (
               <View style={styles.loadingOverlay} pointerEvents="none">
@@ -965,30 +1048,25 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     },
     // outer stroke acts as a subtle frame; remove heavy shadow to avoid dark halo
     cardStroke: {
-      borderRadius: 24,
-      padding: 3,
-      // remove shadowColor/shadowOpacity to avoid dark halo in both themes
-      shadowColor: 'transparent',
-      shadowOpacity: 0,
-      shadowRadius: 0,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 0,
-      // emulate a soft frame using a slightly tinted border that adapts to theme
+      borderRadius: 28,
+      padding: 6,
+      shadowColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(16,24,40,0.08)',
+      shadowOpacity: isDark ? 0.45 : 0.12,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
       backgroundColor: 'transparent',
       borderWidth: 0.6,
-      borderColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(16,24,40,0.06)'
+      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(16,24,40,0.05)'
     },
     card: {
       width: '100%',
       height: undefined,
-  // slightly larger corner radius for a softer appearance
-  borderRadius: 20,
-      // Allow dropdown lists to render outside the card bounds
-  overflow: 'visible', // <<< changed from 'hidden' to 'visible' so dropdown isn't clipped
-  backgroundColor: glassEnabled ? 'transparent' : (isDark ? 'rgba(6,9,12,0.62)' : 'rgba(255,255,255,0.96)'),
-  // thinner, subtler border to avoid harsh lines
-  borderWidth: 0.8,
-  borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.10)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
+      borderRadius: 18,
+      overflow: 'visible',
+      backgroundColor: glassEnabled ? 'rgba(255,255,255,0.02)' : (isDark ? 'rgba(6,9,12,0.66)' : 'rgba(255,255,255,0.98)'),
+      borderWidth: 0.6,
+      borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.10)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
     },
 
     // glass blur covers card
@@ -1009,11 +1087,10 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     input: {
       width: '100%',
       height: inputHeight,
-      backgroundColor: 'rgba(255,255,255,0.02)',
-  borderColor: 'rgba(255,255,255,0.03)',
-  borderWidth: 1,
-  // slightly softer input corners match the card
-  borderRadius: 14,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(15,23,42,0.02)',
+      borderColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(16,24,40,0.04)',
+      borderWidth: 1,
+      borderRadius: 12,
       marginBottom: 8,
       paddingHorizontal: 14,
       color: colors.text,
@@ -1076,7 +1153,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     dropdownItemText: { color: colors.text, fontSize: 16 },
   dropdownListContainer: { borderRadius: 8, marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)' },
 
-    button: { backgroundColor: colors.primary, padding: 12, borderRadius: 12, alignItems: 'center', height: inputHeight, justifyContent: 'center', minWidth: 140 },
+  button: { backgroundColor: colors.primary, padding: 14, borderRadius: 14, alignItems: 'center', height: inputHeight, justifyContent: 'center', minWidth: 140 },
     buttonPressed: { transform: [{ scale: 0.985 }] },
     buttonDisabled: { opacity: 0.6 },
     buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
@@ -1086,9 +1163,14 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
 
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, zIndex: 5 },
 
-    avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 },
-    avatar: { width: 64, height: 64, borderRadius: 32, margin: 6 },
-    avatarSelected: { borderWidth: 3, borderColor: colors.primary },
+  // Avatar grid: layout as 3 columns x 2 rows (for the 6 local avatars)
+  avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 },
+  // compute avatar size relative to card width to ensure three columns
+  avatar: (() => {
+    const computed = Math.max(56, Math.min(92, Math.floor(cardWidth / 3) - 12));
+    return { width: computed, height: computed, borderRadius: Math.round(computed / 8), marginVertical: 6, backgroundColor: 'rgba(255,255,255,0.02)' };
+  })(),
+  avatarSelected: { borderWidth: 3, borderColor: colors.primary },
 
     genderSelector: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
     genderButton: {
@@ -1130,10 +1212,35 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     success: { color: colors.success },
     danger: { color: colors.danger },
 
+    smallPill: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.04)'
+    },
+    smallPillSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.18,
+      shadowRadius: 8,
+      elevation: 3
+    },
+    smallPillText: { color: colors.text, fontSize: 14 },
+    smallPillTextSelected: { color: '#fff', fontSize: 14, fontWeight: '600' },
+
     // additional glass style marker
     cardGlass: {
       borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.14)',
       backgroundColor: 'transparent'
+    },
+    miniCard: {
+      borderRadius: 14,
+      backgroundColor: glassEnabled ? 'rgba(255,255,255,0.02)' : (isDark ? 'rgba(8,10,12,0.6)' : '#fff'),
+      borderWidth: 0.6,
+      borderColor: 'rgba(255,255,255,0.04)'
     }
   });
 };

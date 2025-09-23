@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, 
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { db, auth } from '../firebaseConfig'; // <- fixed path
-import { collection, query, where, onSnapshot, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext'; // <- fixed path
 import * as Notifications from 'expo-notifications';
 
@@ -14,7 +14,7 @@ export default function AppointmentsTab() {
   const [appointments, setAppointments] = useState([]);
   const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState('date'); // 'date', 'doctor', 'type'
+  const [sortBy, setSortBy] = useState('date'); // 'date', 'doctor'
   const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'upcoming', 'past'
 
   useEffect(() => {
@@ -64,8 +64,6 @@ export default function AppointmentsTab() {
           return dateA - dateB;
         case 'doctor':
           return (a.doctorName || a.with || '').localeCompare(b.doctorName || b.with || '');
-        case 'type':
-          return (a.type || '').localeCompare(b.type || '');
         default:
           return dateA - dateB;
       }
@@ -108,21 +106,54 @@ export default function AppointmentsTab() {
     );
   };
 
+  const handleMarkAttended = async (appointment) => {
+    try {
+      const apptRef = doc(db, 'appointments', appointment.id);
+
+      // Cancel any scheduled notifications for this appointment
+      const ids = appointment?.notificationIds || [];
+      for (const nid of ids) {
+        try {
+          await Notifications.cancelScheduledNotificationAsync(nid);
+        } catch (e) {
+          console.warn('Failed to cancel notification', nid, e);
+        }
+      }
+
+      await updateDoc(apptRef, {
+        attended: true,
+        attendedAt: new Date()
+      });
+
+      Alert.alert('Marked attended', 'Appointment marked as attended.');
+    } catch (err) {
+      console.error('Mark attended error', err);
+      Alert.alert('Error', 'Could not mark appointment as attended.');
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
+      paddingTop: 12,
+      paddingHorizontal: 12,
     },
     filterContainer: {
-      padding: 16,
-      marginBottom: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 12,
       borderRadius: 12,
-      elevation: 2,
+      elevation: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: 'column',
+      justifyContent: 'center'
     },
     filterRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 12,
+      marginBottom: 14,
     },
     filterLabel: {
       fontSize: 14,
@@ -145,31 +176,44 @@ export default function AppointmentsTab() {
       color: colors.text,
     },
     listContent: {
-      padding: 15,
+      padding: 16,
+      paddingBottom: 96,
     },
     appointmentItem: {
       backgroundColor: colors.card,
-      padding: 20,
-      borderRadius: 12,
-      marginBottom: 12,
+      padding: 18,
+      borderRadius: 20,
+      marginBottom: 18,
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      elevation: 2,
+      elevation: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden'
+    },
+    appointmentAccent: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: 6,
+      borderTopLeftRadius: 20,
+      borderBottomLeftRadius: 20,
     },
     appointmentInfo: {
       flex: 1,
       marginRight: 12,
     },
     appointmentDoctor: {
-      fontSize: 18,
-      fontWeight: 'bold',
+      fontSize: 20,
+      fontWeight: '800',
       color: colors.text,
     },
     appointmentDate: {
       fontSize: 14,
       color: colors.subtext,
-      marginTop: 4,
+      marginTop: 6,
     },
     appointmentType: {
       fontSize: 12,
@@ -177,8 +221,8 @@ export default function AppointmentsTab() {
       fontStyle: 'italic',
     },
     appointmentLocation: {
-      fontSize: 12,
-      marginTop: 2,
+      fontSize: 13,
+      marginTop: 6,
     },
     fab: {
       position: 'absolute',
@@ -195,7 +239,8 @@ export default function AppointmentsTab() {
     emptyContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 40,
+      paddingVertical: 60,
+      marginTop: 6,
     },
     emptyText: {
       fontSize: 16,
@@ -209,6 +254,92 @@ export default function AppointmentsTab() {
       textAlign: 'center',
       lineHeight: 20,
     }
+    ,
+    markButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      elevation: 2,
+    },
+    markButtonText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    attendedBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      elevation: 1,
+    },
+    attendedText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 12,
+    },
+    attendedContainer: {
+      marginTop: 8,
+      paddingVertical: 6,
+    },
+    attendedRow: {
+      flexDirection: 'row',
+      alignItems: 'center'
+    },
+    attendedTextBody: {
+      fontSize: 14,
+      fontWeight: '600'
+    },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      padding: 16,
+      marginBottom: 16,
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      paddingBottom: 8,
+    },
+    cardBody: {
+      paddingBottom: 12,
+    },
+    cardFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      marginTop: 8,
+    },
+    deleteButton: {
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: 'transparent',
+    },
+    footerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    footerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    footerText: {
+      fontSize: 13,
+      color: colors.subtext,
+      fontWeight: '500',
+    },
   });
 
   if (loading) {
@@ -239,12 +370,7 @@ export default function AppointmentsTab() {
           >
             <Text style={[styles.filterButtonText, sortBy === 'doctor' && { color: '#fff' }]}>Doctor</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.filterButton, sortBy === 'type' && { backgroundColor: colors.primary }]}
-            onPress={() => setSortBy('type')}
-          >
-            <Text style={[styles.filterButtonText, sortBy === 'type' && { color: '#fff' }]}>Type</Text>
-          </TouchableOpacity>
+          {/* 'Type' sort removed per UX decision */}
         </View>
         
         <View style={styles.filterRow}>
@@ -278,35 +404,80 @@ export default function AppointmentsTab() {
           const displayDate = item.date && item.date.toDate ? item.date.toDate().toLocaleString() : (item.date || '');
           const isPast = item.date && (item.date.toDate ? item.date.toDate() : new Date(item.date)) <= new Date();
           
+          // use the actual date object for comparisons (handles Firestore Timestamp)
+          const aptDateObj = item.date && item.date.toDate ? item.date.toDate() : (item.date ? new Date(item.date) : null);
+          const canShowMark = aptDateObj ? (aptDateObj <= new Date()) : false;
+
           return (
-            <View style={[styles.appointmentItem, isPast && { opacity: 0.6 }]}>
-              <View style={styles.appointmentInfo}>
-                <Text style={styles.appointmentDoctor}>{item.doctorName || item.with || 'Appointment'}</Text>
-                <Text style={styles.appointmentDate}>{displayDate}</Text>
-                {item.type && (
-                  <Text style={[styles.appointmentType, { color: colors.subtext }]}>{item.type}</Text>
-                )}
+            <View style={[styles.card, isPast && { opacity: 0.9 }]}> 
+              <View style={[styles.cardHeader]}> 
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.appointmentDoctor}>{item.doctorName || item.with || 'Appointment'}</Text>
+                  <Text style={styles.appointmentDate}>{displayDate}</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteButton}>
+                  <Ionicons name="trash-outline" size={20} color={colors.subtext} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.cardBody}>
                 {item.location && (
                   <Text style={[styles.appointmentLocation, { color: colors.subtext }]}>📍 {item.location}</Text>
                 )}
+                {item.attended ? (
+                  <View style={styles.attendedContainer}>
+                    <View style={styles.attendedRow}>
+                      <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                      <Text style={[styles.attendedTextBody, { color: '#4CAF50', marginLeft: 8 }]}>
+                        {item.attendedAt ? (
+                          item.attendedAt.toDate ? `Attended on ${item.attendedAt.toDate().toLocaleString()}` : `Attended on ${new Date(item.attendedAt).toLocaleString()}`
+                        ) : 'Attended'}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+                {/* additional details could go here */}
               </View>
-              <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                <Ionicons name="trash-outline" size={24} color={colors.accent || '#E57373'} />
-              </TouchableOpacity>
+
+              <View style={styles.cardFooter}>
+                <View style={styles.footerLeft}>
+                  { !item.attended && canShowMark ? (
+                    <TouchableOpacity onPress={() => handleMarkAttended(item)} style={[styles.markButton, { backgroundColor: colors.primary }]}>
+                      <Text style={styles.markButtonText}>Mark Attended</Text>
+                    </TouchableOpacity>
+                  ) : null }
+                </View>
+                <View style={styles.footerRight}>
+                  <Text style={[styles.footerText, { color: colors.subtext }]}>{/* placeholder for status or time */}</Text>
+                </View>
+              </View>
             </View>
           );
         }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="calendar-outline" size={64} color={colors.subtext} />
-            <Text style={[styles.emptyText, { color: colors.text }]}>
+            <Text style={[styles.emptyText, { color: colors.text }]}> 
               {filterStatus === 'all' ? 'No appointments added yet.' : 
                filterStatus === 'upcoming' ? 'No upcoming appointments.' : 'No past appointments.'}
             </Text>
-            <Text style={[styles.emptySubtext, { color: colors.subtext }]}>
+            <Text style={[styles.emptySubtext, { color: colors.subtext }]}> 
               {filterStatus === 'all' ? 'Add your first appointment to get started' : 
                filterStatus === 'upcoming' ? 'All your appointments are in the past' : 'You have no past appointments'}
             </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('AddAppointment')}
+              style={{
+                marginTop: 16,
+                backgroundColor: colors.primary,
+                paddingHorizontal: 18,
+                paddingVertical: 10,
+                borderRadius: 10,
+                elevation: 2,
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Add Appointment</Text>
+            </TouchableOpacity>
           </View>
         }
       />

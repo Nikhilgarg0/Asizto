@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { db, auth } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
 export default function NotificationScreen() {
   const { colors } = useTheme();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation();
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -36,6 +38,12 @@ export default function NotificationScreen() {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={{ padding: 12, alignSelf: 'flex-end', marginRight: 12 }}
+        onPress={() => navigation.navigate('DebugNotifications')}
+      >
+        <Ionicons name="bug" size={22} color={colors.primary} />
+      </TouchableOpacity>
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}

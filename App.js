@@ -11,6 +11,15 @@ import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
 import { Alert } from 'react-native';
 
+// Ensure notifications are displayed when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 // Import Screens
 import DashboardScreen from './screens/DashboardScreen';
 import CabinetScreen from './screens/CabinetScreen';
@@ -22,6 +31,7 @@ import NotificationScreen from './screens/NotificationScreen';
 import AddMedicineScreen from './screens/AddMedicineScreen';
 import AddAppointmentScreen from './screens/AddAppointmentScreen';
 import EmergencyContactScreen from './screens/EmergencyContactScreen';
+import DebugNotificationsScreen from './screens/DebugNotificationsScreen';
 import Header from './components/customHeader';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -91,6 +101,7 @@ function AppContent() {
             title: 'Notifications'
           }}
         />
+        <Stack.Screen name="DebugNotifications" component={DebugNotificationsScreen} options={{ title: 'Scheduled Notifications' }} />
       </Stack.Navigator>
     );
   }

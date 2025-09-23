@@ -18,6 +18,7 @@ import {
 import { db, auth } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import * as Notifications from 'expo-notifications';
 import { GEMINI_API_KEY } from '../apiKeys';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -78,90 +79,132 @@ export default function DashboardScreen({ navigation }) {
   // Memoized health score calculation
   const calculateHealthScore = useCallback((userMedicines = [], profile = {}, appts = []) => {
     try {
-      // Component weights (tunable): sum should be > 0
+      // Component weights (tunable) - sum used for normalization
       const weights = {
-        adherence: 25,
-        profileCompleteness: 15,
-        appointments: 15,
-        bmi: 30,
-        ageFactor: 15
+        adherence: 22,
+        profileCompleteness: 10,
+        appointments: 10,
+        bmi: 20,
+        ageFactor: 8,
+        smoking: 10,
+        drinking: 8,
+        conditions: 12
       };
 
       const totalWeight = Object.values(weights).reduce((s, v) => s + v, 0);
       let weightedSum = 0;
 
+      // Helper: cap between 0-100
+      const clampPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
+
       // 1) Medicine adherence -> 0-100
       let adherencePct = 100;
       if (userMedicines && userMedicines.length > 0) {
+        // total expected doses approximated by 'quantity' field if present per med
         const totalDoses = userMedicines.reduce((sum, med) => sum + (Number(med.quantity) || 0), 0);
         const takenDoses = userMedicines.reduce((sum, med) => sum + (med.takenTimestamps?.length || 0), 0);
-        adherencePct = totalDoses > 0 ? Math.max(0, Math.min(100, (takenDoses / totalDoses) * 100)) : 100;
+        adherencePct = totalDoses > 0 ? clampPct((takenDoses / totalDoses) * 100) : 100;
       }
       weightedSum += adherencePct * weights.adherence;
 
-      // 2) Profile completeness -> fields presence
+      // 2) Profile completeness
       const profileFields = ['age', 'weight', 'height', 'conditions', 'gender', 'bloodGroup'];
       const completed = profileFields.filter(f => profile[f] !== undefined && profile[f] !== null && profile[f] !== '').length;
-      const profilePct = Math.round((completed / profileFields.length) * 100);
+      const profilePct = clampPct((completed / profileFields.length) * 100);
       weightedSum += profilePct * weights.profileCompleteness;
 
-      // 3) Appointments attendance in last 90 days
+      // 3) Appointments attendance (last 90 days)
       let apptPct = 100;
       if (appts && appts.length > 0) {
         const recentWindow = 90 * 24 * 60 * 60 * 1000; // 90 days
-        const recent = appts.filter(apt => {
-          const d = apt.date?.toDate ? apt.date.toDate() : new Date(apt.date);
-          return d && (d >= new Date(Date.now() - recentWindow));
-        }).length;
-        apptPct = appts.length > 0 ? Math.round((recent / appts.length) * 100) : 100;
+        const recentAttended = appts.filter(apt => apt.attended && apt.attendedAt).length;
+        // penalize for missed recent appointments
+        apptPct = clampPct((recentAttended / appts.length) * 100);
       }
       weightedSum += apptPct * weights.appointments;
 
-      // 4) BMI score (age-aware)
-      let bmiPct = 75; // neutral default
+      // 4) BMI scoring
+      let bmiPct = 75;
       const weightVal = profile.weight ? parseFloat(profile.weight) : null;
       const heightVal = profile.height ? parseFloat(profile.height) : null;
-      // compute age from profile.age or profile.dob
+
+      // compute age
       let age = null;
       if (profile.age) age = Number(profile.age);
       else if (profile.dob) {
         try {
           const dob = profile.dob.toDate ? profile.dob.toDate() : new Date(profile.dob);
-          const diff = Date.now() - dob.getTime();
-          age = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+          age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
         } catch (e) { age = null; }
       }
 
       if (weightVal && heightVal) {
         const bmi = weightVal / Math.pow(heightVal / 100, 2);
-        // Adult ranges
         if (age === null || age >= 18) {
           if (bmi >= 18.5 && bmi <= 24.9) bmiPct = 100;
-          else if (bmi >= 25 && bmi <= 29.9) bmiPct = 80;
+          else if (bmi >= 25 && bmi <= 29.9) bmiPct = 75;
           else if (bmi >= 17.5 && bmi < 18.5) bmiPct = 70;
-          else if (bmi >= 30 && bmi <= 34.9) bmiPct = 60;
-          else bmiPct = 50;
+          else if (bmi >= 30 && bmi <= 34.9) bmiPct = 50;
+          else bmiPct = 40;
         } else {
-          // For children/adolescents we can't compute percentiles here reliably; use a conservative neutral score
-          bmiPct = 75;
+          bmiPct = 75; // pediatric neutral
         }
       }
       weightedSum += bmiPct * weights.bmi;
 
-      // 5) Age factor: older adults may get small adjustment
+      // 5) Age factor (slight adjustment)
       let agePct = 100;
       if (age !== null) {
-        if (age >= 75) agePct = 80;
-        else if (age >= 65) agePct = 88;
-        else if (age <= 16) agePct = 92;
+        if (age >= 80) agePct = 75;
+        else if (age >= 65) agePct = 85;
+        else if (age <= 16) agePct = 90;
         else agePct = 100;
       }
       weightedSum += agePct * weights.ageFactor;
 
-      // Final normalized percentage
+      // 6) Smoking and drinking: map frequency to penalty
+      const freqToPct = (val) => {
+        // val can be 'No', 'Occasionally', 'Daily' or a custom numeric
+        if (!val || val === 'No' || val === 'no' || val === 'None') return 100;
+        if (typeof val === 'number') return clampPct(100 - val); // numeric penalty mapping
+        const v = String(val).toLowerCase();
+        if (v.includes('daily')) return 30;
+        if (v.includes('occasion') || v.includes('occasional') || v.includes('sometimes')) return 70;
+        if (v === 'occasionally') return 70;
+        if (v === 'yes') return 60;
+        return 80; // unknown -> mild penalty
+      };
+
+      const smokingPct = clampPct(freqToPct(profile.smokingFreq || profile.smoking));
+      const drinkingPct = clampPct(freqToPct(profile.drinkingFreq || profile.drinking));
+      weightedSum += smokingPct * weights.smoking;
+      weightedSum += drinkingPct * weights.drinking;
+
+      // 7) Conditions/severity: more conditions -> lower score. If conditions array contains severity keys, use them.
+      let conditionsPct = 100;
+      if (profile.conditions && Array.isArray(profile.conditions)) {
+        const condCount = profile.conditions.length;
+        // basic heuristic: 0 cond -> 100, 1-2 -> 85, 3-4 -> 70, 5+ -> 50
+        if (condCount === 0) conditionsPct = 100;
+        else if (condCount <= 2) conditionsPct = 85;
+        else if (condCount <= 4) conditionsPct = 70;
+        else conditionsPct = 50;
+      }
+      weightedSum += conditionsPct * weights.conditions;
+
+      // Normalize
       const finalScore = Math.round(weightedSum / totalWeight);
-      setHealthScore(Math.max(0, Math.min(100, finalScore)));
-      logger.info('Health score calculated', { score: finalScore, components: { adherencePct, profilePct, apptPct, bmiPct, agePct } });
+      const clamped = Math.max(0, Math.min(100, finalScore));
+      setHealthScore(clamped);
+
+      // Log components for debugging
+      logger.info('Health score calculated', {
+        score: clamped,
+        components: {
+          adherencePct, profilePct, apptPct, bmiPct, agePct, smokingPct, drinkingPct, conditionsPct
+        },
+        weights
+      });
     } catch (err) {
       logger.error('Error calculating health score', err);
       setHealthScore(75);
@@ -446,7 +489,7 @@ export default function DashboardScreen({ navigation }) {
   // Health score calculation effect
   useEffect(() => {
     if (!sectionLoading.profile && !sectionLoading.medicines && !sectionLoading.appointments) {
-      calculateHealthScore(medicines, userProfile);
+      calculateHealthScore(medicines, userProfile, appointments);
       setLoading(false);
     }
   }, [sectionLoading, medicines, userProfile, calculateHealthScore]);
@@ -506,6 +549,57 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
+  // Fetch AI personalized health tip using user data (falls back to preset)
+  const fetchAIPersonalTip = async () => {
+    if (!GEMINI_API_KEY) return null;
+    setAIFactLoading(true);
+    try {
+      const apiTimer = performanceMonitor.startApiCall('gemini', 'POST');
+
+      // Build a concise user snapshot for the prompt
+      const age = userProfile.age || (userProfile.dob ? (() => { try { const d = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); return Math.floor((Date.now() - d.getTime()) / (365.25*24*60*60*1000)); } catch (e) { return 'unknown'; } })() : 'unknown');
+      const conditions = (userProfile.conditions && userProfile.conditions.length > 0) ? userProfile.conditions.join(', ') : 'none';
+      const smoking = userProfile.smoking || userProfile.smokingFreq || 'No';
+      const drinking = userProfile.drinking || userProfile.drinkingFreq || 'No';
+      const bmiVal = bmiData.value || 'N/A';
+
+      // Compute adherence summary
+      let adherenceSummary = 'No medicines';
+      if (medicines && medicines.length > 0) {
+        const totalQty = medicines.reduce((s, m) => s + (Number(m.quantity) || 0), 0);
+        const taken = medicines.reduce((s, m) => s + (m.takenTimestamps?.length || 0), 0);
+        adherenceSummary = `${taken}/${totalQty} doses taken`;
+      }
+
+      const prompt = `You are a friendly, evidence-based health assistant. Provide one concise (max 30 words) personalized health tip for a user with the following profile: Age: ${age}; Conditions: ${conditions}; BMI: ${bmiVal}; Smoking: ${smoking}; Drinking: ${drinking}; Medication adherence: ${adherenceSummary}. The tip should be actionable, prioritize safety, and include one specific recommendation.`;
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        }
+      );
+
+      if (!res.ok) {
+        logger.warn('AI personal tip request failed', { status: res.status });
+        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
+        return null;
+      }
+
+      const data = await res.json();
+      const tip = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, true);
+      return tip ? String(tip).trim() : null;
+    } catch (err) {
+      logger.error('AI personal tip error', err);
+      return null;
+    } finally {
+      setAIFactLoading(false);
+    }
+  };
+
   // End performance monitoring
   useEffect(() => {
     if (!loading && screenTimer) {
@@ -558,6 +652,31 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const nextAppointment = appointments.length > 0 ? appointments[0] : null;
+
+  const handleMarkAttendedDashboard = async (appointment) => {
+    try {
+      const apptRef = doc(db, 'appointments', appointment.id);
+
+      const ids = appointment?.notificationIds || [];
+      for (const nid of ids) {
+        try {
+          await Notifications.cancelScheduledNotificationAsync(nid);
+        } catch (e) {
+          console.warn('Failed to cancel notification', nid, e);
+        }
+      }
+
+      await updateDoc(apptRef, {
+        attended: true,
+        attendedAt: new Date()
+      });
+
+      Alert.alert('Marked attended', 'Appointment marked as attended.');
+    } catch (err) {
+      console.error('Mark attended error', err);
+      Alert.alert('Error', 'Could not mark appointment as attended.');
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -637,36 +756,26 @@ export default function DashboardScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Enhanced Next Medicine Section */}
-          {medicines.length > 0 && (
+          {/* Enhanced Next Medicine Section (hidden when no upcoming dose) */}
+          {nextDoseStatus && (
             <Animatable.View animation="fadeInUp" duration={600} style={[styles.card, {backgroundColor: colors.card}]}>
               <Text style={[styles.cardTitle, { color: colors.subtext }]}>Next Medicine</Text>
-              {nextDoseStatus ? (
-                <>
-                  <Text style={[styles.cardContent, {color: colors.text}]}>
-                    {nextDoseStatus.medicine.name}
-                  </Text>
-                  <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                    {nextDoseStatus.isDue 
-                      ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    }
-                  </Text>
-                  {nextDoseStatus.isDue && (
-                    <TouchableOpacity 
-                      style={[styles.button, {backgroundColor: colors.primary}]}
-                      onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
-                    >
-                      <Text style={styles.buttonText}>
-                        Take Now
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              ) : (
-                <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                  No more doses scheduled for today.
-                </Text>
+              <Text style={[styles.cardContent, {color: colors.text}]}>
+                {nextDoseStatus.medicine.name}
+              </Text>
+              <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+                {nextDoseStatus.isDue 
+                  ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                }
+              </Text>
+              {nextDoseStatus.isDue && (
+                <TouchableOpacity 
+                  style={[styles.button, {backgroundColor: colors.primary}]}
+                  onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
+                >
+                  <Text style={styles.buttonText}>Take Now</Text>
+                </TouchableOpacity>
               )}
             </Animatable.View>
           )}
@@ -689,6 +798,33 @@ export default function DashboardScreen({ navigation }) {
                   📍 {nextAppointment.location}
                 </Text>
               )}
+              {/* Attendance control: show button on appointment day or after */}
+              {(() => {
+                const aptDateObj = nextAppointment?.date?.toDate ? nextAppointment.date.toDate() : (nextAppointment?.date ? new Date(nextAppointment.date) : null);
+                const canShow = aptDateObj ? (aptDateObj <= new Date()) : false;
+                if (nextAppointment.attended) {
+                  return (
+                    <View style={{ marginTop: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                        <Text style={{ color: colors.primary, fontWeight: '600', marginLeft: 8 }}>
+                          {nextAppointment.attendedAt ? (
+                            nextAppointment.attendedAt.toDate ? `Attended on ${nextAppointment.attendedAt.toDate().toLocaleString()}` : `Attended on ${new Date(nextAppointment.attendedAt).toLocaleString()}`
+                          ) : 'Attended'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                }
+                if (canShow) {
+                  return (
+                    <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary, marginTop: 10 }]} onPress={() => handleMarkAttendedDashboard(nextAppointment)}>
+                      <Text style={styles.buttonText}>Mark Attended</Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return null;
+              })()}
             </Animatable.View>
           )}
 
@@ -700,6 +836,15 @@ export default function DashboardScreen({ navigation }) {
               <TouchableOpacity
                 style={[styles.smallButton, { backgroundColor: colors.primary }]}
                 onPress={async () => {
+                  // Try personalized tip first
+                  const personal = await fetchAIPersonalTip();
+                  if (personal) {
+                    setRandomFact(personal);
+                    setAIFactSource('ai');
+                    return;
+                  }
+
+                  // Fallback to generic AI fact
                   const ai = await fetchAIFact(Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)], 'fact');
                   if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
                   else { setAIFactSource('preset'); }

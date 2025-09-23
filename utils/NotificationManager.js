@@ -124,20 +124,20 @@ export async function scheduleMedicineNotifications(medicine, userName) {
 
         try {
           const notifId = await Notifications.scheduleNotificationAsync({
-            content: {
-              title,
-              body,
-              data: {
-                type: 'medicine',
-                medicineId: medicine.id,
-                doseNumber: doseCount + 1,
-                totalRemaining: dosesRemaining,
-                medicineName: medicine.name,
+              content: {
+                title,
+                body,
+                data: {
+                  type: 'medicine',
+                  medicineId: medicine.id,
+                  doseNumber: doseCount + 1,
+                  totalRemaining: dosesRemaining,
+                  medicineName: medicine.name,
+                },
+                sound: 'default',
               },
-              sound: 'default',
-            },
-            trigger: triggerDate,
-          });
+              trigger: { date: triggerDate },
+            });
           scheduledIds.push(notifId);
           doseCount++;
         } catch (err) {
@@ -223,7 +223,7 @@ export async function scheduleAppointmentNotification(appointment, userName, adv
         },
         sound: 'default',
       },
-      trigger: triggerDate,
+      trigger: { date: triggerDate },
     });
 
     console.log(`Scheduled appointment reminder for ${appointment.with} at ${when.toLocaleString()}`);
