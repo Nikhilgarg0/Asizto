@@ -1,0 +1,4 @@
+1. Chatbot Disclaimer
+2. dob picker
+3. check for the existence of email or mobile number
+4. Notification timing
