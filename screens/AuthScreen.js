@@ -1,9 +1,9 @@
-// AuthScreen.js
+// AuthScreen.js - Enhanced Complete Version
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Pressable, ScrollView, Image,
   Platform, ActivityIndicator, Animated, Easing, UIManager, LayoutAnimation,
-  SafeAreaView, KeyboardAvoidingView, Keyboard, useColorScheme, useWindowDimensions
+  SafeAreaView, KeyboardAvoidingView, useColorScheme, useWindowDimensions
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,16 +18,13 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 
-// optional haptics
 let Haptics = null;
 try { Haptics = require('expo-haptics'); } catch (e) { Haptics = null; }
 
-// Android layout animation enable
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ---------- Brand logos ----------
 let logoLight = null;
 let logoDark = null;
 let logoFallback = null;
@@ -44,12 +41,12 @@ try {
 }
 try { logoFallback = require('../assets/Brandkit/xyz.png'); } catch (e) { logoFallback = null; }
 
-// Avatar helpers
 const AVATAR_KEYS = {
   male: ['male1', 'male2', 'male3', 'male4', 'male5', 'male6'],
   female: ['female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
 };
 const ALL_AVATAR_KEYS = [...AVATAR_KEYS.male, ...AVATAR_KEYS.female];
+
 function getAvatarSource(key) {
   switch (key) {
     case 'male1': return require('../assets/avatars/male1.png');
@@ -75,25 +72,27 @@ const bloodGroupData = [
   { label: 'O+', value: 'O+' }, { label: 'O-', value: 'O-' },
 ];
 
-/** -------------------- Background Animations -------------------- **/
-const AnimatedBlob = ({ size = 220, color = '#FF7A7A', startX = 0, startY = 0, rangeX = 60, rangeY = 40, duration = 9000, delay = 0 }) => {
+const FloatingParticle = ({ size = 4, color = '#6DBF6A', startX = 0, startY = 0, duration = 8000, delay = 0 }) => {
   const anim = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.parallel([
+        Animated.timing(opacity, { toValue: 0.6, duration: 1000, useNativeDriver: true }),
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(anim, { toValue: 1, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+            Animated.timing(anim, { toValue: 0, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          ])
+        )
       ])
-    );
-    const t = setTimeout(() => loop.start(), delay);
-    return () => { clearTimeout(t); loop.stop(); };
-  }, [anim, duration, delay]);
+    ]).start();
+  }, []);
 
-  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [startX - rangeX, startX + rangeX] });
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [startY - rangeY, startY + rangeY] });
-  const rotate = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const scale = anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.08, 1] });
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [startY, startY - 200] });
+  const translateX = anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [startX, startX + 30, startX] });
 
   return (
     <Animated.View
@@ -104,28 +103,71 @@ const AnimatedBlob = ({ size = 220, color = '#FF7A7A', startX = 0, startY = 0, r
         height: size,
         borderRadius: size / 2,
         backgroundColor: color,
-        opacity: 0.10,
-        transform: [{ translateX }, { translateY }, { rotate }, { scale }],
+        opacity,
+        transform: [{ translateX }, { translateY }],
       }}
     />
   );
 };
 
-const AuroraBand = ({ width, height, colors, top, angle = 20, travel = 120, duration = 12000, delay = 0, opacity = 0.22 }) => {
+const AnimatedBlob = ({ size = 220, color = '#6DBF6A', startX = 0, startY = 0, rangeX = 60, rangeY = 40, duration = 9000, delay = 0 }) => {
   const anim = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(anim, { toValue: 1, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(anim, { toValue: 0, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ])
+    );
+    
+    const pulseAnim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.15, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+
+    const t = setTimeout(() => {
+      loop.start();
+      pulseAnim.start();
+    }, delay);
+    return () => { clearTimeout(t); loop.stop(); pulseAnim.stop(); };
+  }, []);
+
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [startX - rangeX, startX + rangeX] });
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [startY - rangeY, startY + rangeY] });
+  const rotate = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+        opacity: 0.12,
+        transform: [{ translateX }, { translateY }, { rotate }, { scale: pulse }],
+      }}
+    />
+  );
+};
+
+const WaveLayer = ({ width, height, color, top, duration = 15000, delay = 0 }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(anim, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true })
     );
     const t = setTimeout(() => loop.start(), delay);
     return () => { clearTimeout(t); loop.stop(); };
-  }, [anim, duration, delay]);
+  }, []);
 
-  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [-travel, travel] });
+  const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -width] });
 
   return (
     <Animated.View
@@ -133,25 +175,155 @@ const AuroraBand = ({ width, height, colors, top, angle = 20, travel = 120, dura
       style={{
         position: 'absolute',
         top,
-        left: -width * 0.25,
-        width: width * 1.5,
-        height: height * 0.18,
-        transform: [{ translateX }, { rotate: `${angle}deg` }],
-        opacity,
+        left: 0,
+        width: width * 2,
+        height: 120,
+        transform: [{ translateX }],
+        opacity: 0.08,
       }}
     >
       <LinearGradient
-        colors={colors}
+        colors={[`${color}00`, `${color}80`, `${color}00`]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ flex: 1, borderRadius: 160 }}
+        end={{ x: 1, y: 0 }}
+        style={{ flex: 1 }}
       />
     </Animated.View>
   );
 };
-/** --------------------------------------------------------------- **/
 
-/** Friendly auth error mapper */
+const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
+  const progress = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: currentStep / totalSteps,
+      tension: 40,
+      friction: 8,
+      useNativeDriver: false,
+    }).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    ).start();
+  }, [currentStep]);
+
+  const progressWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.8],
+  });
+
+  const progressStyles = StyleSheet.create({
+    progressContainer: {
+      marginBottom: 20,
+      marginTop: 8,
+    },
+    progressBarBackground: {
+      height: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 10,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      borderRadius: 10,
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    progressGlow: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#6DBF6A',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.6,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+    },
+    progressSteps: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 12,
+      paddingHorizontal: 4,
+    },
+    progressDot: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      borderWidth: 2,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    progressDotActive: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#6DBF6A',
+    },
+    progressDotCurrent: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#8AF3C5',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 4,
+    },
+    progressText: {
+      textAlign: 'center',
+      marginTop: 8,
+      fontSize: 12,
+      fontWeight: '600',
+      color: isDark ? '#9FB3C8' : '#6B7280',
+    },
+  });
+
+  return (
+    <View style={progressStyles.progressContainer}>
+      <View style={progressStyles.progressBarBackground}>
+        <Animated.View style={[progressStyles.progressBarFill, { width: progressWidth }]}>
+          <LinearGradient
+            colors={['#8AF3C5', '#6DBF6A', '#5DA860']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Animated.View 
+            style={[
+              progressStyles.progressGlow, 
+              { opacity: glowOpacity }
+            ]} 
+          />
+        </Animated.View>
+      </View>
+      <View style={progressStyles.progressSteps}>
+        {[...Array(totalSteps)].map((_, index) => (
+          <Animated.View
+            key={index}
+            style={[
+              progressStyles.progressDot,
+              index < currentStep && progressStyles.progressDotActive,
+              index === currentStep - 1 && progressStyles.progressDotCurrent,
+            ]}
+          >
+            {index < currentStep && (
+              <Ionicons name="checkmark" size={10} color="#fff" />
+            )}
+          </Animated.View>
+        ))}
+      </View>
+      <Text style={progressStyles.progressText}>Step {currentStep} of {totalSteps}</Text>
+    </View>
+  );
+};
+
 function getAuthErrorMessage(error, context = 'login') {
   const code = error?.code || '';
   switch (code) {
@@ -172,7 +344,7 @@ function getAuthErrorMessage(error, context = 'login') {
       return 'Password is too weak (minimum 6 characters).';
     default:
       return context === 'signup'
-        ? 'Couldn’t create account. Please try again.'
+        ? 'Couldn\'t create account. Please try again.'
         : 'Failed to sign in. Please try again.';
   }
 }
@@ -182,7 +354,6 @@ export default function AuthScreen() {
   const isDark = scheme === 'dark';
   const { width, height } = useWindowDimensions();
 
-  // Safety check to prevent rendering before dimensions are available
   if (!width || !height || !scheme) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -191,25 +362,17 @@ export default function AuthScreen() {
     );
   }
 
-  // Responsive tokens
   const CARD_MAX_WIDTH = 680;
   const cardWidth = Math.min(CARD_MAX_WIDTH, Math.round(width * 0.94));
-
-  // Instead of a fixed single "height", we use minHeight + maxHeight:
   const cardMinHeight = Math.max(360, Math.round(height * 0.34));
   const cardMaxHeight = Math.min(820, Math.round(height * 0.86));
-
-  // shift card down slightly; smaller shift for very short screens
   const cardShiftY = Math.round(Math.max(6, Math.min(12, height * 0.045)));
 
-  // states (signup/login)
   const [isLoginView, setIsLoginView] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
   const [signupStep, setSignupStep] = useState(1);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -226,8 +389,6 @@ export default function AuthScreen() {
   const [drinking, setDrinking] = useState('no');
   const [smokingFreq, setSmokingFreq] = useState('');
   const [drinkingFreq, setDrinkingFreq] = useState('');
-
-  // Glass stays enabled (toggle removed)
   const glassEnabled = true;
 
   const avatarKeys = useMemo(() => {
@@ -249,7 +410,6 @@ export default function AuthScreen() {
     setErrorText(''); setSuccessText(''); setFieldErrors({});
   }, [isLoginView]);
 
-  // email check (signup)
   useEffect(() => {
     if (isLoginView || signupStep !== 1) return;
     const trimmed = (email || '').trim().toLowerCase();
@@ -281,7 +441,6 @@ export default function AuthScreen() {
     return () => emailCheckTimeout.current && clearTimeout(emailCheckTimeout.current);
   }, [email, isLoginView, signupStep]);
 
-  // validation helpers
   const validateStep1 = () => {
     const errs = {};
     if (!firstName.trim()) errs.firstName = 'First name is required.';
@@ -294,6 +453,7 @@ export default function AuthScreen() {
     setFieldErrors(prev => ({ ...prev, ...errs }));
     return Object.keys(errs).length === 0;
   };
+
   const validateStep2 = () => {
     const errs = {};
     if (!dob) errs.dob = 'Date of birth is required.';
@@ -315,38 +475,30 @@ export default function AuthScreen() {
     return 'Weak';
   };
 
-  // ---------- ANIMATED HEIGHT SETUP ---------- //
-  // contentHeightAnim drives the card height smoothly.
-  const contentHeightAnim = useRef(new Animated.Value(Math.max(cardMinHeight, 420))).current; // <-- ANIM
+  const contentHeightAnim = useRef(new Animated.Value(Math.max(cardMinHeight, 420))).current;
   const lastMeasuredHeight = useRef(null);
   const contentMeasureTimeout = useRef(null);
 
-  // handle layout measurement of inner content; animate to new height
-  const handleContentLayout = (event) => { // <-- ANIM
+  const handleContentLayout = (event) => {
     const measured = Math.round(event.nativeEvent.layout.height);
-    // Add small buffer to avoid clipping; this buffer compensates for paddings/margins
     const buffer = 64;
     const desired = Math.max(cardMinHeight, Math.min(cardMaxHeight, measured + buffer));
-    // avoid redundant animations when difference tiny
     if (lastMeasuredHeight.current === desired) return;
     lastMeasuredHeight.current = desired;
 
-    // Cancel any pending timeout
     if (contentMeasureTimeout.current) clearTimeout(contentMeasureTimeout.current);
-    // Minor debounce to ensure stable layout (helps when many layout passes happen quickly)
     contentMeasureTimeout.current = setTimeout(() => {
       Animated.timing(contentHeightAnim, {
         toValue: desired,
         duration: 360,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: false, // height can't use native driver
+        useNativeDriver: false,
       }).start();
     }, 40);
   };
-  // cleanup timeout
+
   useEffect(() => { return () => { if (contentMeasureTimeout.current) clearTimeout(contentMeasureTimeout.current); }; }, []);
 
-  // auth handlers with friendly messages
   const handleLogin = async () => {
     setErrorText(''); setSuccessText('');
     if (!email.trim() || !password) {
@@ -358,12 +510,11 @@ export default function AuthScreen() {
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       setSuccessText('Login successful.');
     } catch (e) {
-  const friendly = getAuthErrorMessage(e, 'login') || '';
-  // set field-level errors for common cases
-  const code = e?.code || '';
-  if (code === 'auth/wrong-password') setFieldErrors(prev => ({ ...prev, password: 'Incorrect password.' }));
-  if (code === 'auth/invalid-email' || code === 'auth/user-not-found') setFieldErrors(prev => ({ ...prev, email: friendly }));
-  setErrorText(friendly);
+      const friendly = getAuthErrorMessage(e, 'login') || '';
+      const code = e?.code || '';
+      if (code === 'auth/wrong-password') setFieldErrors(prev => ({ ...prev, password: 'Incorrect password.' }));
+      if (code === 'auth/invalid-email' || code === 'auth/user-not-found') setFieldErrors(prev => ({ ...prev, email: friendly }));
+      setErrorText(friendly);
     } finally {
       setIsLoading(false);
     }
@@ -375,7 +526,7 @@ export default function AuthScreen() {
     const ok2 = validateStep2();
     if (!ok1) { setSignupStep(1); return; }
     if (!ok2) { setSignupStep(2); return; }
-  if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); setSignupStep(5); return; }
+    if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); setSignupStep(5); return; }
     if (!bloodGroup) { setFieldErrors(prev => ({ ...prev, bloodGroup: 'Please select blood group.' })); setSignupStep(3); return; }
 
     setIsLoading(true);
@@ -407,45 +558,41 @@ export default function AuthScreen() {
       setFirstName(''); setLastName(''); setPhone(''); setDob(null);
       setGender(null); setHeight(''); setWeight(''); setBloodGroup(null);
       setConditions(''); setSelectedAvatarKey(null); setPassword('');
-  setSmoking('no'); setDrinking('no'); setSmokingFreq(''); setDrinkingFreq('');
+      setSmoking('no'); setDrinking('no'); setSmokingFreq(''); setDrinkingFreq('');
     } catch (e) {
-  const friendly = getAuthErrorMessage(e, 'signup');
-  const code = e?.code || '';
-  if (code === 'auth/email-already-in-use') setFieldErrors(prev => ({ ...prev, email: friendly }));
-  if (code === 'auth/weak-password') setFieldErrors(prev => ({ ...prev, password: friendly }));
-  setErrorText(friendly);
+      const friendly = getAuthErrorMessage(e, 'signup');
+      const code = e?.code || '';
+      if (code === 'auth/email-already-in-use') setFieldErrors(prev => ({ ...prev, email: friendly }));
+      if (code === 'auth/weak-password') setFieldErrors(prev => ({ ...prev, password: friendly }));
+      setErrorText(friendly);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // next step nav
   const goNextFromStep1 = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setErrorText(''); if (!validateStep1()) return;
     setSignupStep(2);
   };
+
   const goNextFromStep2 = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setErrorText(''); if (!validateStep2()) return;
     setSignupStep(3);
   };
 
-  // pick logo source based on theme (with fallbacks)
   const logoSource = isDark ? (logoDark || logoLight || logoFallback) : (logoLight || logoDark || logoFallback);
-
   const styles = createStyles({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled });
-  
-  // Safety check to prevent rendering with undefined styles
+
   if (!styles || !styles.safeArea || !styles.container) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f4f8' }}>
-        <ActivityIndicator size="large" color="#83b271" />
+        <ActivityIndicator size="large" color="#6DBF6A" />
       </View>
     );
   }
 
-  // small pressable with haptic
   const ActionButton = ({ title, onPress, disabled, loading, style }) => (
     <Pressable
       onPress={() => { if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPress && onPress(); }}
@@ -461,7 +608,6 @@ export default function AuthScreen() {
     </Pressable>
   );
 
-  // dismissible error banner (friendly UI for auth/firebase errors)
   const ErrorBanner = ({ message, onClose }) => {
     if (!message) return null;
     return (
@@ -509,7 +655,6 @@ export default function AuthScreen() {
             {fieldErrors.lastName ? <Text style={styles.inlineError}>{String(fieldErrors.lastName)}</Text> : null}
 
             <Text style={styles.smallLabel}>Email</Text>
-            {/* Email with right-side status indicator */}
             <View style={styles.inputAffixContainer}>
               <TextInput
                 style={styles.inputAffix}
@@ -523,11 +668,11 @@ export default function AuthScreen() {
               <View style={styles.affixRight}>
                 {showAffix ? (
                   isCheckingEmail ? (
-                    <ActivityIndicator size="small" />
+                    <ActivityIndicator size="small" color="#6DBF6A" />
                   ) : fieldErrors.email ? (
                     <Ionicons name="close-circle" size={20} color={styles.danger.color} />
                   ) : emailFormatValid && !isEmailRegistered ? (
-                    <Ionicons name="checkmark-circle" size={20} color={styles.success.color} />
+                    <Ionicons name="checkmark-circle" size={20} color="#6DBF6A" />
                   ) : null
                 ) : null}
               </View>
@@ -549,7 +694,17 @@ export default function AuthScreen() {
               </Pressable>
             </View>
             {fieldErrors.password ? <Text style={styles.inlineError}>{String(fieldErrors.password)}</Text> : null}
-            {password ? <Text style={styles.subtleText}>Password strength: {getPasswordStrength()}</Text> : null}
+            {password ? (
+              <View style={styles.passwordStrengthContainer}>
+                <Text style={styles.subtleText}>Password strength: </Text>
+                <Text style={[
+                  styles.passwordStrengthText,
+                  getPasswordStrength() === 'Strong' && { color: '#6DBF6A' },
+                  getPasswordStrength() === 'Medium' && { color: '#FFA500' },
+                  getPasswordStrength() === 'Weak' && { color: '#ef4444' },
+                ]}>{getPasswordStrength()}</Text>
+              </View>
+            ) : null}
 
             <View style={styles.actionRow}>
               <Pressable
@@ -576,14 +731,17 @@ export default function AuthScreen() {
             <View style={styles.genderSelector}>
               <Pressable style={[styles.genderButton, gender === 'male' && styles.genderButtonSelected]}
                 onPress={() => { setGender('male'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
+                <Ionicons name="male" size={20} color={gender === 'male' ? '#fff' : styles.placeholderColor.color} />
                 <Text style={[styles.genderText, gender === 'male' && styles.genderTextSelected]}>Male</Text>
               </Pressable>
               <Pressable style={[styles.genderButton, gender === 'female' && styles.genderButtonSelected]}
                 onPress={() => { setGender('female'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
+                <Ionicons name="female" size={20} color={gender === 'female' ? '#fff' : styles.placeholderColor.color} />
                 <Text style={[styles.genderText, gender === 'female' && styles.genderTextSelected]}>Female</Text>
               </Pressable>
               <Pressable style={[styles.genderButton, gender === 'other' && styles.genderButtonSelected]}
                 onPress={() => { setGender('other'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
+                <Ionicons name="transgender" size={20} color={gender === 'other' ? '#fff' : styles.placeholderColor.color} />
                 <Text style={[styles.genderText, gender === 'other' && styles.genderTextSelected]}>Other</Text>
               </Pressable>
             </View>
@@ -591,9 +749,12 @@ export default function AuthScreen() {
 
             <Text style={styles.smallLabel}>Date of Birth</Text>
             <Pressable onPress={() => setShowDatePicker(true)} style={styles.input}>
-              <Text style={{ color: styles.textColor.color, fontSize: 16 }}>
-                {dob ? dob.toLocaleDateString() : 'Select date of birth'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="calendar-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+                <Text style={{ color: dob ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>
+                  {dob ? dob.toLocaleDateString() : 'Select date of birth'}
+                </Text>
+              </View>
             </Pressable>
             {fieldErrors.dob ? <Text style={styles.inlineError}>{String(fieldErrors.dob)}</Text> : null}
             {showDatePicker && (
@@ -610,14 +771,17 @@ export default function AuthScreen() {
             )}
 
             <Text style={styles.smallLabel}>Contact number</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="+91xxxxxxxxxx"
-              placeholderTextColor={styles.placeholderColor.color}
-              value={phone}
-              onChangeText={t => { setPhone(t.replace(/[^0-9]/g, '')); setFieldErrors(prev => ({ ...prev, phone: undefined })); }}
-              keyboardType="phone-pad"
-            />
+            <View style={styles.inputAffixContainer}>
+              <Ionicons name="call-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.inputAffix}
+                placeholder="+91xxxxxxxxxx"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={phone}
+                onChangeText={t => { setPhone(t.replace(/[^0-9]/g, '')); setFieldErrors(prev => ({ ...prev, phone: undefined })); }}
+                keyboardType="phone-pad"
+              />
+            </View>
             {fieldErrors.phone ? <Text style={styles.inlineError}>{String(fieldErrors.phone)}</Text> : null}
 
             <View style={styles.actionRow}>
@@ -635,31 +799,42 @@ export default function AuthScreen() {
         return (
           <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <Text style={styles.smallLabel}>Height (cm)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 170"
-              placeholderTextColor={styles.placeholderColor.color}
-              value={heightVal}
-              onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))}
-              keyboardType="numeric"
-            />
+            <View style={styles.inputAffixContainer}>
+              <Ionicons name="resize-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.inputAffix}
+                placeholder="e.g. 170"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={heightVal}
+                onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))}
+                keyboardType="numeric"
+              />
+            </View>
+
             <Text style={styles.smallLabel}>Weight (kg)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 68"
-              placeholderTextColor={styles.placeholderColor.color}
-              value={weightVal}
-              onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ''))}
-              keyboardType="numeric"
-            />
+            <View style={styles.inputAffixContainer}>
+              <Ionicons name="fitness-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.inputAffix}
+                placeholder="e.g. 68"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={weightVal}
+                onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ''))}
+                keyboardType="numeric"
+              />
+            </View>
 
             <Text style={styles.smallLabel}>Blood group</Text>
-            {/* Custom inline expandable list to avoid clipping/overlay issues */}
             <Pressable
               onPress={() => setShowBloodList(prev => !prev)}
               style={[styles.dropdown, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
             >
-              <Text style={{ color: bloodGroup ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>{bloodGroup || 'Select Blood Group'}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="water-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+                <Text style={{ color: bloodGroup ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>
+                  {bloodGroup || 'Select Blood Group'}
+                </Text>
+              </View>
               <Ionicons name={showBloodList ? 'chevron-up' : 'chevron-down'} size={18} color={styles.placeholderColor.color} />
             </Pressable>
             {showBloodList ? (
@@ -670,7 +845,7 @@ export default function AuthScreen() {
                     <Pressable
                       key={item.value}
                       onPress={() => { setBloodGroup(item.value); setFieldErrors(prev => ({ ...prev, bloodGroup: undefined })); setShowBloodList(false); }}
-                      style={[styles.dropdownItem, selected ? { backgroundColor: styles.toggleLink.color, borderBottomColor: 'transparent' } : null]}
+                      style={[styles.dropdownItem, selected ? { backgroundColor: '#6DBF6A', borderBottomColor: 'transparent' } : null]}
                     >
                       <Text style={[styles.dropdownItemText, selected ? { color: '#fff', fontWeight: '700' } : null]}>{item.label}</Text>
                     </Pressable>
@@ -680,13 +855,14 @@ export default function AuthScreen() {
             ) : null}
             {fieldErrors.bloodGroup ? <Text style={styles.inlineError}>{String(fieldErrors.bloodGroup)}</Text> : null}
 
-            <Text style={styles.smallLabel}>Existing conditions</Text>
+            <Text style={styles.smallLabel}>Existing conditions (optional)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
               placeholder="Type or pick from suggestions"
               placeholderTextColor={styles.placeholderColor.color}
               value={conditions}
               onChangeText={setConditions}
+              multiline
             />
             <View style={styles.suggestionContainer}>
               {["Diabetes", "Hypertension", "Asthma", "Thyroid", "Arthritis"].map(c => (
@@ -695,8 +871,6 @@ export default function AuthScreen() {
                 </Pressable>
               ))}
             </View>
-
-            {/* Smoking & drinking moved to its own mini-card below to avoid clipping */}
 
             <View style={styles.actionRow}>
               <Pressable
@@ -770,11 +944,24 @@ export default function AuthScreen() {
       case 5:
         return (
           <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
-            <Text style={{ textAlign: 'center', marginBottom: 12, color: styles.placeholderColor.color }}>Choose your avatar</Text>
+            <Text style={{ textAlign: 'center', marginBottom: 12, color: styles.textColor.color, fontSize: 15, fontWeight: '600' }}>Choose your avatar</Text>
             <View style={styles.avatarGrid}>
               {avatarKeys.map(key => (
-                <Pressable key={key} onPress={() => { setSelectedAvatarKey(key); setFieldErrors(prev => ({ ...prev, avatar: undefined })); }}>
-                  <Image source={getAvatarSource(key)} style={[styles.avatar, selectedAvatarKey === key && styles.avatarSelected]} />
+                <Pressable 
+                  key={key} 
+                  onPress={() => { 
+                    setSelectedAvatarKey(key); 
+                    setFieldErrors(prev => ({ ...prev, avatar: undefined })); 
+                    if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={[styles.avatarWrapper, selectedAvatarKey === key && styles.avatarWrapperSelected]}
+                >
+                  <Image source={getAvatarSource(key)} style={styles.avatar} />
+                  {selectedAvatarKey === key && (
+                    <View style={styles.avatarCheckmark}>
+                      <Ionicons name="checkmark-circle" size={24} color="#6DBF6A" />
+                    </View>
+                  )}
                 </Pressable>
               ))}
             </View>
@@ -796,7 +983,6 @@ export default function AuthScreen() {
     }
   };
 
-  // Step animation value: drives opacity/translate for signup steps
   const stepAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     stepAnim.setValue(0);
@@ -810,12 +996,10 @@ export default function AuthScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea]}>
-      {/* Outer ScrollView helps the screen be scrollable on small phones when keyboard opens */}
-      {/* KeyboardAvoidingView wraps ScrollView so content lifts above keyboard */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80} // tweak 80 if your header height differs
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
@@ -823,56 +1007,63 @@ export default function AuthScreen() {
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
-
           <View style={styles.container}>
             <LinearGradient colors={isDark ? ['#07121B', '#06101A'] : ['#F7FBFF', '#F2F6FF']} style={StyleSheet.absoluteFill} />
 
-            {/* Upgraded animated background */}
             <View style={styles.blobContainer} pointerEvents="none">
-              <AnimatedBlob size={280} color="#FF7A7A" startX={-80} startY={-40} rangeX={width * 0.28} rangeY={height * 0.04} duration={11000} delay={0} />
-              <AnimatedBlob size={220} color="#7A9BFF" startX={width * 0.65} startY={-30} rangeX={width * 0.18} rangeY={height * 0.06} duration={14000} delay={800} />
-              <AnimatedBlob size={340} color="#8AF3C5" startX={width * 0.18} startY={height * 0.05} rangeX={width * 0.3} rangeY={height * 0.08} duration={18000} delay={400} />
-              {/* Aurora ribbons */}
-              <AuroraBand width={width} height={height} colors={['rgba(125,211,252,0.0)', 'rgba(125,211,252,0.45)', 'rgba(125,211,252,0.0)']} top={height * 0.08} angle={18} travel={120} duration={13000} delay={300} opacity={isDark ? 0.25 : 0.18} />
-              <AuroraBand width={width} height={height} colors={['rgba(186,230,253,0.0)', 'rgba(186,230,253,0.35)', 'rgba(186,230,253,0.0)']} top={height * 0.24} angle={-16} travel={150} duration={15000} delay={1200} opacity={isDark ? 0.22 : 0.16} />
-              <AuroraBand width={width} height={height} colors={['rgba(167,243,208,0.0)', 'rgba(167,243,208,0.45)', 'rgba(167,243,208,0.0)']} top={height * 0.40} angle={22} travel={110} duration={12000} delay={600} opacity={isDark ? 0.22 : 0.14} />
+              <AnimatedBlob size={300} color="#6DBF6A" startX={-90} startY={-50} rangeX={width * 0.32} rangeY={height * 0.05} duration={12000} delay={0} />
+              <AnimatedBlob size={240} color="#8AF3C5" startX={width * 0.70} startY={-20} rangeX={width * 0.22} rangeY={height * 0.07} duration={15000} delay={600} />
+              <AnimatedBlob size={360} color="#5DA860" startX={width * 0.15} startY={height * 0.06} rangeX={width * 0.35} rangeY={height * 0.09} duration={19000} delay={300} />
+              
+              {[...Array(12)].map((_, i) => (
+                <FloatingParticle
+                  key={i}
+                  size={Math.random() * 4 + 2}
+                  color={['#6DBF6A', '#8AF3C5', '#5DA860'][i % 3]}
+                  startX={Math.random() * width}
+                  startY={height - 100 + Math.random() * 100}
+                  duration={8000 + Math.random() * 4000}
+                  delay={i * 400}
+                />
+              ))}
+              
+              <WaveLayer width={width} height={height} color="#6DBF6A" top={height * 0.15} duration={18000} delay={0} />
+              <WaveLayer width={width} height={height} color="#8AF3C5" top={height * 0.35} duration={22000} delay={800} />
+              <WaveLayer width={width} height={height} color="#5DA860" top={height * 0.55} duration={16000} delay={400} />
             </View>
 
-            {/* Logo above the card */}
-            <View style={[styles.logoWrapper]}>
+            <Animatable.View animation="fadeInDown" duration={600} delay={100} style={[styles.logoWrapper]}>
               {logoSource ? (
                 <Image source={logoSource} style={[styles.logo, isDark ? styles.logoDark : styles.logoLight]} resizeMode="contain" />
               ) : (
                 <View style={styles.logoTextFallback}><Text style={styles.logoText}>Brand</Text></View>
               )}
-            </View>
+            </Animatable.View>
 
-            {/* Card */}
             <Animatable.View
               animation="fadeInUp"
-              duration={420}
-              style={[ /* keep width but remove minHeight*/ { width: cardWidth, marginTop: cardShiftY }]}
+              duration={500}
+              delay={200}
+              style={[{ width: cardWidth, marginTop: cardShiftY }]}
             >
-              {/* Animated wrapper that controls the card's visible height */}
-              <Animated.View // <-- ANIM
-                style={[styles.cardStroke, { width: cardWidth, height: contentHeightAnim }]} // animated height
+              <Animated.View
+                style={[styles.cardStroke, { width: cardWidth, height: contentHeightAnim }]}
               >
                 <View style={[styles.card, glassEnabled ? styles.cardGlass : null, { flex: 1 }]}>
-                  {/* Glass blur layer */}
                   {glassEnabled ? (
                     <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.cardBlur} />
                   ) : (
                     <View style={styles.cardBlurFallback} />
                   )}
 
-                  {/* subtle inner gradient for highlight */}
                   <LinearGradient
-                    colors={isDark ? ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0)'] : ['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.02)']}
+                    colors={isDark ? ['rgba(109,191,106,0.03)', 'rgba(109,191,106,0)'] : ['rgba(109,191,106,0.08)', 'rgba(109,191,106,0.01)']}
                     style={styles.cardInnerGradient}
                   />
 
-                  {/* Card content - measure height here */}
-                  <View style={styles.cardContent} onLayout={handleContentLayout}> {/* <-- ANIM onLayout */}
+                  <View style={styles.cardContent} onLayout={handleContentLayout}>
+                    {!isLoginView && <SignupProgressBar currentStep={signupStep} totalSteps={5} isDark={isDark} />}
+
                     <View style={styles.headerRow}>
                       {!isLoginView ? (
                         <Pressable onPress={() => {
@@ -885,14 +1076,17 @@ export default function AuthScreen() {
 
                       <View style={{ flex: 1, alignItems: 'center' }}>
                         <Text style={[styles.headerTitle]}>{isLoginView ? 'Welcome Back' : 'Create an Account'}</Text>
-                        <Text style={styles.headerSubtitle}>{isLoginView ? 'Sign in to continue' : 'Let’s get you set up'}</Text>
+                        <Text style={styles.headerSubtitle}>{isLoginView ? 'Sign in to continue' : 'Let\'s get you set up'}</Text>
                       </View>
 
-                      {/* Toggle removed; keep layout balanced */}
                       <View style={{ width: 22 }} />
                     </View>
 
-                    {successText ? <Text style={styles.successText}>{String(successText)}</Text> : null}
+                    {successText ? (
+                      <Animatable.View animation="bounceIn" duration={400}>
+                        <Text style={styles.successText}>{String(successText)}</Text>
+                      </Animatable.View>
+                    ) : null}
                     <ErrorBanner message={errorText} onClose={() => setErrorText('')} />
 
                     {isLoginView ? (
@@ -941,7 +1135,6 @@ export default function AuthScreen() {
                       </Animated.View>
                     ) : (
                       <>
-                        {/* Signup steps */}
                         <ScrollView
                           showsVerticalScrollIndicator={false}
                           style={{ marginTop: 6 }}
@@ -951,16 +1144,6 @@ export default function AuthScreen() {
                         >
                           {renderSignupStep()}
                         </ScrollView>
-
-                        <Pressable
-                          onPress={() => {
-                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                            setIsLoginView(true); setSignupStep(1); setFieldErrors({});
-                          }}
-                          style={styles.linkRow}
-                        >
-                          <Text style={styles.toggleText}>Already have an account? <Text style={styles.toggleLink}>Back to Login</Text></Text>
-                        </Pressable>
                       </>
                     )}
                   </View>
@@ -968,11 +1151,9 @@ export default function AuthScreen() {
               </Animated.View>
             </Animatable.View>
 
-            {/* smoking/drinking are handled as a separate signup step (inserted below as case 4) */}
-
             {isLoading && (
               <View style={styles.loadingOverlay} pointerEvents="none">
-                <ActivityIndicator size="large" />
+                <ActivityIndicator size="large" color="#6DBF6A" />
               </View>
             )}
           </View>
@@ -982,18 +1163,14 @@ export default function AuthScreen() {
   );
 }
 
-// styles factory
 const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled }) => {
-  // Safety check for required parameters
   if (width === undefined || height === undefined) {
-    // Return minimal styles for initial render
     return StyleSheet.create({
       safeArea: { flex: 1, backgroundColor: '#f4f4f8' },
       container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     });
   }
   
-  // Set defaults for missing parameters
   isDark = isDark ?? false;
   cardWidth = cardWidth || width * 0.9;
   cardMinHeight = cardMinHeight || 360;
@@ -1006,26 +1183,21 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     subtext: isDark ? '#9FB3C8' : '#6B7280',
     primary: '#6DBF6A',
     placeholder: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(16,24,40,0.35)',
-    success: '#22c55e',
+    success: '#6DBF6A',
     danger: '#ef4444',
-  brand: '#6DBF6A'
+    brand: '#6DBF6A'
   };
 
   const padding = Math.max(12, Math.round(cardWidth * 0.036));
   const inputHeight = Math.max(48, Math.round(cardMinHeight * 0.08));
-
-  // make logo noticeably larger on phones; cap for tablets
   const logoSize = Math.max(120, Math.round(Math.min(width, height) * 0.20));
 
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: isDark ? '#06121A' : '#F7FBFF' },
-    // center vertically on taller screens, but allow scroll on small ones
     scrollContainer: { flexGrow: 1, justifyContent: height > 740 ? 'center' : 'flex-start', paddingVertical: 24 },
     container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
     blobContainer: { ...StyleSheet.absoluteFillObject, zIndex: 0, overflow: 'hidden' },
 
-    // logo above card
     logoWrapper: {
       zIndex: 4,
       alignSelf: 'center',
@@ -1037,27 +1209,20 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     logo: { width: logoSize + 100, height: logoSize },
     logoLight: { tintColor: undefined },
     logoDark: { tintColor: undefined },
-    logoTextFallback: { width: logoSize, height: logoSize, borderRadius: logoSize / 2, backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center' },
-    logoText: { color: colors.subtext, fontWeight: '700' },
+    logoTextFallback: { width: logoSize, height: logoSize, borderRadius: logoSize / 2, backgroundColor: 'rgba(109,191,106,0.1)', alignItems: 'center', justifyContent: 'center' },
+    logoText: { color: colors.brand, fontWeight: '700', fontSize: 24 },
 
-    cardWrapper: {
-      zIndex: 3,
-      alignSelf: 'center',
-      justifyContent: 'center',
-      marginVertical: 8,
-    },
-    // outer stroke acts as a subtle frame; remove heavy shadow to avoid dark halo
     cardStroke: {
       borderRadius: 28,
       padding: 6,
-      shadowColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(16,24,40,0.08)',
-      shadowOpacity: isDark ? 0.45 : 0.12,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 8,
+      shadowColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(109,191,106,0.15)',
+      shadowOpacity: isDark ? 0.45 : 0.2,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 10,
       backgroundColor: 'transparent',
       borderWidth: 0.6,
-      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(16,24,40,0.05)'
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)'
     },
     card: {
       width: '100%',
@@ -1066,16 +1231,74 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       overflow: 'visible',
       backgroundColor: glassEnabled ? 'rgba(255,255,255,0.02)' : (isDark ? 'rgba(6,9,12,0.66)' : 'rgba(255,255,255,0.98)'),
       borderWidth: 0.6,
-      borderColor: glassEnabled ? (isDark ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.10)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
+      borderColor: glassEnabled ? (isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.15)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
     },
 
-    // glass blur covers card
-    cardBlur: { ...StyleSheet.absoluteFillObject, zIndex: 0 },
+    cardBlur: { ...StyleSheet.absoluteFillObject, zIndex: 0, borderRadius: 18 },
     cardBlurFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent', zIndex: 0 },
-    cardInnerGradient: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
-
-    // allow cardContent to size naturally
+    cardInnerGradient: { ...StyleSheet.absoluteFillObject, zIndex: 1, borderRadius: 18 },
     cardContent: { padding: padding, zIndex: 2 },
+
+    progressContainer: {
+      marginBottom: 20,
+      marginTop: 8,
+    },
+    progressBarBackground: {
+      height: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 10,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      borderRadius: 10,
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    progressGlow: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#6DBF6A',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.6,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+    },
+    progressSteps: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 12,
+      paddingHorizontal: 4,
+    },
+    progressDot: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      borderWidth: 2,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    progressDotActive: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#6DBF6A',
+    },
+    progressDotCurrent: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#8AF3C5',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 4,
+    },
+    progressText: {
+      textAlign: 'center',
+      marginTop: 8,
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.subtext,
+    },
 
     headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
     headerTitle: { fontSize: Math.max(18, Math.round(cardWidth * 0.048)), fontWeight: '800', color: colors.text, textAlign: 'center' },
@@ -1087,9 +1310,9 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     input: {
       width: '100%',
       height: inputHeight,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(15,23,42,0.02)',
-      borderColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(16,24,40,0.04)',
-      borderWidth: 1,
+      backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
+      borderWidth: 1.5,
       borderRadius: 12,
       marginBottom: 8,
       paddingHorizontal: 14,
@@ -1100,21 +1323,22 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
 
     focusedInput: {
       borderColor: colors.brand,
+      backgroundColor: isDark ? 'rgba(109,191,106,0.06)' : 'rgba(109,191,106,0.08)',
       shadowColor: colors.brand,
-      shadowOpacity: 0.12,
-      shadowOffset: { width: 0, height: 6 },
-      shadowRadius: 8,
+      shadowOpacity: 0.2,
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 12,
+      elevation: 4,
     },
 
-    // input with right-side affix (spinner/tick/cross)
     inputAffixContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       width: '100%',
       height: inputHeight,
-      backgroundColor: 'rgba(255,255,255,0.02)',
-      borderColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 1,
+      backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
+      borderWidth: 1.5,
       borderRadius: 12,
       marginBottom: 8,
       paddingLeft: 14,
@@ -1128,9 +1352,9 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       alignItems: 'center',
       width: '100%',
       height: inputHeight,
-      backgroundColor: 'rgba(255,255,255,0.02)',
-      borderColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 1,
+      backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
+      borderWidth: 1.5,
       borderRadius: 12,
       marginBottom: 6,
       paddingHorizontal: 12,
@@ -1138,72 +1362,207 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     passwordInput: { flex: 1, color: colors.text, fontSize: 16 },
     iconPress: { padding: 6 },
 
+    passwordStrengthContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    passwordStrengthText: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+
     dropdown: {
       width: '100%',
       height: inputHeight,
       borderRadius: 12,
       marginBottom: 12,
       paddingHorizontal: 12,
-      borderColor: 'rgba(255,255,255,0.03)',
-      borderWidth: 1,
-      backgroundColor: 'rgba(255,255,255,0.01)'
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
+      borderWidth: 1.5,
+      backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
     },
 
-    dropdownItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
+    dropdownItem: { 
+      padding: 12, 
+      borderBottomWidth: 1, 
+      borderBottomColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+    },
     dropdownItemText: { color: colors.text, fontSize: 16 },
-  dropdownListContainer: { borderRadius: 8, marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)' },
+    dropdownListContainer: { 
+      borderRadius: 8, 
+      marginTop: -8, 
+      marginBottom: 12,
+      overflow: 'hidden', 
+      borderWidth: 1.5, 
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
+      backgroundColor: isDark ? 'rgba(6,9,12,0.95)' : 'rgba(255,255,255,0.95)',
+    },
 
-  button: { backgroundColor: colors.primary, padding: 14, borderRadius: 14, alignItems: 'center', height: inputHeight, justifyContent: 'center', minWidth: 140 },
-    buttonPressed: { transform: [{ scale: 0.985 }] },
-    buttonDisabled: { opacity: 0.6 },
+    button: { 
+      backgroundColor: colors.primary, 
+      padding: 14, 
+      borderRadius: 14, 
+      alignItems: 'center', 
+      height: inputHeight, 
+      justifyContent: 'center', 
+      minWidth: 140,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    buttonPressed: { 
+      transform: [{ scale: 0.97 }],
+      shadowOpacity: 0.2,
+      shadowRadius: 6,
+    },
+    buttonDisabled: { opacity: 0.5 },
     buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-    ghostButton: { padding: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', backgroundColor: 'transparent', minWidth: 110 },
+    ghostButton: { 
+      padding: 10, 
+      borderRadius: 12, 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      borderWidth: 1.5, 
+      borderColor: isDark ? 'rgba(109,191,106,0.15)' : 'rgba(109,191,106,0.25)', 
+      backgroundColor: 'transparent', 
+      minWidth: 110 
+    },
     ghostButtonText: { color: colors.text, fontWeight: '600' },
 
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, zIndex: 5 },
-
-  // Avatar grid: layout as 3 columns x 2 rows (for the 6 local avatars)
-  avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 },
-  // compute avatar size relative to card width to ensure three columns
-  avatar: (() => {
-    const computed = Math.max(56, Math.min(92, Math.floor(cardWidth / 3) - 12));
-    return { width: computed, height: computed, borderRadius: Math.round(computed / 8), marginVertical: 6, backgroundColor: 'rgba(255,255,255,0.02)' };
-  })(),
-  avatarSelected: { borderWidth: 3, borderColor: colors.primary },
-
-    genderSelector: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-    genderButton: {
-      flex: 1, padding: 10, borderRadius: 10, alignItems: 'center', marginHorizontal: 4,
-      borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)', backgroundColor: 'transparent'
+    actionRow: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      marginTop: 14, 
+      zIndex: 5,
+      gap: 12,
     },
-    genderButtonSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-    genderText: { color: colors.text, fontWeight: '600' },
+
+    avatarGrid: { 
+      flexDirection: 'row', 
+      flexWrap: 'wrap', 
+      justifyContent: 'space-around', 
+      marginBottom: 16,
+      gap: 12,
+    },
+    avatarWrapper: {
+      position: 'relative',
+      borderRadius: 16,
+      padding: 4,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    avatarWrapperSelected: {
+      borderColor: '#6DBF6A',
+      backgroundColor: 'rgba(109,191,106,0.08)',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    avatar: (() => {
+      const computed = Math.max(64, Math.min(96, Math.floor(cardWidth / 3) - 24));
+      return { 
+        width: computed, 
+        height: computed, 
+        borderRadius: Math.round(computed / 6),
+        backgroundColor: isDark ? 'rgba(109,191,106,0.05)' : 'rgba(109,191,106,0.08)',
+      };
+    })(),
+    avatarCheckmark: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      backgroundColor: '#fff',
+      borderRadius: 12,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 4,
+    },
+
+    genderSelector: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      marginBottom: 12,
+      gap: 8,
+    },
+    genderButton: {
+      flex: 1, 
+      padding: 12, 
+      borderRadius: 12, 
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      borderWidth: 1.5, 
+      borderColor: isDark ? 'rgba(109,191,106,0.12)' : 'rgba(109,191,106,0.2)', 
+      backgroundColor: 'transparent',
+    },
+    genderButtonSelected: { 
+      backgroundColor: colors.primary, 
+      borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    genderText: { color: colors.text, fontWeight: '600', fontSize: 14 },
     genderTextSelected: { color: '#fff' },
 
-    suggestionContainer: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
-    suggestionChip: {
-      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-      backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.02)',
-      marginRight: 8, marginBottom: 8
+    suggestionContainer: { 
+      flexDirection: 'row', 
+      flexWrap: 'wrap', 
+      marginBottom: 12,
+      gap: 8,
     },
-    suggestionText: { color: colors.subtext },
+    suggestionChip: {
+      paddingHorizontal: 14, 
+      paddingVertical: 8, 
+      borderRadius: 20,
+      backgroundColor: 'transparent', 
+      borderWidth: 1.5, 
+      borderColor: isDark ? 'rgba(109,191,106,0.15)' : 'rgba(109,191,106,0.25)',
+    },
+    suggestionText: { color: colors.subtext, fontSize: 13, fontWeight: '500' },
 
-    inlineError: { color: '#ff6b6b', fontSize: 13, marginBottom: 8 },
-  errorBanner: { backgroundColor: isDark ? 'rgba(255,100,100,0.06)' : 'rgba(255,230,230,0.9)', borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  errorBannerText: { color: isDark ? '#ffd6d6' : '#7b1a1a', flex: 1 },
-    successText: { color: '#6ddf7a', fontSize: 14, marginBottom: 8, textAlign: 'center' },
+    inlineError: { color: '#ff6b6b', fontSize: 13, marginBottom: 8, fontWeight: '500' },
+    errorBanner: { 
+      backgroundColor: isDark ? 'rgba(255,100,100,0.08)' : 'rgba(255,230,230,0.95)', 
+      borderRadius: 12, 
+      padding: 12, 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,100,100,0.2)' : 'rgba(255,200,200,0.5)',
+    },
+    errorBannerText: { color: isDark ? '#ffd6d6' : '#7b1a1a', flex: 1, fontSize: 13 },
+    successText: { 
+      color: '#6DBF6A', 
+      fontSize: 14, 
+      marginBottom: 10, 
+      textAlign: 'center',
+      fontWeight: '600',
+    },
     subtleText: { color: colors.subtext, fontSize: 12, marginBottom: 6 },
 
     loadingOverlay: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.12)',
+      backgroundColor: 'rgba(0,0,0,0.3)',
       justifyContent: 'center',
       alignItems: 'center',
-      zIndex: 30
+      zIndex: 30,
     },
 
-    linkRow: { marginTop: 10, alignItems: 'center' },
+    linkRow: { marginTop: 12, alignItems: 'center' },
     toggleText: { color: colors.subtext, fontSize: 14, textAlign: 'center' },
     toggleLink: { fontWeight: '700', color: colors.primary },
 
@@ -1217,30 +1576,27 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       paddingHorizontal: 14,
       borderRadius: 999,
       backgroundColor: 'transparent',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.04)'
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(109,191,106,0.12)' : 'rgba(109,191,106,0.2)',
+      flex: 1,
+      alignItems: 'center',
+      marginHorizontal: 4,
     },
     smallPillSelected: {
       backgroundColor: colors.primary,
       borderColor: colors.primary,
       shadowColor: colors.primary,
-      shadowOpacity: 0.18,
+      shadowOpacity: 0.3,
       shadowRadius: 8,
-      elevation: 3
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
     },
-    smallPillText: { color: colors.text, fontSize: 14 },
-    smallPillTextSelected: { color: '#fff', fontSize: 14, fontWeight: '600' },
+    smallPillText: { color: colors.text, fontSize: 13, fontWeight: '500' },
+    smallPillTextSelected: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-    // additional glass style marker
     cardGlass: {
-      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.14)',
-      backgroundColor: 'transparent'
+      borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.15)',
+      backgroundColor: 'transparent',
     },
-    miniCard: {
-      borderRadius: 14,
-      backgroundColor: glassEnabled ? 'rgba(255,255,255,0.02)' : (isDark ? 'rgba(8,10,12,0.6)' : '#fff'),
-      borderWidth: 0.6,
-      borderColor: 'rgba(255,255,255,0.04)'
-    }
   });
 };

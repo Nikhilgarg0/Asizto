@@ -1,5 +1,5 @@
-// DashboardScreen.js (Enterprise Enhanced)
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+// DashboardScreen.js (Enhanced)
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -13,7 +13,9 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   Alert,
-  RefreshControl
+  RefreshControl,
+  Animated,
+  Easing,
 } from 'react-native';
 import { db, auth } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
@@ -22,11 +24,9 @@ import * as Notifications from 'expo-notifications';
 import { GEMINI_API_KEY } from '../apiKeys';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Animatable from 'react-native-animatable';
 import logger from '../utils/Logger';
 import performanceMonitor from '../utils/PerformanceMonitor';
 
-// Enhanced health facts with categories
 const healthFacts = {
   nutrition: [
     "Drinking 8 glasses of water daily can improve metabolism by 30%.",
@@ -62,7 +62,7 @@ export default function DashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [randomFact, setRandomFact] = useState('');
   const [aiFactLoading, setAIFactLoading] = useState(false);
-  const [aiFactSource, setAIFactSource] = useState('preset'); // 'preset' | 'ai'
+  const [aiFactSource, setAIFactSource] = useState('preset');
   const [searchText, setSearchText] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState('');
@@ -73,13 +73,83 @@ export default function DashboardScreen({ navigation }) {
     appointments: true
   });
 
-  // Performance monitoring
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scoreAnim = useRef(new Animated.Value(0)).current;
+  const bmiAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
   const screenTimer = useMemo(() => performanceMonitor.startScreenLoad('Dashboard'), []);
 
-  // Memoized health score calculation
+  // Entrance animations
+  useEffect(() => {
+    if (!loading) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [loading]);
+
+  // Health score animation
+  useEffect(() => {
+    if (healthScore !== null) {
+      Animated.timing(scoreAnim, {
+        toValue: healthScore,
+        duration: 1500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [healthScore]);
+
+  // BMI animation
+  useEffect(() => {
+    const bmiValue = bmiData.value;
+    if (bmiValue) {
+      Animated.timing(bmiAnim, {
+        toValue: bmiValue,
+        duration: 1500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [userProfile.weight, userProfile.height]);
+
+  // Pulse animation for due medicines
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
+
   const calculateHealthScore = useCallback((userMedicines = [], profile = {}, appts = []) => {
     try {
-      // Component weights (tunable) - sum used for normalization
       const weights = {
         adherence: 22,
         profileCompleteness: 10,
@@ -94,41 +164,32 @@ export default function DashboardScreen({ navigation }) {
       const totalWeight = Object.values(weights).reduce((s, v) => s + v, 0);
       let weightedSum = 0;
 
-      // Helper: cap between 0-100
       const clampPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
 
-      // 1) Medicine adherence -> 0-100
       let adherencePct = 100;
       if (userMedicines && userMedicines.length > 0) {
-        // total expected doses approximated by 'quantity' field if present per med
         const totalDoses = userMedicines.reduce((sum, med) => sum + (Number(med.quantity) || 0), 0);
         const takenDoses = userMedicines.reduce((sum, med) => sum + (med.takenTimestamps?.length || 0), 0);
         adherencePct = totalDoses > 0 ? clampPct((takenDoses / totalDoses) * 100) : 100;
       }
       weightedSum += adherencePct * weights.adherence;
 
-      // 2) Profile completeness
       const profileFields = ['age', 'weight', 'height', 'conditions', 'gender', 'bloodGroup'];
       const completed = profileFields.filter(f => profile[f] !== undefined && profile[f] !== null && profile[f] !== '').length;
       const profilePct = clampPct((completed / profileFields.length) * 100);
       weightedSum += profilePct * weights.profileCompleteness;
 
-      // 3) Appointments attendance (last 90 days)
       let apptPct = 100;
       if (appts && appts.length > 0) {
-        const recentWindow = 90 * 24 * 60 * 60 * 1000; // 90 days
         const recentAttended = appts.filter(apt => apt.attended && apt.attendedAt).length;
-        // penalize for missed recent appointments
         apptPct = clampPct((recentAttended / appts.length) * 100);
       }
       weightedSum += apptPct * weights.appointments;
 
-      // 4) BMI scoring
       let bmiPct = 75;
       const weightVal = profile.weight ? parseFloat(profile.weight) : null;
       const heightVal = profile.height ? parseFloat(profile.height) : null;
 
-      // compute age
       let age = null;
       if (profile.age) age = Number(profile.age);
       else if (profile.dob) {
@@ -147,12 +208,11 @@ export default function DashboardScreen({ navigation }) {
           else if (bmi >= 30 && bmi <= 34.9) bmiPct = 50;
           else bmiPct = 40;
         } else {
-          bmiPct = 75; // pediatric neutral
+          bmiPct = 75;
         }
       }
       weightedSum += bmiPct * weights.bmi;
 
-      // 5) Age factor (slight adjustment)
       let agePct = 100;
       if (age !== null) {
         if (age >= 80) agePct = 75;
@@ -162,17 +222,15 @@ export default function DashboardScreen({ navigation }) {
       }
       weightedSum += agePct * weights.ageFactor;
 
-      // 6) Smoking and drinking: map frequency to penalty
       const freqToPct = (val) => {
-        // val can be 'No', 'Occasionally', 'Daily' or a custom numeric
         if (!val || val === 'No' || val === 'no' || val === 'None') return 100;
-        if (typeof val === 'number') return clampPct(100 - val); // numeric penalty mapping
+        if (typeof val === 'number') return clampPct(100 - val);
         const v = String(val).toLowerCase();
         if (v.includes('daily')) return 30;
         if (v.includes('occasion') || v.includes('occasional') || v.includes('sometimes')) return 70;
         if (v === 'occasionally') return 70;
         if (v === 'yes') return 60;
-        return 80; // unknown -> mild penalty
+        return 80;
       };
 
       const smokingPct = clampPct(freqToPct(profile.smokingFreq || profile.smoking));
@@ -180,11 +238,9 @@ export default function DashboardScreen({ navigation }) {
       weightedSum += smokingPct * weights.smoking;
       weightedSum += drinkingPct * weights.drinking;
 
-      // 7) Conditions/severity: more conditions -> lower score. If conditions array contains severity keys, use them.
       let conditionsPct = 100;
       if (profile.conditions && Array.isArray(profile.conditions)) {
         const condCount = profile.conditions.length;
-        // basic heuristic: 0 cond -> 100, 1-2 -> 85, 3-4 -> 70, 5+ -> 50
         if (condCount === 0) conditionsPct = 100;
         else if (condCount <= 2) conditionsPct = 85;
         else if (condCount <= 4) conditionsPct = 70;
@@ -192,12 +248,10 @@ export default function DashboardScreen({ navigation }) {
       }
       weightedSum += conditionsPct * weights.conditions;
 
-      // Normalize
       const finalScore = Math.round(weightedSum / totalWeight);
       const clamped = Math.max(0, Math.min(100, finalScore));
       setHealthScore(clamped);
 
-      // Log components for debugging
       logger.info('Health score calculated', {
         score: clamped,
         components: {
@@ -211,20 +265,20 @@ export default function DashboardScreen({ navigation }) {
     }
   }, []);
 
-  // Enhanced BMI calculation with validation
   const bmiData = useMemo(() => {
-    // include age awareness and clearer categories
     try {
       const weight = userProfile.weight ? parseFloat(userProfile.weight) : null;
       const height = userProfile.height ? parseFloat(userProfile.height) : null;
       let age = null;
       if (userProfile.age) age = Number(userProfile.age);
       else if (userProfile.dob) {
-        try { const dob = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)); } catch (e) { age = null; }
+        try { 
+          const dob = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); 
+          age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)); 
+        } catch (e) { age = null; }
       }
 
       if (!weight || !height) return { value: null, category: 'N/A', status: 'incomplete', age };
-
       if (height === 0 || weight === 0) return { value: null, category: 'N/A', status: 'invalid', age };
 
       const bmi = +(weight / Math.pow(height / 100, 2)).toFixed(1);
@@ -232,7 +286,6 @@ export default function DashboardScreen({ navigation }) {
       let status = 'normal';
 
       if (age !== null && age < 18) {
-        // Pediatric BMI interpretation requires percentiles; provide a safe message
         category = 'Use pediatric chart';
         status = 'warning';
       } else {
@@ -252,7 +305,6 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [userProfile.weight, userProfile.height, userProfile.age, userProfile.dob]);
 
-  // Optimized next dose calculation
   const nextDoseStatus = useMemo(() => {
     if (!medicines || medicines.length === 0) return null;
 
@@ -323,14 +375,13 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [medicines]);
 
-  // Enhanced search with rate limiting and validation
   const handleSearch = useCallback(async () => {
     if (searchText.trim().length < 3) {
       Alert.alert('Search Error', 'Please enter at least 3 characters to search.');
       return;
     }
 
-    if (isSearching) return; // Prevent multiple simultaneous searches
+    if (isSearching) return;
 
     setIsSearching(true);
     setSearchResult('');
@@ -358,13 +409,11 @@ export default function DashboardScreen({ navigation }) {
       
       setSearchResult(summary.trim());
       
-      // Log successful search
       logger.info('Medicine search completed', { 
         query: searchText, 
         resultLength: summary.length 
       });
       
-      // End API performance monitoring
       if (apiTimer) {
         performanceMonitor.endApiCall(apiTimer, response.status, true);
       }
@@ -377,7 +426,6 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [searchText, isSearching]);
 
-  // Enhanced mark as taken with validation
   const handleMarkAsTaken = useCallback(async (medicineId) => {
     try {
       const medicineRef = doc(db, "medicines", medicineId);
@@ -386,8 +434,6 @@ export default function DashboardScreen({ navigation }) {
       });
       
       logger.info('Medicine marked as taken', { medicineId });
-      
-      // Show success feedback
       Alert.alert('Success', 'Medicine marked as taken!');
     } catch (error) {
       logger.error('Error marking medicine as taken', error);
@@ -395,13 +441,11 @@ export default function DashboardScreen({ navigation }) {
     }
   }, []);
 
-  // Refresh control handler
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Trigger data refresh by updating timestamps
       setSectionLoading({ profile: true, medicines: true, appointments: true });
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate refresh
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
       logger.error('Refresh failed', error);
     } finally {
@@ -409,14 +453,12 @@ export default function DashboardScreen({ navigation }) {
     }
   }, []);
 
-  // Enhanced data fetching with error handling
   useEffect(() => {
     if (!auth.currentUser) return;
 
     const userId = auth.currentUser.uid;
     const userDocRef = doc(db, "users", userId);
 
-    // Profile listener
     const unsubscribeProfile = onSnapshot(userDocRef, 
       (docSnap) => {
         try {
@@ -437,7 +479,6 @@ export default function DashboardScreen({ navigation }) {
       }
     );
 
-    // Medicines listener
     const medQuery = query(collection(db, 'medicines'), where('userId', '==', userId));
     const unsubscribeMeds = onSnapshot(medQuery, 
       (snapshot) => {
@@ -458,7 +499,6 @@ export default function DashboardScreen({ navigation }) {
       }
     );
 
-    // Appointments listener
     const apptQuery = query(collection(db, 'appointments'), where('userId', '==', userId));
     const unsubscribeAppts = onSnapshot(apptQuery, 
       (snapshot) => {
@@ -486,7 +526,6 @@ export default function DashboardScreen({ navigation }) {
     };
   }, []);
 
-  // Health score calculation effect
   useEffect(() => {
     if (!sectionLoading.profile && !sectionLoading.medicines && !sectionLoading.appointments) {
       calculateHealthScore(medicines, userProfile, appointments);
@@ -494,9 +533,7 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [sectionLoading, medicines, userProfile, calculateHealthScore]);
 
-  // Random fact effect with category rotation
   useEffect(() => {
-    // Try to fetch an AI-generated fact on load, fallback to presets
     const categories = Object.keys(healthFacts);
     const randomCategory = categories[Math.floor(Math.random() * categories.length)];
     (async () => {
@@ -512,7 +549,6 @@ export default function DashboardScreen({ navigation }) {
     })();
   }, []);
 
-  // AI fetch helper: returns string or null
   const fetchAIFact = async (category = 'wellness', kind = 'fact') => {
     if (!GEMINI_API_KEY) return null;
     setAIFactLoading(true);
@@ -549,21 +585,23 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  // Fetch AI personalized health tip using user data (falls back to preset)
   const fetchAIPersonalTip = async () => {
     if (!GEMINI_API_KEY) return null;
     setAIFactLoading(true);
     try {
       const apiTimer = performanceMonitor.startApiCall('gemini', 'POST');
 
-      // Build a concise user snapshot for the prompt
-      const age = userProfile.age || (userProfile.dob ? (() => { try { const d = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); return Math.floor((Date.now() - d.getTime()) / (365.25*24*60*60*1000)); } catch (e) { return 'unknown'; } })() : 'unknown');
+      const age = userProfile.age || (userProfile.dob ? (() => { 
+        try { 
+          const d = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); 
+          return Math.floor((Date.now() - d.getTime()) / (365.25*24*60*60*1000)); 
+        } catch (e) { return 'unknown'; } 
+      })() : 'unknown');
       const conditions = (userProfile.conditions && userProfile.conditions.length > 0) ? userProfile.conditions.join(', ') : 'none';
       const smoking = userProfile.smoking || userProfile.smokingFreq || 'No';
       const drinking = userProfile.drinking || userProfile.drinkingFreq || 'No';
       const bmiVal = bmiData.value || 'N/A';
 
-      // Compute adherence summary
       let adherenceSummary = 'No medicines';
       if (medicines && medicines.length > 0) {
         const totalQty = medicines.reduce((s, m) => s + (Number(m.quantity) || 0), 0);
@@ -600,14 +638,12 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  // End performance monitoring
   useEffect(() => {
     if (!loading && screenTimer) {
       performanceMonitor.endTimer(screenTimer);
     }
   }, [loading, screenTimer]);
 
-  // Loading state
   if (loading) {
     return (
       <View style={[styles.loaderContainer, { backgroundColor: colors.background }]}>
@@ -617,7 +653,6 @@ export default function DashboardScreen({ navigation }) {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
@@ -686,7 +721,7 @@ export default function DashboardScreen({ navigation }) {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ScrollView
-          contentContainerStyle={[styles.container, { flexGrow: 1 }]}
+          contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
@@ -699,14 +734,16 @@ export default function DashboardScreen({ navigation }) {
             />
           }
         >
-          <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
-          <Text style={[styles.subGreeting, { color: colors.subtext }]}>Here's your health summary.</Text>
+          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+            <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
+            <Text style={[styles.subGreeting, { color: colors.subtext }]}>Here's your health summary</Text>
+          </Animated.View>
           
-          {/* Enhanced Search Section */}
-          <View style={styles.searchContainer}>
+          {/* Search Section */}
+          <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
             <TextInput
               style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Get quick info on any medicine..."
+              placeholder="Search medicine info..."
               placeholderTextColor={colors.subtext}
               value={searchText}
               onChangeText={setSearchText}
@@ -717,6 +754,7 @@ export default function DashboardScreen({ navigation }) {
               style={[styles.searchButton, { backgroundColor: colors.primary }]} 
               onPress={handleSearch}
               disabled={isSearching || searchText.trim().length < 3}
+              activeOpacity={0.7}
             >
               {isSearching ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -724,119 +762,206 @@ export default function DashboardScreen({ navigation }) {
                 <Ionicons name="search" size={22} color="#fff" />
               )}
             </TouchableOpacity>
-          </View>
+          </Animated.View>
 
           {/* Search Results */}
           {searchResult && (
-            <Animatable.View animation="fadeIn" style={[styles.card, { borderColor: colors.primary, borderWidth: 1 }]}>
-              <Text style={[styles.cardTitle, { color: colors.primary }]}>Summary for {searchText}</Text>
+            <Animated.View 
+              style={[styles.card, styles.searchResultCard, { 
+                backgroundColor: colors.card,
+                borderColor: colors.primary,
+                opacity: fadeAnim 
+              }]}
+            >
+              <View style={styles.searchResultHeader}>
+                <Ionicons name="medical" size={20} color={colors.primary} />
+                <Text style={[styles.searchResultTitle, { color: colors.primary }]}>
+                  {searchText}
+                </Text>
+              </View>
               <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{searchResult}</Text>
-            </Animatable.View>
+            </Animated.View>
           )}
 
-          {/* Enhanced Metrics Section */}
-          <View style={styles.metricsContainer}>
-            <View style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}>
-              <Text style={[styles.cardTitle, { color: colors.subtext }]}>Health Score</Text>
+          {/* Metrics Section */}
+          <Animated.View style={[styles.metricsContainer, { opacity: fadeAnim }]}>
+            <TouchableOpacity 
+              style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.metricIconContainer, { backgroundColor: `${getScoreColor()}20` }]}>
+                <Ionicons name="fitness" size={28} color={getScoreColor()} />
+              </View>
+              <Text style={[styles.metricLabel, { color: colors.subtext }]}>Health Score</Text>
               <Text style={[styles.metricValue, { color: getScoreColor() }]}>
                 {healthScore ?? 'N/A'}{healthScore && '%'}
               </Text>
+              <View style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}>
+                <Animated.View 
+                  style={[
+                    styles.progressFill, 
+                    { 
+                      backgroundColor: getScoreColor(),
+                      width: scoreAnim.interpolate({
+                        inputRange: [0, 100],
+                        outputRange: ['0%', '100%']
+                      })
+                    }
+                  ]} 
+                />
+              </View>
               <Text style={[styles.metricSubtext, { color: colors.subtext }]}>
                 {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
               </Text>
-            </View>
-            <View style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}>
-              <Text style={[styles.cardTitle, { color: colors.subtext }]}>Your BMI</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.metricIconContainer, { backgroundColor: `${getBmiStatusColor()}20` }]}>
+                <Ionicons name="body" size={28} color={getBmiStatusColor()} />
+              </View>
+              <Text style={[styles.metricLabel, { color: colors.subtext }]}>Your BMI</Text>
               <Text style={[styles.metricValue, { color: getBmiStatusColor() }]}>
                 {bmiData.value || 'N/A'}
               </Text>
               <Text style={[styles.metricSubtext, { color: colors.subtext }]}>
                 {bmiData.category}
               </Text>
-            </View>
-          </View>
+            </TouchableOpacity>
+          </Animated.View>
 
-          {/* Enhanced Next Medicine Section (hidden when no upcoming dose) */}
+          {/* Next Medicine */}
           {nextDoseStatus && (
-            <Animatable.View animation="fadeInUp" duration={600} style={[styles.card, {backgroundColor: colors.card}]}>
-              <Text style={[styles.cardTitle, { color: colors.subtext }]}>Next Medicine</Text>
-              <Text style={[styles.cardContent, {color: colors.text}]}>
-                {nextDoseStatus.medicine.name}
-              </Text>
-              <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                {nextDoseStatus.isDue 
-                  ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                  : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            <Animated.View 
+              style={[
+                styles.card, 
+                styles.medicineCard,
+                { 
+                  backgroundColor: colors.card,
+                  opacity: fadeAnim,
+                  transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }]
                 }
-              </Text>
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <View style={[styles.iconBadge, { backgroundColor: `${colors.primary}15` }]}>
+                  <Ionicons name="medical" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>
+                    {nextDoseStatus.medicine.name}
+                  </Text>
+                  <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+                    {nextDoseStatus.isDue 
+                      ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    }
+                  </Text>
+                </View>
+                {nextDoseStatus.isDue && (
+                  <View style={[styles.dueBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.dueText}>DUE</Text>
+                  </View>
+                )}
+              </View>
               {nextDoseStatus.isDue && (
                 <TouchableOpacity 
-                  style={[styles.button, {backgroundColor: colors.primary}]}
+                  style={[styles.takeButton, { backgroundColor: colors.primary }]}
                   onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.buttonText}>Take Now</Text>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.takeButtonText}>Take Now</Text>
                 </TouchableOpacity>
               )}
-            </Animatable.View>
+            </Animated.View>
           )}
 
-          {/* Enhanced Appointments Section */}
+          {/* Appointments */}
           {appointments.length > 0 && (
-            <Animatable.View animation="fadeInUp" duration={600} delay={100} style={[styles.card, {backgroundColor: colors.card}]}>
-              <Text style={[styles.cardTitle, { color: colors.subtext }]}>Upcoming Appointment</Text>
-              <Text style={[styles.cardContent, {color: colors.text}]}>
-                {nextAppointment.doctorName || nextAppointment.with || 'Appointment'}
-              </Text>
-              <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                {nextAppointment.date?.toDate ? 
-                  nextAppointment.date.toDate().toLocaleDateString() : 
-                  nextAppointment.date || 'Date not specified'
-                }
-              </Text>
-              {nextAppointment.location && (
-                <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                  📍 {nextAppointment.location}
-                </Text>
-              )}
-              {/* Attendance control: show button on appointment day or after */}
+            <Animated.View 
+              style={[styles.card, { backgroundColor: colors.card, opacity: fadeAnim }]}
+            >
+              <View style={styles.cardHeader}>
+                <View style={[styles.iconBadge, { backgroundColor: `${colors.primary}15` }]}>
+                  <Ionicons name="calendar" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>
+                    {nextAppointment.doctorName || nextAppointment.with || 'Appointment'}
+                  </Text>
+                  <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+                    {nextAppointment.date?.toDate ? 
+                      nextAppointment.date.toDate().toLocaleDateString('en-US', { 
+                        weekday: 'short', 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                      }) : 
+                      nextAppointment.date || 'Date not specified'
+                    }
+                  </Text>
+                  {nextAppointment.location && (
+                    <View style={styles.locationRow}>
+                      <Ionicons name="location" size={14} color={colors.subtext} />
+                      <Text style={[styles.locationText, { color: colors.subtext }]}>
+                        {nextAppointment.location}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
               {(() => {
                 const aptDateObj = nextAppointment?.date?.toDate ? nextAppointment.date.toDate() : (nextAppointment?.date ? new Date(nextAppointment.date) : null);
                 const canShow = aptDateObj ? (aptDateObj <= new Date()) : false;
                 if (nextAppointment.attended) {
                   return (
-                    <View style={{ marginTop: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-                        <Text style={{ color: colors.primary, fontWeight: '600', marginLeft: 8 }}>
-                          {nextAppointment.attendedAt ? (
-                            nextAppointment.attendedAt.toDate ? `Attended on ${nextAppointment.attendedAt.toDate().toLocaleString()}` : `Attended on ${new Date(nextAppointment.attendedAt).toLocaleString()}`
-                          ) : 'Attended'}
-                        </Text>
-                      </View>
+                    <View style={styles.attendedBadge}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                      <Text style={[styles.attendedText, { color: colors.primary }]}>
+                        {nextAppointment.attendedAt ? (
+                          nextAppointment.attendedAt.toDate ? 
+                            `Attended on ${nextAppointment.attendedAt.toDate().toLocaleDateString()}` : 
+                            `Attended on ${new Date(nextAppointment.attendedAt).toLocaleDateString()}`
+                        ) : 'Attended'}
+                      </Text>
                     </View>
                   );
                 }
                 if (canShow) {
                   return (
-                    <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary, marginTop: 10 }]} onPress={() => handleMarkAttendedDashboard(nextAppointment)}>
-                      <Text style={styles.buttonText}>Mark Attended</Text>
+                    <TouchableOpacity 
+                      style={[styles.attendButton, { backgroundColor: colors.primary }]} 
+                      onPress={() => handleMarkAttendedDashboard(nextAppointment)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="checkmark-done" size={20} color="#fff" />
+                      <Text style={styles.attendButtonText}>Mark Attended</Text>
                     </TouchableOpacity>
                   );
                 }
                 return null;
               })()}
-            </Animatable.View>
+            </Animated.View>
           )}
 
-          {/* Enhanced Health Fact Section */}
-          <View style={[styles.card, {backgroundColor: colors.card}]}>
-            <Text style={[styles.cardTitle, { color: colors.subtext }]}>💡 Health Tip</Text>
-            <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{randomFact}</Text>
-            <View style={{ flexDirection: 'row', marginTop: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Health Tip */}
+          <Animated.View 
+            style={[styles.card, styles.tipCard, { backgroundColor: colors.card, opacity: fadeAnim }]}
+          >
+            <View style={styles.tipHeader}>
+              <View style={[styles.tipIcon, { backgroundColor: `${colors.primary}15` }]}>
+                <Ionicons name="bulb" size={24} color={colors.primary} />
+              </View>
+              <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
+            </View>
+            <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
+            <View style={styles.tipFooter}>
               <TouchableOpacity
-                style={[styles.smallButton, { backgroundColor: colors.primary }]}
+                style={[styles.generateButton, { backgroundColor: colors.primary }]}
                 onPress={async () => {
-                  // Try personalized tip first
                   const personal = await fetchAIPersonalTip();
                   if (personal) {
                     setRandomFact(personal);
@@ -844,18 +969,27 @@ export default function DashboardScreen({ navigation }) {
                     return;
                   }
 
-                  // Fallback to generic AI fact
                   const ai = await fetchAIFact(Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)], 'fact');
                   if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
                   else { setAIFactSource('preset'); }
                 }}
                 disabled={aiFactLoading}
+                activeOpacity={0.8}
               >
-                {aiFactLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.smallButtonText}>Generate Tip (AI)</Text>}
+                {aiFactLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="sparkles" size={16} color="#fff" />
+                    <Text style={styles.generateText}>Generate Tip</Text>
+                  </>
+                )}
               </TouchableOpacity>
-              <Text style={{ color: colors.subtext, fontSize: 12 }}>{aiFactSource === 'ai' ? 'Generated by AI' : 'From presets'}</Text>
+              <Text style={[styles.sourceText, { color: colors.subtext }]}>
+                {aiFactSource === 'ai' ? 'AI Generated' : 'Preset'}
+              </Text>
             </View>
-          </View>
+          </Animated.View>
         </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -864,7 +998,8 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
+    paddingTop: 16,
     paddingBottom: 20,
   },
   loaderContainer: {
@@ -898,7 +1033,7 @@ const styles = StyleSheet.create({
   retryButton: {
     paddingHorizontal: 32,
     paddingVertical: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     minWidth: 120,
   },
   retryButtonText: {
@@ -908,96 +1043,240 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   greeting: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginTop: 10,
-    marginBottom: 8,
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: -0.5,
   },
   subGreeting: {
-    fontSize: 18,
-    marginBottom: 25,
+    fontSize: 16,
+    marginBottom: 20,
+    opacity: 0.7,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 16,
+    gap: 10,
   },
   searchInput: {
     flex: 1,
     height: 50,
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    fontSize: 16,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    fontSize: 15,
     borderWidth: 1,
   },
   searchButton: {
     height: 50,
     width: 50,
-    borderRadius: 12,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10,
+  },
+  searchResultCard: {
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  searchResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  searchResultTitle: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   metricsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 15,
+    gap: 12,
+    marginBottom: 16,
   },
   metricCard: {
     flex: 1,
     alignItems: 'center',
+    padding: 18,
   },
-  card: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  metricIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
-  cardTitle: {
-    fontSize: 16,
+  metricLabel: {
+    fontSize: 13,
     fontWeight: '600',
     marginBottom: 8,
   },
-  cardContent: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  cardSubContent: {
-    fontSize: 16,
-    marginTop: 4,
-    lineHeight: 22,
-  },
   metricValue: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  progressBar: {
+    width: '100%',
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
   },
   metricSubtext: {
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: 12,
     textAlign: 'center',
+    opacity: 0.8,
   },
-  button: {
-    marginTop: 15,
-    paddingVertical: 12,
-    borderRadius: 10,
+  card: {
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+  },
+  medicineCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+  },
+  cardHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
   },
-  buttonText: {
+  iconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  cardSubContent: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  dueBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  dueText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  smallButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    minWidth: 140,
+  takeButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
   },
-  smallButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  takeButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 13,
+  },
+  attendedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    gap: 8,
+  },
+  attendedText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  attendButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  attendButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  tipCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFC107',
+  },
+  tipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 12,
+  },
+  tipIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tipTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  tipContent: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 14,
+  },
+  tipFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  generateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
+  },
+  generateText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sourceText: {
+    fontSize: 12,
+    opacity: 0.7,
+  },
 });

@@ -7,16 +7,16 @@ import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, arrayU
 import * as Notifications from 'expo-notifications';
 import { useTheme } from '../context/ThemeContext';
 import { cancelMedicineNotifications } from '../utils/NotificationManager';
+import * as Animatable from 'react-native-animatable';
 
 const { width } = Dimensions.get('window');
 
-const MedicineDoseStatus = ({ medicine, handleDelete }) => {
-  const { colors } = useTheme();
+const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
+  const { colors, theme } = useTheme();
   const [now, setNow] = useState(new Date());
 
-  // Reduce interval frequency from 1 minute to 5 minutes for better performance
   useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 300000); // 5 minutes
+    const interval = setInterval(() => setNow(new Date()), 300000);
     return () => clearInterval(interval);
   }, []);
 
@@ -32,45 +32,41 @@ const MedicineDoseStatus = ({ medicine, handleDelete }) => {
     }
   };
 
-  // ✅ Medicine remaining calculation with proper validation
   const medicineRemainingInfo = useMemo(() => {
     let text = '';
     let color = colors.subtext;
+    let icon = 'medical-outline';
     
-    // Validate medicine data
     if (!medicine.quantity || medicine.quantity <= 0) {
-      return { text: 'Quantity not specified', color: colors.subtext };
+      return { text: 'Quantity not specified', color: colors.subtext, icon: 'help-circle-outline' };
     }
 
-    // Calculate total doses taken
     const totalDosesTaken = medicine.takenTimestamps?.length || 0;
-    
-    // Calculate total doses prescribed
     const totalDosesPrescribed = medicine.quantity;
-    
-    // Calculate remaining doses
     const remainingDoses = totalDosesPrescribed - totalDosesTaken;
     
     if (remainingDoses <= 0) {
       text = 'Medicine finished';
-      color = colors.accent;
+      color = '#95a5a6';
+      icon = 'close-circle';
     } else if (remainingDoses <= 3) {
       text = `${remainingDoses} dose${remainingDoses > 1 ? 's' : ''} left`;
-      color = '#FF6B6B';
+      color = '#e74c3c';
+      icon = 'alert-circle';
     } else if (remainingDoses <= 7) {
       text = `${remainingDoses} dose${remainingDoses > 1 ? 's' : ''} left`;
-      color = '#FFA500';
+      color = '#f39c12';
+      icon = 'warning';
     } else {
       text = `${remainingDoses} dose${remainingDoses > 1 ? 's' : ''} left`;
-      color = colors.subtext;
+      color = '#27ae60';
+      icon = 'checkmark-circle';
     }
     
-    return { text, color };
+    return { text, color, icon };
   }, [medicine.quantity, medicine.takenTimestamps, colors]);
 
-  // ✅ Enhanced dose calculation logic with 1-hour early availability and validation
   const doseStatus = useMemo(() => {
-    // Validate required fields
     if (!medicine.times || !Array.isArray(medicine.times) || medicine.times.length === 0) {
       return { type: 'error', message: 'Invalid schedule' };
     }
@@ -109,7 +105,6 @@ const MedicineDoseStatus = ({ medicine, handleDelete }) => {
     let doseToTake = null;
     let timeUntilDose = null;
 
-    // Check for doses that are available (1 hour before) or due
     for (const time of scheduleTimes) {
       const doseTimeToday = new Date(now);
       doseTimeToday.setHours(time.getHours(), time.getMinutes(), 0, 0);
@@ -145,7 +140,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete }) => {
       return { 
         type: 'due', 
         doseTime: doseToTake,
-        message: `Dose due at ${doseToTake.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        message: `Due at ${doseToTake.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       };
     } else if (isDoseAvailable) {
       return { 
@@ -155,143 +150,150 @@ const MedicineDoseStatus = ({ medicine, handleDelete }) => {
         message: `Available in ${timeUntilDose} min`
       };
     } else if (allDosesDone) {
-      return { type: 'completed', message: 'All doses taken for today!' };
+      return { type: 'completed', message: 'All doses taken today' };
     } else if (nextDoseTime) {
       return { 
         type: 'next', 
         doseTime: nextDoseTime,
-        message: `Next dose at ${nextDoseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+        message: `Next: ${nextDoseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       };
     } else {
       return { type: 'unknown', message: 'Check schedule' };
     }
   }, [medicine.times, medicine.takenTimestamps, now]);
 
-  const styles = createStyles(colors);
+  const getStatusColor = () => {
+    switch (doseStatus.type) {
+      case 'due': return '#e74c3c';
+      case 'available': return colors.primary;
+      case 'completed': return '#27ae60';
+      case 'next': return colors.subtext;
+      default: return colors.subtext;
+    }
+  };
+
+  const styles = createStyles(colors, theme);
 
   return (
-    <View style={styles.card}>
-      {/* Header with medicine name and delete button */}
-      <View style={styles.cardHeader}>
-        <View style={styles.medicineInfo}>
-          <Text style={styles.medicineName}>{medicine.name}</Text>
-          {medicine.dosage && (
-            <Text style={styles.dosageText}>{medicine.dosage}</Text>
+    <Animatable.View animation="fadeInUp" duration={500} delay={index * 50}>
+      <View style={styles.medicineCard}>
+        {/* Status Bar Indicator */}
+        <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]} />
+        
+        {/* Header */}
+        <View style={styles.cardHeader}>
+          <View style={styles.medicineHeaderLeft}>
+            <View style={[styles.medicineIcon, { backgroundColor: `${getStatusColor()}15` }]}>
+              <Ionicons name="medical" size={22} color={getStatusColor()} />
+            </View>
+            <View style={styles.medicineInfo}>
+              <Text style={styles.medicineName} numberOfLines={1}>{medicine.name}</Text>
+              {medicine.dosage && (
+                <Text style={styles.dosageText} numberOfLines={1}>{medicine.dosage}</Text>
+              )}
+            </View>
+          </View>
+          <TouchableOpacity 
+            style={styles.deleteButton}
+            onPress={() => handleDelete(medicine)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="trash-outline" size={20} color="#e74c3c" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Status Section */}
+        <View style={styles.statusSection}>
+          {doseStatus.type === 'due' ? (
+            <>
+              <View style={styles.statusBadge}>
+                <Ionicons name="alarm" size={18} color="#e74c3c" />
+                <Text style={[styles.statusText, { color: '#e74c3c' }]}>
+                  {doseStatus.message}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.actionButtonDue]} 
+                onPress={() => handleMarkAsTaken(medicine.id)}
+              >
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Take Now</Text>
+              </TouchableOpacity>
+            </>
+          ) : doseStatus.type === 'available' ? (
+            <>
+              <View style={styles.statusBadge}>
+                <Ionicons name="time" size={18} color={colors.primary} />
+                <Text style={[styles.statusText, { color: colors.primary }]}>
+                  {doseStatus.message}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.actionButtonAvailable]} 
+                onPress={() => handleMarkAsTaken(medicine.id)}
+              >
+                <Ionicons name="medical" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Take Early</Text>
+              </TouchableOpacity>
+            </>
+          ) : doseStatus.type === 'completed' ? (
+            <View style={styles.statusBadgeFullWidth}>
+              <Ionicons name="checkmark-circle" size={20} color="#27ae60" />
+              <Text style={[styles.statusText, { color: '#27ae60' }]}>
+                {doseStatus.message}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.statusBadgeFullWidth}>
+              <Ionicons name="time-outline" size={18} color={colors.subtext} />
+              <Text style={[styles.statusText, { color: colors.subtext }]}>
+                {doseStatus.message}
+              </Text>
+            </View>
           )}
         </View>
-        <TouchableOpacity 
-          style={styles.deleteButton}
-          onPress={() => handleDelete(medicine)}
-          accessibilityLabel={`Delete ${medicine.name}`}
-          accessibilityRole="button"
-        >
-          <Ionicons name="trash-outline" size={20} color={colors.subtext} />
-        </TouchableOpacity>
-      </View>
 
-      {/* Body with dose status and action button */}
-      <View style={styles.cardBody}>
-        {doseStatus.type === 'due' ? (
-          <View style={styles.doseStatusContainer}>
-            <View style={styles.doseStatusHeader}>
-              <Ionicons name="time" size={20} color="#FF6B6B" />
-              <Text style={styles.doseStatusText}>
-                {doseStatus.message}
-              </Text>
+        {/* Footer */}
+        <View style={styles.cardFooter}>
+          <View style={styles.footerItem}>
+            <View style={[styles.footerIconCircle, { backgroundColor: `${medicineRemainingInfo.color}15` }]}>
+              <Ionicons name={medicineRemainingInfo.icon} size={16} color={medicineRemainingInfo.color} />
             </View>
-            <TouchableOpacity 
-              style={[styles.takeButton, styles.takeButtonDue]} 
-              onPress={() => handleMarkAsTaken(medicine.id)}
-              accessibilityLabel={`Take ${medicine.name} now`}
-              accessibilityRole="button"
-            >
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.takeButtonText}>Take Now</Text>
-            </TouchableOpacity>
+            <Text style={[styles.footerText, { color: medicineRemainingInfo.color }]}>
+              {medicineRemainingInfo.text}
+            </Text>
           </View>
-        ) : doseStatus.type === 'available' ? (
-          <View style={styles.doseStatusContainer}>
-            <View style={styles.doseStatusHeader}>
-              <Ionicons name="time-outline" size={20} color={colors.primary} />
-              <Text style={styles.doseStatusText}>
-                {doseStatus.message}
-              </Text>
+          <View style={styles.footerDivider} />
+          <View style={styles.footerItem}>
+            <View style={[styles.footerIconCircle, { backgroundColor: `${colors.primary}15` }]}>
+              <Ionicons name="repeat" size={16} color={colors.primary} />
             </View>
-            <TouchableOpacity 
-              style={[styles.takeButton, styles.takeButtonAvailable]} 
-              onPress={() => handleMarkAsTaken(medicine.id)}
-              accessibilityLabel={`Take ${medicine.name} early`}
-              accessibilityRole="button"
-            >
-              <Ionicons name="medical" size={20} color="#fff" />
-              <Text style={styles.takeButtonText}>Take Early</Text>
-            </TouchableOpacity>
+            <Text style={styles.footerText}>
+              {medicine.times?.length || 0}x daily
+            </Text>
           </View>
-        ) : doseStatus.type === 'completed' ? (
-          <View style={styles.doseStatusContainer}>
-            <View style={styles.doseStatusHeader}>
-              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
-              <Text style={styles.doseStatusText}>{doseStatus.message}</Text>
-            </View>
-          </View>
-        ) : doseStatus.type === 'next' ? (
-          <View style={styles.doseStatusContainer}>
-            <View style={styles.doseStatusHeader}>
-              <Ionicons name="time-outline" size={20} color={colors.subtext} />
-              <Text style={styles.doseStatusText}>
-                {doseStatus.message}
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.doseStatusContainer}>
-            <View style={styles.doseStatusHeader}>
-              <Ionicons name="help-circle-outline" size={20} color={colors.subtext} />
-              <Text style={styles.doseStatusText}>{doseStatus.message}</Text>
-            </View>
-          </View>
-        )}
-      </View>
-
-      {/* Footer with medicine remaining and schedule info */}
-      <View style={styles.cardFooter}>
-        <View style={styles.footerLeft}>
-          <Ionicons name="medical-outline" size={16} color={medicineRemainingInfo.color} />
-          <Text style={[styles.footerText, { color: medicineRemainingInfo.color }]}>
-            {medicineRemainingInfo.text}
-          </Text>
-        </View>
-        <View style={styles.footerRight}>
-          <Ionicons name="time-outline" size={16} color={colors.subtext} />
-          <Text style={styles.footerText}>
-            {medicine.times?.length || 0} dose{(medicine.times?.length || 0) > 1 ? 's' : ''} daily
-          </Text>
         </View>
       </View>
-    </View>
+    </Animatable.View>
   );
 };
 
 export default function MedicinesTab({ route }) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const navigation = useNavigation();
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [medicineToDelete, setMedicineToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [requireConfirmTyping, setRequireConfirmTyping] = useState(true);
   const [confirmText, setConfirmText] = useState('');
   const [allMedicines, setAllMedicines] = useState([]);
   const [filteredMedicines, setFilteredMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Create styles early so they're available for all return statements
-  const styles = createStyles(colors);
-
+  const styles = createStyles(colors, theme);
   const searchQuery = route.params?.searchQuery || '';
   const isFocused = useIsFocused();
 
-  // Memoized filtered medicines for better performance
   const memoizedFilteredMedicines = useMemo(() => {
     if (searchQuery) {
       return allMedicines.filter(med =>
@@ -336,15 +338,14 @@ export default function MedicinesTab({ route }) {
     return () => unsubscribe();
   }, [isFocused]);
 
-  // Update filtered medicines when memoized value changes
   useEffect(() => {
     setFilteredMedicines(memoizedFilteredMedicines);
   }, [memoizedFilteredMedicines]);
 
   const handleDelete = useCallback((medicine) => {
-    // open confirm modal
     setMedicineToDelete(medicine);
     setDeleteModalVisible(true);
+    setConfirmText('');
   }, []);
 
   const confirmDelete = useCallback(async () => {
@@ -352,7 +353,6 @@ export default function MedicinesTab({ route }) {
     setIsDeleting(true);
     try {
       const medicine = medicineToDelete;
-      // Cancel notifications first
       if (medicine.notificationIds && medicine.notificationIds.length > 0) {
         for (const id of medicine.notificationIds) {
           try {
@@ -363,17 +363,16 @@ export default function MedicinesTab({ route }) {
         }
       }
 
-      // Also cancel any notifications managed by our NotificationManager
       try {
         await cancelMedicineNotifications(medicine.id);
       } catch (e) {
         console.warn('NotificationManager cancel failed', e);
       }
 
-      // Delete from database
       await deleteDoc(doc(db, "medicines", medicine.id));
       setDeleteModalVisible(false);
       setMedicineToDelete(null);
+      setConfirmText('');
     } catch (error) {
       console.error('Error deleting medicine:', error);
       Alert.alert('Error', 'Failed to delete medicine. Please try again.');
@@ -382,23 +381,39 @@ export default function MedicinesTab({ route }) {
     }
   }, [medicineToDelete]);
 
+  // Stats calculation
+  const stats = useMemo(() => {
+    const total = allMedicines.length;
+    const dueNow = allMedicines.filter(med => {
+      // Simple check - you can enhance this
+      return med.times && med.times.length > 0;
+    }).length;
+    const completed = allMedicines.filter(med => {
+      const taken = med.takenTimestamps?.length || 0;
+      const prescribed = med.quantity || 0;
+      return prescribed > 0 && taken >= prescribed;
+    }).length;
+
+    return { total, dueNow, completed };
+  }, [allMedicines]);
+
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading medicines...</Text>
+        <Text style={styles.loadingText}>Loading medicines...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
-        <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
-        <Text style={[styles.errorTitle, { color: colors.text }]}>Something went wrong</Text>
-        <Text style={[styles.errorMessage, { color: colors.subtext }]}>{error}</Text>
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle-outline" size={64} color="#e74c3c" />
+        <Text style={styles.errorTitle}>Something went wrong</Text>
+        <Text style={styles.errorMessage}>{error}</Text>
         <TouchableOpacity 
-          style={[styles.retryButton, { backgroundColor: colors.primary }]}
+          style={styles.retryButton}
           onPress={() => setError(null)}
         >
           <Text style={styles.retryButtonText}>Try Again</Text>
@@ -409,27 +424,60 @@ export default function MedicinesTab({ route }) {
 
   return (
     <View style={styles.container}>
+      {/* Stats Header */}
+      {!searchQuery && allMedicines.length > 0 && (
+        <Animatable.View animation="fadeInDown" duration={600} style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <View style={[styles.statIconCircle, { backgroundColor: `${colors.primary}20` }]}>
+              <Ionicons name="medical" size={20} color={colors.primary} />
+            </View>
+            <Text style={styles.statValue}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Active</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <View style={[styles.statIconCircle, { backgroundColor: '#fef3e2' }]}>
+              <Ionicons name="alarm" size={20} color="#f39c12" />
+            </View>
+            <Text style={styles.statValue}>{stats.dueNow}</Text>
+            <Text style={styles.statLabel}>Scheduled</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <View style={[styles.statIconCircle, { backgroundColor: '#e8f5e9' }]}>
+              <Ionicons name="checkmark-done" size={20} color="#27ae60" />
+            </View>
+            <Text style={styles.statValue}>{stats.completed}</Text>
+            <Text style={styles.statLabel}>Finished</Text>
+          </View>
+        </Animatable.View>
+      )}
+
       <FlatList
         data={filteredMedicines}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <MedicineDoseStatus medicine={item} handleDelete={handleDelete} />}
+        renderItem={({ item, index }) => (
+          <MedicineDoseStatus medicine={item} handleDelete={handleDelete} index={index} />
+        )}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="medical-outline" size={64} color={colors.subtext} />
+          <Animatable.View animation="fadeIn" duration={600} style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="medical-outline" size={50} color={colors.primary} />
+            </View>
             <Text style={styles.emptyTitle}>
               {searchQuery ? 'No results found' : 'No medicines added yet'}
             </Text>
             <Text style={styles.emptySubtitle}>
-              {searchQuery ? 'Try adjusting your search terms' : 'Add your first medicine to get started'}
+              {searchQuery ? 'Try adjusting your search terms' : 'Track your medications and never miss a dose'}
             </Text>
             <TouchableOpacity
               onPress={() => navigation.navigate('AddMedicine')}
-              style={[styles.emptyActionButton, { backgroundColor: colors.primary }]}
-              accessibilityRole="button"
+              style={styles.emptyActionButton}
             >
-              <Text style={[styles.emptyActionText]}>Add Medicine</Text>
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.emptyActionText}>Add Medicine</Text>
             </TouchableOpacity>
-          </View>
+          </Animatable.View>
         }
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
@@ -437,39 +485,46 @@ export default function MedicinesTab({ route }) {
         maxToRenderPerBatch={10}
         windowSize={10}
       />
-      {/* Delete confirmation modal */}
+
+      {/* Delete Modal */}
       <Modal
         visible={deleteModalVisible}
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (!isDeleting) setDeleteModalVisible(false);
+          if (!isDeleting) {
+            setDeleteModalVisible(false);
+            setConfirmText('');
+          }
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="warning-outline" size={48} color={colors.accent} />
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Delete Medicine</Text>
-            <Text style={[styles.modalMessage, { color: colors.subtext }]}>This will cancel all future reminders. This action cannot be undone.</Text>
+          <Animatable.View animation="zoomIn" duration={300} style={styles.modalContent}>
+            <View style={styles.modalIcon}>
+              <Ionicons name="warning" size={48} color="#e74c3c" />
+            </View>
+            <Text style={styles.modalTitle}>Delete Medicine</Text>
+            <Text style={styles.modalMessage}>
+              This will cancel all future reminders for <Text style={styles.modalMedicineName}>{medicineToDelete?.name}</Text>. This action cannot be undone.
+            </Text>
 
-            {/* Optional type-to-confirm flow */}
-            {requireConfirmTyping && (
-              <View style={{ width: '100%', marginTop: 12 }}>
-                <Text style={{ color: colors.subtext, marginBottom: 6, textAlign: 'center' }}>Type <Text style={{ fontWeight: '700' }}>DELETE</Text> to confirm</Text>
-                <TextInput
-                  placeholder="Type DELETE to confirm"
-                  placeholderTextColor={colors.subtext}
-                  value={confirmText}
-                  onChangeText={setConfirmText}
-                  style={[styles.confirmInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-                  autoCapitalize="characters"
-                />
-              </View>
-            )}
+            <View style={styles.confirmInputContainer}>
+              <Text style={styles.confirmLabel}>
+                Type <Text style={styles.confirmHighlight}>DELETE</Text> to confirm
+              </Text>
+              <TextInput
+                placeholder="DELETE"
+                placeholderTextColor={colors.subtext}
+                value={confirmText}
+                onChangeText={setConfirmText}
+                style={styles.confirmInput}
+                autoCapitalize="characters"
+              />
+            </View>
 
-            <View style={styles.modalButtonsRow}>
+            <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.background }]}
+                style={[styles.modalButton, styles.modalCancelButton]}
                 onPress={() => {
                   if (!isDeleting) {
                     setDeleteModalVisible(false);
@@ -478,25 +533,31 @@ export default function MedicinesTab({ route }) {
                 }}
                 disabled={isDeleting}
               >
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.accent, opacity: (isDeleting || (requireConfirmTyping && confirmText !== 'DELETE')) ? 0.6 : 1 }]}
+                style={[
+                  styles.modalButton, 
+                  styles.modalDeleteButton,
+                  (isDeleting || confirmText !== 'DELETE') && styles.modalButtonDisabled
+                ]}
                 onPress={confirmDelete}
-                disabled={isDeleting || (requireConfirmTyping && confirmText !== 'DELETE')}
+                disabled={isDeleting || confirmText !== 'DELETE'}
               >
-                <Text style={[styles.modalButtonText, { color: '#fff' }]}>{isDeleting ? 'Deleting...' : 'Delete'}</Text>
+                <Text style={styles.modalDeleteText}>
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animatable.View>
         </View>
       </Modal>
+
+      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('AddMedicine')}
         activeOpacity={0.8}
-        accessibilityLabel="Add new medicine"
-        accessibilityRole="button"
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
@@ -504,7 +565,7 @@ export default function MedicinesTab({ route }) {
   );
 }
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, theme) => StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: colors.background 
@@ -513,249 +574,409 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+    color: colors.subtext,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: colors.background,
   },
   errorTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
+    color: colors.text,
   },
   errorMessage: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: 'center',
     marginBottom: 24,
-    lineHeight: 24,
+    lineHeight: 22,
+    color: colors.subtext,
   },
   retryButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 8,
-    minWidth: 120,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
   },
   retryButtonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: '700',
   },
+
+  // Stats
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    padding: 12,
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: theme === 'dark' ? 0.3 : 0.06,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  statIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: colors.subtext,
+    fontWeight: '600',
+  },
+
+  // List
   listContainer: { 
     padding: 16,
-    paddingBottom: 80, // Extra space for FAB
+    paddingBottom: 100,
   },
-  fab: {
-    position: 'absolute',
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    right: 20,
-    bottom: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 28,
-    elevation: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: colors.subtext,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  emptyActionButton: {
-    marginTop: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    elevation: 2,
-  },
-  emptyActionText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  card: {
+
+  // Medicine Card
+  medicineCard: {
     backgroundColor: colors.card,
-    borderRadius: 20,
-    marginBottom: 16,
-    elevation: 3,
-    shadowColor: '#000',
+    borderRadius: 14,
+    marginBottom: 14,
+    overflow: 'hidden',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: theme === 'dark' ? 0.3 : 0.08,
     shadowRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
+    elevation: 4,
+  },
+  statusBar: {
+    height: 3,
+    width: '100%',
   },
   cardHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    alignItems: 'flex-start', 
-    padding: 16,
-    paddingBottom: 12,
+    alignItems: 'center', 
+    padding: 14,
+    paddingBottom: 10,
+  },
+  medicineHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  medicineIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   medicineInfo: {
     flex: 1,
-    marginRight: 12,
   },
   medicineName: { 
-    fontSize: 18, 
-    fontWeight: '700', 
+    fontSize: 17, 
+    fontWeight: '800', 
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   dosageText: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.subtext,
-    fontStyle: 'italic',
-  },
-  deleteButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.background,
-  },
-  cardBody: { 
-    paddingHorizontal: 16, 
-    paddingBottom: 16 
-  },
-  doseStatusContainer: {
-    alignItems: 'center',
-  },
-  doseStatusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 8,
-  },
-  doseStatusText: { 
-    fontSize: 16, 
-    color: colors.text, 
     fontWeight: '500',
   },
-  takeButton: { 
+  deleteButton: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: `${colors.background}80`,
+  },
+
+  // Status Section
+  statusSection: { 
+    paddingHorizontal: 14, 
+    paddingBottom: 14,
+    alignItems: 'center',
+  },
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    minWidth: width * 0.6,
+    gap: 6,
+    marginBottom: 12,
+  },
+  statusBadgeFullWidth: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  statusText: { 
+    fontSize: 15, 
+    fontWeight: '600',
+  },
+  actionButton: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
     gap: 8,
+    minWidth: width * 0.5,
+    justifyContent: 'center',
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  takeButtonDue: {
-    backgroundColor: '#FF6B6B',
+  actionButtonDue: {
+    backgroundColor: '#e74c3c',
   },
-  takeButtonAvailable: {
+  actionButtonAvailable: {
     backgroundColor: colors.primary,
   },
-  takeButtonText: { 
+  actionButtonText: { 
     color: '#fff', 
-    fontSize: 16, 
-    fontWeight: '600' 
+    fontSize: 15, 
+    fontWeight: '700' 
   },
+
+  // Footer
   cardFooter: { 
     flexDirection: 'row', 
-    justifyContent: 'space-between',
-    alignItems: 'center', 
-    padding: 16, 
-    borderTopWidth: 1, 
-    borderTopColor: colors.border,
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: colors.background,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
   },
-  footerLeft: {
+  footerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  footerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  footerText: { 
-    fontSize: 13, 
-    color: colors.subtext,
-    fontWeight: '500',
-  },
-  modalOverlay: {
+    gap: 8,
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  footerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+  },
+  footerDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: colors.border,
+    marginHorizontal: 8,
+  },
+  footerText: { 
+    fontSize: 12, 
+    color: colors.text,
+    fontWeight: '600',
+  },
+
+  // Empty State
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 32,
+  },
+  emptyIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: colors.subtext,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  emptyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  emptyActionText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 15,
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   modalContent: {
     width: '100%',
-    borderRadius: 16,
-    padding: 20,
+    maxWidth: 400,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 24,
     alignItems: 'center',
-    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#fee',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 12,
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 12,
   },
   modalMessage: {
-    fontSize: 14,
+    fontSize: 15,
     textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
+    lineHeight: 22,
+    color: colors.subtext,
+    marginBottom: 8,
   },
-  modalButtonsRow: {
-    flexDirection: 'row',
-    marginTop: 18,
+  modalMedicineName: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  confirmInputContainer: {
     width: '100%',
-    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  confirmLabel: {
+    fontSize: 14,
+    color: colors.subtext,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  confirmHighlight: {
+    fontWeight: '800',
+    color: '#e74c3c',
+  },
+  confirmInput: {
+    width: '100%',
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    color: colors.text,
+    backgroundColor: colors.background,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    marginHorizontal: 6,
-    borderRadius: 10,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalButtonText: {
+  modalCancelButton: {
+    backgroundColor: colors.background,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  modalDeleteButton: {
+    backgroundColor: '#e74c3c',
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalCancelText: {
     fontSize: 16,
     fontWeight: '700',
+    color: colors.text,
   },
-    confirmInput: {
-    width: '100%',
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    marginTop: 6,
+  modalDeleteText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    right: 20,
+    bottom: 20,
+    backgroundColor: colors.primary,
+    borderRadius: 30,
+    elevation: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
   },
 });

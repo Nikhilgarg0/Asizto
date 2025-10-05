@@ -1,4 +1,4 @@
-// ChatbotScreen.js — improved keyboard flush logic (uses screenY & small adjustment)
+// ChatbotScreen.js – Enhanced UI with click-to-show actions and animations
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -18,12 +18,14 @@ import {
   StatusBar,
   Keyboard,
   Dimensions,
+  Modal,
 } from 'react-native';
 
 let Clipboard = null;
 try { Clipboard = require('expo-clipboard'); } catch (e) { Clipboard = null; }
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { GEMINI_API_KEY } from '../apiKeys';
 import { db, auth } from '../firebaseConfig';
@@ -37,13 +39,6 @@ import {
 } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import Toast from 'react-native-toast-message';
-
-const INITIAL_MESSAGE = {
-  role: 'model',
-  content:
-    'Hello! I am Asizto. Ask me a health question and I will use your profile context to give a personalized response.\n\nDisclaimer: I am not a medical professional. Always consult a doctor for medical advice.\n',
-  timestamp: Date.now(),
-};
 
 const formatTimestamp = (ts) => {
   if (!ts) return '';
@@ -65,30 +60,85 @@ const dayString = (ts) => {
   return d.toDateString();
 };
 
+// Enhanced message component with animations
+const AnimatedMessage = ({ children, delay = 0 }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        delay,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        delay,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [
+          { translateY: slideAnim },
+          { scale: scaleAnim }
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+};
+
 const AnimatedChatMessage = ({ content, onComplete, msgId, colors }) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translate = useRef(new Animated.Value(8)).current;
+  const [displayedText, setDisplayedText] = useState('');
+  const [isAnimating, setIsAnimating] = useState(true);
 
   useEffect(() => {
     if (!content) {
-      opacity.setValue(1);
-      translate.setValue(0);
       onComplete?.(msgId);
       return;
     }
 
-    opacity.setValue(0);
-    translate.setValue(8);
-    Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.timing(translate, { toValue: 0, duration: 300, useNativeDriver: true }),
-    ]).start(() => onComplete?.(msgId));
-  }, [content, msgId, onComplete, opacity, translate]);
+    let index = 0;
+    const text = content;
+    const speed = 15; // milliseconds per character
+
+    const interval = setInterval(() => {
+      if (index < text.length) {
+        setDisplayedText(text.substring(0, index + 1));
+        index++;
+      } else {
+        clearInterval(interval);
+        setIsAnimating(false);
+        onComplete?.(msgId);
+      }
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [content, msgId, onComplete]);
 
   return (
-    <Animated.Text style={{ color: colors.text, opacity, transform: [{ translateY: translate }] }}>
-      {content}
-    </Animated.Text>
+    <Text style={{ color: colors.text }}>
+      {displayedText}
+      {isAnimating && <Text style={{ opacity: 0.5 }}>|</Text>}
+    </Text>
   );
 };
 
@@ -153,15 +203,18 @@ export default function ChatbotScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const windowHeight = Dimensions.get('window').height;
 
-  const [messages, setMessages] = useState([INITIAL_MESSAGE]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [inputHeight, setInputHeight] = useState(36);
+  const [inputHeight, setInputHeight] = useState(32);
   const [isLoading, setIsLoading] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeightRaw, setKeyboardHeightRaw] = useState(0); // raw from event
-  const [effectiveShift, setEffectiveShift] = useState(0); // numeric used by FlatList padding
+  const [keyboardHeightRaw, setKeyboardHeightRaw] = useState(0);
+  const [effectiveShift, setEffectiveShift] = useState(0);
+  const [showDisclaimer, setShowDisclaimer] = useState(true);
+  const [selectedMessageId, setSelectedMessageId] = useState(null);
+  
   const flatListRef = useRef(null);
-  const shiftAnim = useRef(new Animated.Value(0)).current; // animated for input move
+  const shiftAnim = useRef(new Animated.Value(0)).current;
   const scrollToEnd = useCallback(() => {
     if (flatListRef.current) {
       setTimeout(() => flatListRef.current.scrollToEnd({ animated: true }), 50);
@@ -172,30 +225,33 @@ export default function ChatbotScreen({ route, navigation }) {
   const focusAnim = useRef(new Animated.Value(0)).current;
   const sendScale = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => { try { if (INITIAL_MESSAGE?.timestamp) animatedMsgIdsRef.current.add(INITIAL_MESSAGE.timestamp); } catch (e) {} }, []);
-  useEffect(() => { if (route?.params?.messages) setMessages(route.params.messages); }, [route?.params?.messages]);
-  useEffect(() => { scrollToEnd(); }, [messages, scrollToEnd]);
+  useEffect(() => { 
+    if (route?.params?.messages) setMessages(route.params.messages); 
+  }, [route?.params?.messages]);
+  
+  useEffect(() => { 
+    scrollToEnd(); 
+  }, [messages, scrollToEnd]);
 
-  // ---------- Keyboard listeners: use screenY when available, subtract insets & small adjustment ----------
+  // Keyboard listeners
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-    const ADJUSTMENT = Platform.OS === 'android' ? 6 : 0; // small tuner; decrease if still gap, increase if overshoot
+    // Increased adjustment to prevent keyboard overlap
+    const ADJUSTMENT = Platform.OS === 'android' ? 0 : 0; // Removed negative adjustment
 
     const onShow = (e) => {
-      // prefer screenY if present (more accurate on some Android devices)
       const screenY = e?.endCoordinates?.screenY;
       const heightFromCoords = e?.endCoordinates?.height || 0;
       const rawHeight = screenY ? Math.max(0, Math.round(windowHeight - screenY)) : Math.max(0, Math.round(heightFromCoords));
       setKeyboardHeightRaw(rawHeight);
 
-      // compute a numeric effective shift for list padding and input movement:
-      // subtract bottom safe inset (home indicator) and small platform adjustment
-      const shiftNumeric = Math.max(0, rawHeight - insets.bottom - ADJUSTMENT);
+      // Add extra padding to ensure input stays above keyboard
+      const extraPadding = 8; // Additional safe space above keyboard
+      const shiftNumeric = Math.max(0, rawHeight - insets.bottom + extraPadding);
       setEffectiveShift(shiftNumeric);
 
-      // animate the input's margin smoothly; use event duration if available (iOS keyboardWillShow)
       const duration = (e && e.duration) ? e.duration : 200;
       Animated.timing(shiftAnim, {
         toValue: shiftNumeric,
@@ -204,8 +260,6 @@ export default function ChatbotScreen({ route, navigation }) {
       }).start();
 
       setKeyboardVisible(true);
-
-      // ensure messages scroll into view
       setTimeout(() => scrollToEnd(), 90);
     };
 
@@ -226,7 +280,7 @@ export default function ChatbotScreen({ route, navigation }) {
     };
   }, [insets.bottom, scrollToEnd, shiftAnim, windowHeight]);
 
-  // Hide parent tab bar while keyboard is visible (React Navigation)
+  // Hide parent tab bar while keyboard is visible
   useEffect(() => {
     try {
       const parent = navigation?.getParent?.();
@@ -245,7 +299,7 @@ export default function ChatbotScreen({ route, navigation }) {
     };
   }, [keyboardVisible, navigation]);
 
-  // ------------ helper functions --------------
+  // Fetch user context
   const fetchUserContext = async () => {
     if (!auth.currentUser) return '';
     try {
@@ -274,7 +328,8 @@ export default function ChatbotScreen({ route, navigation }) {
   };
 
   const handleNewChat = async () => {
-    setMessages([INITIAL_MESSAGE]);
+    setMessages([]);
+    setSelectedMessageId(null);
   };
 
   const handleSend = useCallback(async () => {
@@ -339,7 +394,13 @@ export default function ChatbotScreen({ route, navigation }) {
         return;
       }
       Toast.show({ type: 'success', text1: 'Copied', text2: 'Message copied to clipboard' });
-    } catch (e) { Toast.show({ type: 'error', text1: 'Copy failed' }); }
+    } catch (e) { 
+      Toast.show({ type: 'error', text1: 'Copy failed' }); 
+    }
+  };
+
+  const toggleMessageActions = (messageId) => {
+    setSelectedMessageId(selectedMessageId === messageId ? null : messageId);
   };
 
   const suggestedQuestions = useMemo(() => [
@@ -385,37 +446,91 @@ export default function ChatbotScreen({ route, navigation }) {
     }
   };
 
-  // ------------ layout constants using insets --------------
-  const INPUT_BASE_HEIGHT = 48; // minimal comfortable height
-  const inputReservedSpace = INPUT_BASE_HEIGHT + insets.bottom + 8; // used to pad list
+  const INPUT_BASE_HEIGHT = 36;
+  const inputReservedSpace = INPUT_BASE_HEIGHT + 8;
 
   const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: colors.background },
+    safeArea: { 
+      flex: 1, 
+      backgroundColor: colors.background 
+    },
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingTop: 8,
+      paddingBottom: 12,
+      backgroundColor: colors.background,
     },
-    headerLeft: { flexDirection: 'row', alignItems: 'center' },
-    logoCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 10, backgroundColor: colors.primary },
-    headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
-    divider: { height: 1, backgroundColor: colors.border },
-    messageList: { padding: 10, flexGrow: 1 },
-    messageRow: { marginBottom: 8, flexDirection: 'row', alignItems: 'flex-end' },
-    messageBubble: { padding: 12, borderRadius: 16, maxWidth: '78%', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
-    userBubble: { backgroundColor: colors.primary, alignSelf: 'flex-end', borderTopRightRadius: 4 },
-    botBubble: { backgroundColor: colors.card, alignSelf: 'flex-start', borderTopLeftRadius: 4 },
-    userText: { color: '#fff', lineHeight: 20 },
-    botText: { color: colors.text, lineHeight: 20 },
+    headerLeft: { 
+      flexDirection: 'row', 
+      alignItems: 'center' 
+    },
+    logoCircle: { 
+      width: 36, 
+      height: 36, 
+      borderRadius: 18, 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      marginRight: 10, 
+      backgroundColor: colors.primary 
+    },
+    headerTitle: { 
+      fontSize: 18, 
+      fontWeight: '700', 
+      color: colors.text 
+    },
+    divider: { 
+      height: 1, 
+      backgroundColor: colors.border 
+    },
+    messageList: { 
+      padding: 12, 
+      flexGrow: 1 
+    },
+    messageRow: { 
+      marginBottom: 12, 
+      flexDirection: 'row', 
+      alignItems: 'flex-end' 
+    },
+    messageBubble: { 
+      padding: 14, 
+      borderRadius: 18, 
+      maxWidth: '82%', 
+      shadowColor: '#000', 
+      shadowOffset: { width: 0, height: 1 }, 
+      shadowOpacity: 0.1, 
+      shadowRadius: 4, 
+      elevation: 2 
+    },
+    userBubble: { 
+      backgroundColor: colors.primary, 
+      alignSelf: 'flex-end', 
+      borderBottomRightRadius: 4 
+    },
+    botBubble: { 
+      backgroundColor: colors.card, 
+      alignSelf: 'flex-start', 
+      borderBottomLeftRadius: 4 
+    },
+    userText: { 
+      color: '#fff', 
+      lineHeight: 22,
+      fontSize: 15 
+    },
+    botText: { 
+      color: colors.text, 
+      lineHeight: 22,
+      fontSize: 15 
+    },
     inputOuter: {
-      paddingHorizontal: 8,
-      paddingVertical: 8,
-      borderTopWidth: 2,
+      paddingHorizontal: 10,
+      paddingTop: 10,
+      paddingBottom: 10,
+      borderTopWidth: 1,
       borderTopColor: colors.border,
       backgroundColor: colors.background,
-      paddingBottom: insets.bottom,
     },
     inputWrapper: {
       flexDirection: 'row',
@@ -424,35 +539,145 @@ export default function ChatbotScreen({ route, navigation }) {
     },
     inputContainer: {
       flex: 1,
-      minHeight: 36,
-      maxHeight: 140,
-      borderRadius: 20,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
+      minHeight: 28,
+      maxHeight: 110,
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
       justifyContent: 'center',
     },
-    input: { color: colors.text, fontSize: 15, lineHeight: 20, padding: 0, margin: 0, textAlignVertical: 'top' },
-    sendButton: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginLeft: 8, backgroundColor: colors.primary, elevation: 2 },
-    sendButtonDisabled: { opacity: 0.5 },
-    timestampText: { marginTop: 6, marginRight: 4, fontSize: 11, color: colors.subtext || '#888', alignSelf: 'center' },
-    avatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-    avatarText: { color: '#fff', fontWeight: '700' },
-    daySeparatorContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
-    daySeparatorText: { marginHorizontal: 8, fontSize: 12 },
-    daySeparatorLine: { flex: 1, height: 1 },
-    suggestionChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: colors.border, marginRight: 8, backgroundColor: colors.card },
-    emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-    emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 8 },
+    input: { 
+      color: colors.text, 
+      fontSize: 15, 
+      lineHeight: 20, 
+      padding: 0, 
+      margin: 0, 
+      textAlignVertical: 'top' 
+    },
+    sendButton: { 
+      width: 36, 
+      height: 36, 
+      borderRadius: 18, 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      marginLeft: 8, 
+      backgroundColor: colors.primary, 
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+    },
+    sendButtonDisabled: { 
+      opacity: 0.5 
+    },
+    timestampText: { 
+      fontSize: 11, 
+      color: colors.subtext || '#888',
+      marginRight: 8,
+    },
+    daySeparatorContainer: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      marginVertical: 12 
+    },
+    daySeparatorText: { 
+      marginHorizontal: 10, 
+      fontSize: 12,
+      color: colors.subtext,
+      fontWeight: '500'
+    },
+    daySeparatorLine: { 
+      flex: 1, 
+      height: 1 
+    },
+    suggestionChip: { 
+      paddingVertical: 8, 
+      paddingHorizontal: 14, 
+      borderRadius: 20, 
+      borderWidth: 1, 
+      borderColor: colors.border, 
+      marginRight: 8, 
+      backgroundColor: colors.card 
+    },
+    emptyState: { 
+      flex: 1, 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      padding: 24 
+    },
+    emptyTitle: { 
+      fontSize: 20, 
+      fontWeight: '700', 
+      color: colors.text, 
+      marginTop: 16,
+      textAlign: 'center'
+    },
+    messageActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 6,
+      justifyContent: 'flex-end',
+    },
+    copyIconButton: {
+      padding: 4,
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    disclaimerCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: 24,
+      width: '100%',
+      maxWidth: 400,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    disclaimerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    disclaimerTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    disclaimerContent: {
+      fontSize: 15,
+      lineHeight: 24,
+      color: colors.text,
+      marginBottom: 20,
+    },
+    disclaimerButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    disclaimerButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
-  // focus animation handlers
   const onFocusInput = () => {
     Animated.timing(focusAnim, { toValue: 1, duration: 220, useNativeDriver: false }).start();
     Animated.timing(sendScale, { toValue: 1.08, duration: 160, useNativeDriver: true }).start();
   };
+  
   const onBlurInput = () => {
     Animated.timing(focusAnim, { toValue: 0, duration: 220, useNativeDriver: false }).start();
     Animated.timing(sendScale, { toValue: 1, duration: 160, useNativeDriver: true }).start();
@@ -463,15 +688,15 @@ export default function ChatbotScreen({ route, navigation }) {
     borderColor: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [colors.border, colors.primary] }),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }) },
-    shadowOpacity: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.08] }),
+    shadowOpacity: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] }),
     shadowRadius: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
-    elevation: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 6] }),
+    elevation: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }),
   };
 
   const renderDaySeparator = (ts) => (
     <View style={styles.daySeparatorContainer}>
       <View style={[styles.daySeparatorLine, { backgroundColor: colors.border }]} />
-      <Text style={[styles.daySeparatorText, { color: colors.subtext }]}>{dayString(ts)}</Text>
+      <Text style={styles.daySeparatorText}>{dayString(ts)}</Text>
       <View style={[styles.daySeparatorLine, { backgroundColor: colors.border }]} />
     </View>
   );
@@ -480,75 +705,124 @@ export default function ChatbotScreen({ route, navigation }) {
     const isUser = item.role === 'user';
     const prev = messages[index - 1];
     const showDay = !prev || dayString(prev.timestamp) !== dayString(item.timestamp);
+    const isSelected = selectedMessageId === item.timestamp;
+    const isLastMessage = index === messages.length - 1;
+    const shouldAnimate = !animatedMsgIdsRef.current.has(item.timestamp);
 
     return (
       <View>
         {showDay && renderDaySeparator(item.timestamp)}
-        <TouchableOpacity
-          activeOpacity={0.95}
-          onLongPress={() => handleCopyMessage(item.content)}
-          style={[styles.messageRow, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}
-        >
-          {!isUser && (
-            <View style={[styles.avatar, { backgroundColor: colors.card }]}>
-              <Ionicons name="medkit-outline" size={18} color={colors.primary} />
-            </View>
-          )}
+        <AnimatedMessage delay={0}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => toggleMessageActions(item.timestamp)}
+            style={[styles.messageRow, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}
+          >
+            <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
+              {item.role === 'model' && isLastMessage && shouldAnimate ? (
+                <AnimatedChatMessage 
+                  content={item.content} 
+                  msgId={item.timestamp} 
+                  onComplete={() => { 
+                    try { 
+                      animatedMsgIdsRef.current.add(item.timestamp); 
+                    } catch(e){} 
+                  }} 
+                  colors={colors} 
+                />
+              ) : (
+                <View>
+                  {item.image ? (
+                    <Image 
+                      source={{ uri: item.image }} 
+                      style={{ width: 180, height: 120, borderRadius: 8, marginBottom: 8 }} 
+                    />
+                  ) : null}
+                  <Text style={isUser ? styles.userText : styles.botText}>{item.content}</Text>
+                </View>
+              )}
 
-          <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
-            {item.role === 'model' && index === messages.length - 1 && !animatedMsgIdsRef.current.has(item.timestamp) ? (
-              <AnimatedChatMessage content={item.content} msgId={item.timestamp} onComplete={() => { try { animatedMsgIdsRef.current.add(item.timestamp); } catch(e){} }} colors={colors} />
-            ) : (
-              <View>
-                {item.image ? (
-                  <Image source={{ uri: item.image }} style={{ width: 180, height: 120, borderRadius: 8, marginBottom: 8 }} />
-                ) : null}
-                <Text style={isUser ? styles.userText : styles.botText}>{item.content}</Text>
-              </View>
-            )}
-
-            <View style={{ flexDirection: 'row', justifyContent: isUser ? 'flex-end' : 'flex-start', marginTop: 8 }}>
-              <Text style={styles.timestampText}>{formatTimestamp(item.timestamp)}</Text>
-              {!isUser && (
-                <TouchableOpacity onPress={() => handleCopyMessage(item.content)} style={{ marginLeft: 8 }}>
-                  <Ionicons name="copy" size={16} color={colors.subtext || '#888'} />
-                </TouchableOpacity>
+              {isSelected && (
+                <View style={styles.messageActionsRow}>
+                  <Text style={styles.timestampText}>{formatTimestamp(item.timestamp)}</Text>
+                  {!isUser && (
+                    <TouchableOpacity 
+                      onPress={() => handleCopyMessage(item.content)} 
+                      style={styles.copyIconButton}
+                    >
+                      <Ionicons name="copy-outline" size={16} color={colors.subtext || '#888'} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
             </View>
-          </View>
-
-          {isUser && (
-            <View style={[styles.avatar, { backgroundColor: colors.primary, marginLeft: 8 }]}>
-              <Text style={styles.avatarText}>Y</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </AnimatedMessage>
       </View>
     );
   };
 
   const renderFooterSuggestions = () => (
-    <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
+    <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {suggestedQuestions.map((q, i) => (
-          <TouchableOpacity key={i} style={styles.suggestionChip} onPress={() => { setInput(q); }}>
-            <Text style={{ color: colors.text }}>{q}</Text>
+          <TouchableOpacity 
+            key={i} 
+            style={styles.suggestionChip} 
+            onPress={() => { setInput(q); }}
+          >
+            <Text style={{ color: colors.text, fontSize: 14 }}>{q}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
     </View>
   );
 
-  const isEmpty = messages.length === 0 || (messages.length === 1 && messages[0].content === INITIAL_MESSAGE.content);
+  const isEmpty = messages.length === 0;
 
-  // KeyboardAvoidingView behavior: enable only on iOS
   const kbBehavior = Platform.OS === 'ios' ? 'padding' : undefined;
   const HEADER_HEIGHT = 56;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <StatusBar barStyle="light-content" />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={kbBehavior} keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + HEADER_HEIGHT : 0}>
+      
+      {/* Disclaimer Modal */}
+      <Modal
+        visible={showDisclaimer}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDisclaimer(false)}
+      >
+        <BlurView intensity={90} tint="dark" style={styles.modalOverlay}>
+          <View style={styles.disclaimerCard}>
+            <View style={styles.disclaimerHeader}>
+              <Text style={styles.disclaimerTitle}>⚕️ Health Disclaimer</Text>
+              <TouchableOpacity onPress={() => setShowDisclaimer(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.disclaimerContent}>
+              Hello! I am Asizto, your AI health assistant. I use your profile information to provide personalized responses.{'\n\n'}
+              <Text style={{ fontWeight: '600' }}>Important:</Text> I am not a medical professional. Always consult a qualified healthcare provider for medical advice, diagnosis, or treatment.
+            </Text>
+
+            <TouchableOpacity 
+              style={styles.disclaimerButton}
+              onPress={() => setShowDisclaimer(false)}
+            >
+              <Text style={styles.disclaimerButtonText}>I Understand</Text>
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+      </Modal>
+
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={kbBehavior} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? HEADER_HEIGHT : 0}
+      >
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
@@ -557,17 +831,23 @@ export default function ChatbotScreen({ route, navigation }) {
             </View>
             <View>
               <Text style={styles.headerTitle}>Asizto AI</Text>
-              <Text style={{ color: colors.subtext, fontSize: 12 }}>Health assistant • Personalized</Text>
+              <Text style={{ color: colors.subtext, fontSize: 12 }}>
+                Health assistant • Personalized
+              </Text>
             </View>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={exportChat} style={{ marginRight: 12 }}>
-              <Ionicons name="download-outline" size={20} color={colors.text} />
+            <TouchableOpacity onPress={exportChat} style={{ marginRight: 16 }}>
+              <Ionicons 
+                name="share-outline" 
+                size={22} 
+                color={colors.text} 
+              />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={handleNewChat}>
-              <Ionicons name="add" size={24} color={colors.text} />
+              <Ionicons name="add-circle-outline" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -577,9 +857,11 @@ export default function ChatbotScreen({ route, navigation }) {
         {/* Messages */}
         {isEmpty ? (
           <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={48} color={colors.primary} />
-            <Text style={styles.emptyTitle}>Ask a health question to get started</Text>
-            <Text style={{ color: colors.subtext, marginTop: 8, textAlign: 'center' }}>Try: "What should I take for a sore throat?"</Text>
+            <Ionicons name="chatbubbles-outline" size={64} color={colors.primary} />
+            <Text style={styles.emptyTitle}>Ask me anything about your health</Text>
+            <Text style={{ color: colors.subtext, marginTop: 12, textAlign: 'center', fontSize: 14 }}>
+              I'll use your profile to give personalized advice
+            </Text>
           </View>
         ) : (
           <FlatList
@@ -588,38 +870,43 @@ export default function ChatbotScreen({ route, navigation }) {
             keyExtractor={(item, index) => (item.timestamp ? String(item.timestamp) : index.toString())}
             renderItem={renderMessage}
             style={{ flex: 1 }}
-            // paddingBottom ensures messages don't get hidden — uses numeric effectiveShift
             contentContainerStyle={[styles.messageList, { paddingBottom: inputReservedSpace + effectiveShift }]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            ListFooterComponent={() => isLoading ? (<View style={{ padding: 10 }}><TypingDots colors={colors} /></View>) : null}
+            ListFooterComponent={() => isLoading ? (
+              <View style={{ padding: 10, alignItems: 'flex-start' }}>
+                <TypingDots colors={colors} />
+              </View>
+            ) : null}
           />
         )}
 
-        {renderFooterSuggestions()}
+        {messages.length === 0 && renderFooterSuggestions()}
 
-        {/* Bottom input area: animated marginBottom driven by shiftAnim (animated) */}
+        {/* Input Area */}
         <Animated.View style={[styles.inputOuter, { marginBottom: shiftAnim }]}>
           <View style={styles.inputWrapper}>
             <Animated.View style={[styles.inputContainer, inputAnimatedStyle]}>
               <TextInput
-                style={[styles.input, { height: Math.max(36, inputHeight) }]}
+                style={[styles.input, { height: Math.max(28, inputHeight) }]}
                 value={input}
                 onChangeText={setInput}
-                placeholder="Ask a health question."
+                placeholder="Ask a health question..."
                 placeholderTextColor={colors.subtext || '#9AA0A6'}
                 multiline
                 onFocus={onFocusInput}
                 onBlur={onBlurInput}
-                onContentSizeChange={(e) => setInputHeight(Math.min(140, e.nativeEvent.contentSize.height))}
+                onContentSizeChange={(e) => setInputHeight(Math.min(110, e.nativeEvent.contentSize.height))}
                 accessibilityLabel="Chat input"
                 returnKeyType="send"
-                onSubmitEditing={() => { if (!isLoading && input.trim()) handleSend(); }}
+                onSubmitEditing={() => { 
+                  if (!isLoading && input.trim()) handleSend(); 
+                }}
                 showSoftInputOnFocus={true}
               />
             </Animated.View>
 
-            <Animated.View style={{ transform: [{ scale: sendScale }], opacity: input.trim().length > 0 ? 1 : 0.7 }}>
+            <Animated.View style={{ transform: [{ scale: sendScale }], opacity: input.trim().length > 0 ? 1 : 0.6 }}>
               <TouchableOpacity
                 style={[styles.sendButton, (isLoading || input.trim().length === 0) && styles.sendButtonDisabled]}
                 onPress={handleSend}
@@ -627,9 +914,9 @@ export default function ChatbotScreen({ route, navigation }) {
                 accessibilityLabel="Send message"
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Ionicons name="send" size={18} color="#fff" />
+                  <Ionicons name="send" size={20} color="#fff" />
                 )}
               </TouchableOpacity>
             </Animated.View>

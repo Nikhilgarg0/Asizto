@@ -1,4 +1,4 @@
-// EmergencyScreen.js
+// EmergencyScreen.js - Enhanced Version
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -32,10 +32,8 @@ import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import { useIsFocused } from '@react-navigation/native';
 
-// Keep only Ambulance & Women Helpline
-// Ambulance icon changed to a plus icon ('add' / '+')
 const emergencyServices = [
-  { name: 'Ambulance', number: '108', icon: 'add' },          // changed icon to '+'
+  { name: 'Ambulance', number: '108', icon: 'add' },
   { name: 'Women Helpline', number: '1091', icon: 'woman-outline' },
 ];
 
@@ -46,11 +44,19 @@ export default function EmergencyScreen({ navigation }) {
   const [banner, setBanner] = useState({ visible: false, text: '', type: 'info', action: null });
   const bannerTimeout = useRef(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [isLongPressing, setIsLongPressing] = useState(false);
 
+  // Animation references
   const ripple1 = useRef(new Animated.Value(0)).current;
   const ripple2 = useRef(new Animated.Value(0)).current;
+  const ripple3 = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
   const sosPulse = useRef(new Animated.Value(0)).current;
+  const longPressProgress = useRef(new Animated.Value(0)).current;
+  const headerFade = useRef(new Animated.Value(0)).current;
+  const cardSlide1 = useRef(new Animated.Value(50)).current;
+  const cardSlide2 = useRef(new Animated.Value(50)).current;
+  const sosGlow = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!auth.currentUser) {
@@ -72,10 +78,38 @@ export default function EmergencyScreen({ navigation }) {
 
   const isFocused = useIsFocused();
 
+  // Entrance animations
+  useEffect(() => {
+    if (!isFocused) return;
+
+    Animated.parallel([
+      Animated.timing(headerFade, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardSlide1, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardSlide2, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        delay: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isFocused]);
+
+  // Ripple animations
   useEffect(() => {
     if (!isFocused) {
       ripple1.setValue(0);
       ripple2.setValue(0);
+      ripple3.setValue(0);
       return;
     }
 
@@ -83,8 +117,8 @@ export default function EmergencyScreen({ navigation }) {
       Animated.sequence([
         Animated.timing(ripple1, {
           toValue: 1,
-          duration: 1600,
-          easing: Easing.out(Easing.quad),
+          duration: 2000,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(ripple1, { toValue: 0, duration: 0, useNativeDriver: true }),
@@ -93,36 +127,81 @@ export default function EmergencyScreen({ navigation }) {
 
     const loop2 = Animated.loop(
       Animated.sequence([
-        Animated.delay(700),
+        Animated.delay(600),
         Animated.timing(ripple2, {
           toValue: 1,
-          duration: 1600,
-          easing: Easing.out(Easing.quad),
+          duration: 2000,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(ripple2, { toValue: 0, duration: 0, useNativeDriver: true }),
       ])
     );
 
+    const loop3 = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1200),
+        Animated.timing(ripple3, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ripple3, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ])
+    );
+
     const pulseLoop = Animated.loop(
       Animated.sequence([
-        Animated.timing(sosPulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(sosPulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sosPulse, { 
+          toValue: 1, 
+          duration: 1200, 
+          easing: Easing.bezier(0.4, 0, 0.6, 1), 
+          useNativeDriver: true 
+        }),
+        Animated.timing(sosPulse, { 
+          toValue: 0, 
+          duration: 1200, 
+          easing: Easing.bezier(0.4, 0, 0.6, 1), 
+          useNativeDriver: true 
+        }),
+      ])
+    );
+
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sosGlow, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(sosGlow, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
       ])
     );
 
     loop1.start();
     loop2.start();
+    loop3.start();
     pulseLoop.start();
+    glowLoop.start();
 
     return () => {
       loop1.stop();
       loop2.stop();
+      loop3.stop();
       pulseLoop.stop();
+      glowLoop.stop();
       ripple1.setValue(0);
       ripple2.setValue(0);
+      ripple3.setValue(0);
     };
-  }, [isFocused, ripple1, ripple2, sosPulse]);
+  }, [isFocused, ripple1, ripple2, ripple3, sosPulse, sosGlow]);
 
   const handleDeletePersonalContact = (contactId) => {
     if (deleteConfirmId !== contactId) {
@@ -146,7 +225,6 @@ export default function EmergencyScreen({ navigation }) {
     );
   };
 
-  // helper to extract DOB (supports Firestore Timestamp or Date/string)
   const computeAgeFromDOB = (dob) => {
     if (!dob) return null;
     let d = dob;
@@ -165,13 +243,6 @@ export default function EmergencyScreen({ navigation }) {
     return age;
   };
 
-  /**
-   * handleLongPressSOS
-   * - Ensures we request/check location permissions safely (so we don't crash with "Not authorized" errors).
-   * - Attempts last known position first (wrapped in try/catch), falls back to current position with a short timeout.
-   * - If no location is available or permission denied, proceeds without location.
-   * - Builds a richer SOS message using profile fields (blood group, meds, allergies, age, phone, emergency contacts).
-   */
   const handleLongPressSOS = async () => {
     try {
       showBanner('Sending SOS...', 'info', null, 1200);
@@ -182,7 +253,6 @@ export default function EmergencyScreen({ navigation }) {
         return;
       }
 
-      // Safe location flow:
       let position = null;
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
@@ -194,7 +264,7 @@ export default function EmergencyScreen({ navigation }) {
             position = null;
           }
           const now = Date.now();
-          const freshEnough = position && position.timestamp && (now - position.timestamp) < 120000; // 2 minutes
+          const freshEnough = position && position.timestamp && (now - position.timestamp) < 120000;
           if (!freshEnough) {
             try {
               position = await Location.getCurrentPositionAsync({
@@ -215,7 +285,6 @@ export default function EmergencyScreen({ navigation }) {
         position = null;
       }
 
-      // Battery & user lookup
       const battery = await Battery.getBatteryLevelAsync().catch((e) => {
         console.warn('Battery read failed', e);
         return null;
@@ -229,14 +298,12 @@ export default function EmergencyScreen({ navigation }) {
         user.name ||
         (auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'User');
 
-      // Build location link only if we have valid coords
       const lat = position?.coords?.latitude;
       const lon = position?.coords?.longitude;
       const mapsUrl = (typeof lat === 'number' && typeof lon === 'number')
         ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
         : null;
 
-      // Collect emergency contacts summary (names + phones) for inclusion in message
       const emergencyContactList = contacts
         .map((c) => {
           if (!c.phone) return null;
@@ -245,12 +312,11 @@ export default function EmergencyScreen({ navigation }) {
           return `${nm}: ${p}`;
         })
         .filter(Boolean)
-        .slice(0, 5) // limit to first 5 to avoid massive messages
+        .slice(0, 5)
         .join('; ');
 
       const age = computeAgeFromDOB(user?.dob);
 
-      // Build message lines with extra patient info (only include if available)
       const msgLines = [
         `🚨 EMERGENCY SOS from ${name}${age ? ` (${age} yrs)` : ''}`,
         mapsUrl ? `📍 Location: ${mapsUrl}` : null,
@@ -275,7 +341,6 @@ export default function EmergencyScreen({ navigation }) {
         .filter(Boolean);
 
       if (recipients.length === 0) {
-        // No personal contacts — fallback to dialing 112 instantly
         try {
           Linking.openURL('tel:112');
           return;
@@ -288,9 +353,7 @@ export default function EmergencyScreen({ navigation }) {
         }
       }
 
-      // Send SMS via the device Messages app (opens composer)
       await SMS.sendSMSAsync(recipients, message);
-
       showBanner('Message prepared in Messages app.', 'success');
       Keyboard.dismiss();
     } catch (e) {
@@ -312,35 +375,80 @@ export default function EmergencyScreen({ navigation }) {
   }, []);
 
   const onPressIn = () => {
-    Animated.spring(pressScale, {
-      toValue: 0.96,
-      useNativeDriver: true,
-    }).start();
+    setIsLongPressing(true);
+    Animated.parallel([
+      Animated.spring(pressScale, {
+        toValue: 0.92,
+        useNativeDriver: true,
+      }),
+      Animated.timing(longPressProgress, {
+        toValue: 1,
+        duration: 1000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
+
   const onPressOut = () => {
-    Animated.spring(pressScale, {
-      toValue: 1,
-      friction: 5,
-      useNativeDriver: true,
-    }).start();
+    setIsLongPressing(false);
+    Animated.parallel([
+      Animated.spring(pressScale, {
+        toValue: 1,
+        friction: 5,
+        useNativeDriver: true,
+      }),
+      Animated.timing(longPressProgress, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
 
   const rippleCommon = {
     position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+    borderRadius: 120,
     backgroundColor: colors.primary,
   };
+
   const ripple1Style = {
     ...rippleCommon,
-    opacity: ripple1.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0] }),
-    transform: [{ scale: ripple1.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+    width: 240,
+    height: 240,
+    opacity: ripple1.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }),
+    transform: [{ scale: ripple1.interpolate({ inputRange: [0, 1], outputRange: [1, 2.2] }) }],
   };
+
   const ripple2Style = {
     ...rippleCommon,
-    opacity: ripple2.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0] }),
-    transform: [{ scale: ripple2.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
+    width: 240,
+    height: 240,
+    opacity: ripple2.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0] }),
+    transform: [{ scale: ripple2.interpolate({ inputRange: [0, 1], outputRange: [1, 2.5] }) }],
+  };
+
+  const ripple3Style = {
+    ...rippleCommon,
+    width: 240,
+    height: 240,
+    opacity: ripple3.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0] }),
+    transform: [{ scale: ripple3.interpolate({ inputRange: [0, 1], outputRange: [1, 2.8] }) }],
+  };
+
+  const progressRingStyle = {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 4,
+    borderColor: '#ffffff',
+    opacity: longPressProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+    transform: [
+      { 
+        scale: longPressProgress.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.05] }) 
+      },
+    ],
   };
 
   if (loading) {
@@ -354,71 +462,138 @@ export default function EmergencyScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 220 }]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Dial Services</Text>
+        <Animated.View style={{ opacity: headerFade }}>
+          <Text style={[styles.mainTitle, { color: colors.text }]}>Emergency</Text>
+          <Text style={[styles.subtitle, { color: colors.subtext }]}>
+            Quick access to emergency services
+          </Text>
+        </Animated.View>
 
-        <View style={styles.quickRow}>
-          {emergencyServices.map((s) => (
-            <TouchableOpacity
-              key={s.name}
-              style={[styles.quickCard, { backgroundColor: colors.card }]}
-              onPress={() => handleQuickDial(s.number)}
-              activeOpacity={0.85}
-            >
-              <Ionicons name={s.icon} size={30} color={colors.primary} />
-              <Text style={[styles.quickName, { color: colors.text }]}>{s.name}</Text>
-              <Text style={[styles.quickNumber, { color: colors.subtext }]}>{s.number}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={[styles.contactsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.contactsHeader}>
-            <Text style={[styles.contactsTitle, { color: colors.text }]}>Your Contacts</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('EmergencyContact')}>
-              <Ionicons name="add-circle" size={28} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-
-          {contacts.length === 0 ? (
-            <View style={{ alignItems: 'center', paddingVertical: 18 }}>
-              <Text style={[styles.emptyText, { color: colors.subtext }]}>No personal contacts added yet.</Text>
-              <Text style={[styles.emptySubtitle, { color: colors.subtext, marginTop: 6 }]}>No contacts saved..... Call 112</Text>
+        <Animated.View 
+          style={{ 
+            opacity: headerFade,
+            transform: [{ translateY: cardSlide1 }] 
+          }}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Dial</Text>
+          <View style={styles.quickRow}>
+            {emergencyServices.map((s) => (
               <TouchableOpacity
-                style={[styles.addContactButton, { backgroundColor: colors.primary, marginTop: 14 }]}
-                onPress={() => navigation.navigate('EmergencyContact')}
-                accessibilityRole="button"
+                key={s.name}
+                style={[
+                  styles.quickCard, 
+                  { 
+                    backgroundColor: colors.card,
+                    shadowColor: colors.primary,
+                  }
+                ]}
+                onPress={() => handleQuickDial(s.number)}
+                activeOpacity={0.7}
               >
-                <Text style={styles.addContactText}>Add Contact</Text>
+                <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}15` }]}>
+                  <Ionicons name={s.icon} size={28} color={colors.primary} />
+                </View>
+                <Text style={[styles.quickName, { color: colors.text }]}>{s.name}</Text>
+                <View style={[styles.numberBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.quickNumber}>{s.number}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
+        <Animated.View 
+          style={{ 
+            opacity: headerFade,
+            transform: [{ translateY: cardSlide2 }] 
+          }}
+        >
+          <View style={[styles.contactsCard, { backgroundColor: colors.card }]}>
+            <View style={styles.contactsHeader}>
+              <View>
+                <Text style={[styles.contactsTitle, { color: colors.text }]}>
+                  Personal Contacts
+                </Text>
+                <Text style={[styles.contactsSubtitle, { color: colors.subtext }]}>
+                  {contacts.length} contact{contacts.length !== 1 ? 's' : ''} added
+                </Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => navigation.navigate('EmergencyContact')}
+                style={[styles.addButton, { backgroundColor: `${colors.primary}15` }]}
+              >
+                <Ionicons name="add" size={24} color={colors.primary} />
               </TouchableOpacity>
             </View>
-          ) : (
-            <FlatList
-              data={contacts}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: colors.border }]} />}
-              renderItem={({ item }) => (
-                <View style={styles.contactRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.contactName, { color: colors.text }]}>{item.name}</Text>
-                    <Text style={[styles.contactPhone, { color: colors.subtext }]}>{item.phone}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => handleDeletePersonalContact(item.id)}>
-                    <Ionicons name="trash-outline" size={22} color="#E57373" />
-                  </TouchableOpacity>
+
+            {contacts.length === 0 ? (
+              <View style={styles.emptyState}>
+                <View style={[styles.emptyIcon, { backgroundColor: `${colors.primary}10` }]}>
+                  <Ionicons name="people-outline" size={48} color={colors.primary} />
                 </View>
-              )}
-            />
-          )}
+                <Text style={[styles.emptyText, { color: colors.text }]}>
+                  No contacts yet
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: colors.subtext }]}>
+                  Add emergency contacts to use the SOS feature
+                </Text>
+                <TouchableOpacity
+                  style={[styles.addContactButton, { backgroundColor: colors.primary }]}
+                  onPress={() => navigation.navigate('EmergencyContact')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.addContactText}>Add Contact</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={contacts}
+                keyExtractor={(item) => item.id}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: colors.border }]} />}
+                renderItem={({ item }) => (
+                  <View style={styles.contactRow}>
+                    <View style={[styles.contactAvatar, { backgroundColor: `${colors.primary}20` }]}>
+                      <Ionicons name="person" size={20} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.contactName, { color: colors.text }]}>{item.name}</Text>
+                      <Text style={[styles.contactPhone, { color: colors.subtext }]}>{item.phone}</Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={() => handleDeletePersonalContact(item.id)}
+                      style={styles.deleteButton}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons 
+                        name={deleteConfirmId === item.id ? "trash" : "trash-outline"} 
+                        size={22} 
+                        color="#E57373" 
+                      />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            )}
+          </View>
+        </Animated.View>
+
+        <View style={styles.infoCard}>
+          <Ionicons name="information-circle" size={18} color={colors.primary} />
+          <Text style={[styles.infoText, { color: colors.subtext }]}>
+            Hold the SOS button for 1 second
+          </Text>
         </View>
       </ScrollView>
 
       <View style={styles.sosAbsoluteWrap}>
         <Animated.View pointerEvents="none" style={ripple1Style} />
         <Animated.View pointerEvents="none" style={ripple2Style} />
+        <Animated.View pointerEvents="none" style={ripple3Style} />
 
         <Pressable
           onPressIn={onPressIn}
@@ -427,24 +602,47 @@ export default function EmergencyScreen({ navigation }) {
           delayLongPress={1000}
           disabled={false}
         >
+          <Animated.View pointerEvents="none" style={progressRingStyle} />
+          
           <Animated.View
             style={[
               styles.sosButton,
               {
+                backgroundColor: colors.primary,
                 shadowColor: colors.primary,
                 transform: [{ scale: pressScale }],
-                opacity: contacts.length === 0 ? 0.95 : 1,
-                backgroundColor: colors.primary,
               },
             ]}
           >
-            <Ionicons name="warning" size={46} color="#fff" />
-            <Animated.Text style={[styles.sosText, { opacity: sosPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] }) }]}>
-              HOLD FOR SOS
+            <Animated.View
+              style={{
+                opacity: sosGlow.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] }),
+              }}
+            >
+              <Ionicons name="warning" size={52} color="#fff" />
+            </Animated.View>
+            <Animated.Text 
+              style={[
+                styles.sosText, 
+                { 
+                  opacity: sosPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.5] }),
+                  transform: [{
+                    scale: sosPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] })
+                  }]
+                }
+              ]}
+            >
+              {isLongPressing ? 'SENDING...' : 'HOLD FOR SOS'}
             </Animated.Text>
           </Animated.View>
         </Pressable>
       </View>
+
+      {banner.visible && (
+        <View style={[styles.banner, { backgroundColor: colors.card }]}>
+          <Text style={[styles.bannerText, { color: colors.text }]}>{banner.text}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -452,79 +650,234 @@ export default function EmergencyScreen({ navigation }) {
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 0 },
+  scrollContent: { 
+    paddingHorizontal: 18, 
+    paddingTop: 16,
+    paddingBottom: 160, // Reduced to allow overlap
+  },
+
+  mainTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 14,
+    marginBottom: 20,
+    opacity: 0.7,
+  },
 
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginTop: 20,
+    fontSize: 17,
+    fontWeight: '700',
     marginBottom: 10,
-    paddingHorizontal: 12,
+    letterSpacing: -0.3,
   },
 
-  quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 },
+  quickRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginBottom: 18,
+    gap: 10,
+  },
   quickCard: {
     flex: 1,
-    marginHorizontal: 6,
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 18,
+    paddingVertical: 20,
     paddingHorizontal: 12,
     alignItems: 'center',
-    elevation: 2,
+    elevation: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
-  quickName: { marginTop: 8, fontSize: 15, fontWeight: '600' },
-  quickNumber: { marginTop: 4, fontSize: 13 },
+  iconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  quickName: { 
+    marginTop: 6, 
+    fontSize: 14, 
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  numberBadge: {
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  quickNumber: { 
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
 
   contactsCard: {
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    elevation: 1,
+    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
   contactsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 14,
   },
-  contactsTitle: { fontSize: 16, fontWeight: '700' },
+  contactsTitle: { 
+    fontSize: 17, 
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  contactsSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
-  contactName: { fontSize: 15, fontWeight: '600' },
-  contactPhone: { marginTop: 4, fontSize: 13 },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  contactName: { 
+    fontSize: 15, 
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  contactPhone: { 
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  deleteButton: {
+    padding: 6,
+  },
 
-  sep: { height: StyleSheet.hairlineWidth, width: '100%' },
+  sep: { height: 1, width: '100%', marginVertical: 3 },
 
-  emptyText: { textAlign: 'center', paddingVertical: 16 },
-  emptySubtitle: { textAlign: 'center', fontSize: 14 },
-  addContactButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, elevation: 2 },
-  addContactText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  hintText: { textAlign: 'center', marginTop: 8, fontWeight: '700' },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 28,
+  },
+  emptyIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyText: { 
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptySubtitle: { 
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 18,
+    paddingHorizontal: 16,
+    lineHeight: 18,
+  },
+  addContactButton: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 22, 
+    paddingVertical: 11, 
+    borderRadius: 14,
+    elevation: 2,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  addContactText: { 
+    color: '#fff', 
+    fontWeight: '700', 
+    fontSize: 15,
+  },
+
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+  },
 
   sosAbsoluteWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 28,
+    bottom: 32,
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'box-none',
   },
 
   sosButton: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 12,
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
+    elevation: 16,
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
   },
-  sosText: { color: '#fff', marginTop: 8, fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  sosText: { 
+    color: '#fff', 
+    marginTop: 10, 
+    fontSize: 13, 
+    fontWeight: '900', 
+    letterSpacing: 1.2,
+  },
+
+  banner: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    padding: 16,
+    borderRadius: 12,
+    elevation: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  bannerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
 });
