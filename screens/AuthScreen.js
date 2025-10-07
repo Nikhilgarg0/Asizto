@@ -3,9 +3,10 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Pressable, ScrollView, Image,
   Platform, ActivityIndicator, Animated, Easing, UIManager, LayoutAnimation,
-  SafeAreaView, KeyboardAvoidingView, useColorScheme, useWindowDimensions
+  SafeAreaView, KeyboardAvoidingView, useColorScheme, useWindowDimensions, Linking
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Animatable from 'react-native-animatable';
@@ -17,6 +18,7 @@ import {
   fetchSignInMethodsForEmail,
 } from 'firebase/auth';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { sendOTP, verifyOTP, clearOTP, hasValidOTP } from '../services/emailService';
 
 let Haptics = null;
 try { Haptics = require('expo-haptics'); } catch (e) { Haptics = null; }
@@ -192,7 +194,6 @@ const WaveLayer = ({ width, height, color, top, duration = 15000, delay = 0 }) =
   );
 };
 
-// Updated Progress Bar - Horizontal Only
 const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
   const progress = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -223,21 +224,73 @@ const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
     outputRange: [0.3, 0.8],
   });
 
+  const progressStyles = StyleSheet.create({
+    progressContainer: {
+      marginBottom: 20,
+      marginTop: 8,
+    },
+    progressBarBackground: {
+      height: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 10,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      borderRadius: 10,
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    progressGlow: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#6DBF6A',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.6,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+    },
+    progressSteps: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 12,
+      paddingHorizontal: 4,
+    },
+    progressDot: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      borderWidth: 2,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    progressDotActive: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#6DBF6A',
+    },
+    progressDotCurrent: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#8AF3C5',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 4,
+    },
+    progressText: {
+      textAlign: 'center',
+      marginTop: 8,
+      fontSize: 12,
+      fontWeight: '600',
+      color: isDark ? '#9FB3C8' : '#6B7280',
+    },
+  });
+
   return (
-    <View style={{ marginBottom: 16, marginTop: 8 }}>
-      <View style={{
-        height: 8,
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)',
-        borderRadius: 10,
-        overflow: 'hidden',
-      }}>
-        <Animated.View style={{
-          height: '100%',
-          borderRadius: 10,
-          width: progressWidth,
-          position: 'relative',
-          overflow: 'hidden',
-        }}>
+    <View style={progressStyles.progressContainer}>
+      <View style={progressStyles.progressBarBackground}>
+        <Animated.View style={[progressStyles.progressBarFill, { width: progressWidth }]}>
           <LinearGradient
             colors={['#8AF3C5', '#6DBF6A', '#5DA860']}
             start={{ x: 0, y: 0 }}
@@ -245,14 +298,15 @@ const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
             style={StyleSheet.absoluteFill}
           />
           <Animated.View 
-            style={{
-              ...StyleSheet.absoluteFillObject,
-              backgroundColor: '#6DBF6A',
-              opacity: glowOpacity,
-            }} 
+            style={[
+              progressStyles.progressGlow, 
+              { opacity: glowOpacity }
+            ]} 
           />
         </Animated.View>
       </View>
+      {/* Steps removed for cleaner compact UI */}
+      <Text style={progressStyles.progressText}>Step {currentStep} of {totalSteps}</Text>
     </View>
   );
 };
@@ -297,15 +351,32 @@ export default function AuthScreen() {
 
   const CARD_MAX_WIDTH = 680;
   const cardWidth = Math.min(CARD_MAX_WIDTH, Math.round(width * 0.94));
-  const cardMinHeight = Math.max(360, Math.round(height * 0.36));
-  const cardMaxHeight = Math.min(820, Math.round(height * 0.82));
+  const cardMinHeight = Math.max(360, Math.round(height * 0.34));
+  const cardMaxHeight = Math.min(820, Math.round(height * 0.86));
+  const cardShiftY = Math.round(Math.max(6, Math.min(12, height * 0.045)));
 
   const [isLoginView, setIsLoginView] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loginStep, setLoginStep] = useState('credentials'); // 'credentials' | 'otp'
+  const [otp, setOtp] = useState('');
+  const [loginOtpDigits, setLoginOtpDigits] = useState(['', '', '', '', '', '']);
+  const loginOtpRefs = useRef([null, null, null, null, null, null]);
+  const [otpInfoText, setOtpInfoText] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const resendTimerRef = useRef(null);
+  // Signup OTP state
   const [signupStep, setSignupStep] = useState(1);
+  const [signupOtpDigits, setSignupOtpDigits] = useState(['', '', '', '', '', '']);
+  const signupOtpRefs = useRef([null, null, null, null, null, null]);
+  const [signupOtpInfoText, setSignupOtpInfoText] = useState('');
+  const [isSendingSignupOtp, setIsSendingSignupOtp] = useState(false);
+  const [signupResendCooldown, setSignupResendCooldown] = useState(0);
+  const signupResendTimerRef = useRef(null);
+  
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -322,11 +393,7 @@ export default function AuthScreen() {
   const [smokingFreq, setSmokingFreq] = useState('');
   const [drinkingFreq, setDrinkingFreq] = useState('');
   const glassEnabled = true;
-
-  // Avatar carousel state
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const avatarScrollRef = useRef(null);
-  const [activeAvatarIndex, setActiveAvatarIndex] = useState(0);
+  const [phoneDigits, setPhoneDigits] = useState('');
 
   const avatarKeys = useMemo(() => {
     if (gender === 'male') return AVATAR_KEYS.male;
@@ -339,15 +406,14 @@ export default function AuthScreen() {
   const [successText, setSuccessText] = useState('');
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [isEmailRegistered, setIsEmailRegistered] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
   const [showBloodList, setShowBloodList] = useState(false);
   const emailCheckTimeout = useRef(null);
 
-  // Slide animation for transitions
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     setErrorText(''); setSuccessText(''); setFieldErrors({});
+    setLoginStep('credentials'); setOtp(''); setResendCooldown(0);
   }, [isLoginView]);
 
   useEffect(() => {
@@ -397,8 +463,8 @@ export default function AuthScreen() {
   const validateStep2 = () => {
     const errs = {};
     if (!dob) errs.dob = 'Date of birth is required.';
-    if (!phone.trim()) errs.phone = 'Contact number is required.';
-    else if (!/^[0-9]{10,15}$/.test(phone.trim())) errs.phone = 'Enter a valid phone number (10–15 digits).';
+    if (!phoneDigits.trim()) errs.phone = 'Contact number is required.';
+    else if (!/^[0-9]{10}$/.test(phoneDigits.trim())) errs.phone = 'Enter a valid 10-digit phone number.';
     if (!gender) errs.gender = 'Gender is required.';
     setFieldErrors(prev => ({ ...prev, ...errs }));
     return Object.keys(errs).length === 0;
@@ -415,35 +481,170 @@ export default function AuthScreen() {
     return 'Weak';
   };
 
+  const contentHeightAnim = useRef(new Animated.Value(Math.max(cardMinHeight, 420))).current;
+  const lastMeasuredHeight = useRef(null);
+  const contentMeasureTimeout = useRef(null);
+
+  const handleContentLayout = (event) => {
+    const measured = Math.round(event.nativeEvent.layout.height);
+    const buffer = 64;
+    const desired = Math.max(cardMinHeight, Math.min(cardMaxHeight, measured + buffer));
+    if (lastMeasuredHeight.current === desired) return;
+    lastMeasuredHeight.current = desired;
+
+    if (contentMeasureTimeout.current) clearTimeout(contentMeasureTimeout.current);
+    contentMeasureTimeout.current = setTimeout(() => {
+      Animated.timing(contentHeightAnim, {
+        toValue: desired,
+        duration: 360,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }, 40);
+  };
+
+  useEffect(() => { return () => { if (contentMeasureTimeout.current) clearTimeout(contentMeasureTimeout.current); }; }, []);
+  useEffect(() => { return () => { if (signupResendTimerRef.current) clearInterval(signupResendTimerRef.current); }; }, []);
+  const lastToastRef = useRef({ msg: '', time: 0 });
+  const showToast = (type, message) => {
+    if (!message) return;
+    const now = Date.now();
+    if (message === lastToastRef.current.msg && now - lastToastRef.current.time < 2000) return;
+    lastToastRef.current = { msg: message, time: now };
+    Toast.show({ type: type, text1: message, position: 'top', visibilityTime: 2000, topOffset: 50 });
+  };
+
+  useEffect(() => {
+    if (!errorText) return;
+    const t = setTimeout(() => setErrorText(''), 3000);
+    return () => clearTimeout(t);
+  }, [errorText]);
+
   const handleLogin = async () => {
     setErrorText(''); setSuccessText('');
-    if (!email.trim() || !password) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !password) {
       setErrorText('Email and password are required for login.');
       return;
     }
+    // Step 1: verify credentials first
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
-      setSuccessText('Login successful.');
+      await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      // If credentials are valid, proceed to OTP step
+      setIsLoading(false);
+      await handleSendOtp(trimmedEmail);
+      setLoginStep('otp');
+      try { Toast.show({ type: 'success', text1: 'Verification code sent to your email.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
     } catch (e) {
       const friendly = getAuthErrorMessage(e, 'login') || '';
       const code = e?.code || '';
       if (code === 'auth/wrong-password') setFieldErrors(prev => ({ ...prev, password: 'Incorrect password.' }));
       if (code === 'auth/invalid-email' || code === 'auth/user-not-found') setFieldErrors(prev => ({ ...prev, email: friendly }));
       setErrorText(friendly);
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendOtp = async (emailToSend) => {
+    if (resendCooldown > 0) return;
+    setIsSendingOtp(true);
+    try {
+      const displayName = firstName?.trim() || 'User';
+      const result = await sendOTP(emailToSend, displayName);
+      if (result?.success) {
+        setOtpInfoText('Enter the 6-digit code sent to your email.');
+        setResendCooldown(30);
+        try { Toast.show({ type: 'success', text1: 'OTP sent successfully.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+        if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+        resendTimerRef.current = setInterval(() => {
+          setResendCooldown(prev => {
+            if (prev <= 1) {
+              clearInterval(resendTimerRef.current);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        try { Toast.show({ type: 'error', text1: result?.error || 'Failed to send OTP.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+      }
+    } catch (err) {
+      try { Toast.show({ type: 'error', text1: 'Failed to send OTP. Please try again.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleSendSignupOtp = async (emailToSend) => {
+    if (signupResendCooldown > 0) return;
+    setIsSendingSignupOtp(true);
+    try {
+      const displayName = firstName?.trim() || 'User';
+      const result = await sendOTP(emailToSend, displayName);
+      if (result?.success) {
+        setSignupOtpInfoText('Enter the 6-digit code sent to your email.');
+        try { Toast.show({ type: 'success', text1: 'Verification code sent to your email.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+        setSignupResendCooldown(30);
+        if (signupResendTimerRef.current) clearInterval(signupResendTimerRef.current);
+        signupResendTimerRef.current = setInterval(() => {
+          setSignupResendCooldown(prev => {
+            if (prev <= 1) {
+              clearInterval(signupResendTimerRef.current);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        try { Toast.show({ type: 'error', text1: result?.error || 'Failed to send OTP.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+      }
+    } catch (err) {
+      try { Toast.show({ type: 'error', text1: 'Failed to send OTP. Please try again.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+    } finally {
+      setIsSendingSignupOtp(false);
+    }
+  };
+
+  const handleVerifyOtpAndFinishLogin = async () => {
+    setErrorText('');
+    const codeToCheck = (loginOtpDigits.join('') || otp).replace(/\D/g, '');
+    if (!codeToCheck || codeToCheck.length < 6) {
+      setFieldErrors(prev => ({ ...prev, otp: 'Enter the 6-digit code.' }));
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await verifyOTP(email.trim().toLowerCase(), codeToCheck.slice(0,6));
+      if (res.success) {
+        try { Toast.show({ type: 'success', text1: 'Login successful.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+        setLoginStep('credentials');
+        setOtp('');
+        setLoginOtpDigits(['','','','','','']);
+      } else {
+        try { Toast.show({ type: 'error', text1: res.error || 'Invalid code.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
+      }
+    } catch (err) {
+      try { Toast.show({ type: 'error', text1: 'Verification failed. Please try again.', position: 'top', visibilityTime: 2000, topOffset: 50 }); } catch(e) {}
     } finally {
       setIsLoading(false);
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (resendTimerRef.current) clearInterval(resendTimerRef.current);
+    };
+  }, []);
+
   const handleSignUpFinal = async () => {
     setErrorText(''); setSuccessText('');
     const ok1 = validateStep1();
     const ok2 = validateStep2();
-    if (!ok1) { animateToStep(1); return; }
-    if (!ok2) { animateToStep(2); return; }
-    if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); animateToStep(5); return; }
-    if (!bloodGroup) { setFieldErrors(prev => ({ ...prev, bloodGroup: 'Please select blood group.' })); animateToStep(3); return; }
+    if (!ok1) { setSignupStep(1); return; }
+    if (!ok2) { setSignupStep(2); return; }
+    if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); setSignupStep(5); return; }
+    if (!bloodGroup) { setFieldErrors(prev => ({ ...prev, bloodGroup: 'Please select blood group.' })); setSignupStep(3); return; }
 
     setIsLoading(true);
     try {
@@ -454,7 +655,7 @@ export default function AuthScreen() {
         email: user.email,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        phone: phone.trim(),
+        phone: phoneDigits ? `+91${phoneDigits.trim()}` : null,
         dob: dob ? Timestamp.fromDate(dob) : null,
         gender,
         height: heightVal ? Number(heightVal) : null,
@@ -486,42 +687,20 @@ export default function AuthScreen() {
     }
   };
 
-  // Smooth slide transition animation - improved
-  const animateToStep = (newStep) => {
-    const direction = newStep > signupStep ? 1 : -1;
-    
-    Animated.timing(slideAnim, {
-      toValue: direction * -30,
-      duration: 150,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: true,
-    }).start(() => {
-      setSignupStep(newStep);
-      slideAnim.setValue(direction * 30);
-      
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        tension: 65,
-        friction: 10,
-        useNativeDriver: true,
-      }).start();
-    });
-  };
-
   const goNextFromStep1 = () => {
-    setErrorText(''); 
-    if (!validateStep1()) return;
-    animateToStep(2);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setErrorText(''); if (!validateStep1()) return;
+    setSignupStep(2);
   };
 
   const goNextFromStep2 = () => {
-    setErrorText(''); 
-    if (!validateStep2()) return;
-    animateToStep(3);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setErrorText(''); if (!validateStep2()) return;
+    setSignupStep(3);
   };
 
   const logoSource = isDark ? (logoDark || logoLight || logoFallback) : (logoLight || logoDark || logoFallback);
-  const styles = createStyles({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, glassEnabled });
+  const styles = createStyles({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled });
 
   if (!styles || !styles.safeArea || !styles.container) {
     return (
@@ -569,34 +748,29 @@ export default function AuthScreen() {
     switch (signupStep) {
       case 1:
         return (
-          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
-            <Text style={styles.smallLabel}>First name</Text>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <TextInput
               style={styles.input}
-              placeholder="Jane"
+              placeholder="First name"
               placeholderTextColor={styles.placeholderColor.color}
               value={firstName}
               onChangeText={t => { setFirstName(t); setFieldErrors(prev => ({ ...prev, firstName: undefined })); }}
               autoCapitalize="words"
             />
             {fieldErrors.firstName ? <Text style={styles.inlineError}>{String(fieldErrors.firstName)}</Text> : null}
-
-            <Text style={styles.smallLabel}>Last name</Text>
             <TextInput
               style={styles.input}
-              placeholder="Doe"
+              placeholder="Last name"
               placeholderTextColor={styles.placeholderColor.color}
               value={lastName}
               onChangeText={t => { setLastName(t); setFieldErrors(prev => ({ ...prev, lastName: undefined })); }}
               autoCapitalize="words"
             />
             {fieldErrors.lastName ? <Text style={styles.inlineError}>{String(fieldErrors.lastName)}</Text> : null}
-
-            <Text style={styles.smallLabel}>Email</Text>
             <View style={styles.inputAffixContainer}>
               <TextInput
                 style={styles.inputAffix}
-                placeholder="you@company.com"
+                placeholder="Email"
                 placeholderTextColor={styles.placeholderColor.color}
                 value={email}
                 onChangeText={t => { setEmail(t); setFieldErrors(prev => ({ ...prev, email: undefined })); }}
@@ -617,11 +791,10 @@ export default function AuthScreen() {
             </View>
             {fieldErrors.email ? <Text style={styles.inlineError}>{String(fieldErrors.email)}</Text> : null}
 
-            <Text style={styles.smallLabel}>Password</Text>
             <View style={styles.passwordContainer}>
               <TextInput
                 style={styles.passwordInput}
-                placeholder="Create a strong password"
+                placeholder="Password"
                 placeholderTextColor={styles.placeholderColor.color}
                 value={password}
                 onChangeText={t => { setPassword(t); setFieldErrors(prev => ({ ...prev, password: undefined })); }}
@@ -644,9 +817,20 @@ export default function AuthScreen() {
               </View>
             ) : null}
 
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 6 }}>
+              <Pressable onPress={() => setAcceptedTerms(v => !v)} style={[styles.smallPill, { flex: undefined, paddingVertical: 6, paddingHorizontal: 10 }]}> 
+                <Ionicons name={acceptedTerms ? 'checkbox' : 'square-outline'} size={18} color={acceptedTerms ? '#6DBF6A' : styles.placeholderColor.color} />
+              </Pressable>
+              <Text style={[styles.subtleText, { marginLeft: 8 }]}>I accept the </Text>
+              <Pressable onPress={() => { try { Linking.openURL('https://nikhilcodes.info'); } catch (e) {} }}>
+                <Text style={[styles.toggleLink]}>Terms & Conditions</Text>
+              </Pressable>
+            </View>
+
             <View style={styles.actionRow}>
               <Pressable
                 onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   setIsLoginView(true); setSignupStep(1); setFieldErrors({});
                 }}
                 style={styles.ghostButton}
@@ -654,106 +838,125 @@ export default function AuthScreen() {
                 <Text style={styles.ghostButtonText}>Back to Login</Text>
               </Pressable>
               <ActionButton
-                title="Next"
-                onPress={goNextFromStep1}
-                disabled={isCheckingEmail || isEmailRegistered}
+                title="Send OTP"
+                onPress={async () => {
+                  if (!validateStep1()) return;
+                  if (!acceptedTerms) { setErrorText('Please accept the Terms & Conditions.'); return; }
+                  const trimmedEmail = (email || '').trim().toLowerCase();
+                  await handleSendSignupOtp(trimmedEmail);
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setSignupStep(2);
+                }}
+                disabled={isCheckingEmail || isEmailRegistered || !acceptedTerms}
               />
             </View>
           </Animated.View>
         );
       case 2:
         return (
-          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
-            <Text style={styles.smallLabel}>Gender</Text>
-            <View style={styles.genderSelector}>
-              <Pressable style={[styles.genderButton, gender === 'male' && styles.genderButtonSelected]}
-                onPress={() => { setGender('male'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
-                <Ionicons name="male" size={20} color={gender === 'male' ? '#fff' : styles.placeholderColor.color} />
-                <Text style={[styles.genderText, gender === 'male' && styles.genderTextSelected]}>Male</Text>
-              </Pressable>
-              <Pressable style={[styles.genderButton, gender === 'female' && styles.genderButtonSelected]}
-                onPress={() => { setGender('female'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
-                <Ionicons name="female" size={20} color={gender === 'female' ? '#fff' : styles.placeholderColor.color} />
-                <Text style={[styles.genderText, gender === 'female' && styles.genderTextSelected]}>Female</Text>
-              </Pressable>
-              <Pressable style={[styles.genderButton, gender === 'other' && styles.genderButtonSelected]}
-                onPress={() => { setGender('other'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
-                <Ionicons name="transgender" size={20} color={gender === 'other' ? '#fff' : styles.placeholderColor.color} />
-                <Text style={[styles.genderText, gender === 'other' && styles.genderTextSelected]}>Other</Text>
-              </Pressable>
-            </View>
-            {fieldErrors.gender ? <Text style={styles.inlineError}>{String(fieldErrors.gender)}</Text> : null}
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+            <Text style={{ textAlign: 'center', marginBottom: 10, color: styles.textColor.color, fontSize: 15, fontWeight: '600' }}>Verify your email</Text>
+            <Text style={[styles.subtleText, { textAlign: 'center', marginBottom: 12 }]}>We sent a 6-digit code to {email?.trim().toLowerCase()}.</Text>
 
-            <Text style={styles.smallLabel}>Date of Birth</Text>
-            <Pressable onPress={() => setShowDatePicker(true)} style={styles.input}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="calendar-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
-                <Text style={{ color: dob ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>
-                  {dob ? dob.toLocaleDateString() : 'Select date of birth'}
-                </Text>
-              </View>
-            </Pressable>
-            {fieldErrors.dob ? <Text style={styles.inlineError}>{String(fieldErrors.dob)}</Text> : null}
-            {showDatePicker && (
-              <DateTimePicker
-                value={dob || new Date(2000, 0, 1)}
-                mode="date"
-                display="spinner"
-                maximumDate={new Date()}
-                onChange={(e, date) => {
-                  setShowDatePicker(Platform.OS === 'android' ? false : true);
-                  if (date) { setDob(date); setFieldErrors(prev => ({ ...prev, dob: undefined })); }
-                }}
-              />
-            )}
-
-            <Text style={styles.smallLabel}>Contact number</Text>
-            <View style={styles.inputAffixContainer}>
-              <Ionicons name="call-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
-              <TextInput
-                style={styles.inputAffix}
-                placeholder="+91xxxxxxxxxx"
-                placeholderTextColor={styles.placeholderColor.color}
-                value={phone}
-                onChangeText={t => { setPhone(t.replace(/[^0-9]/g, '')); setFieldErrors(prev => ({ ...prev, phone: undefined })); }}
-                keyboardType="phone-pad"
-              />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+              {signupOtpDigits.map((d, idx) => (
+                <TextInput
+                  key={idx}
+                  ref={ref => (signupOtpRefs.current[idx] = ref)}
+                  style={[styles.input, { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700' }]}
+                  keyboardType="number-pad"
+                  maxLength={1}
+                  value={signupOtpDigits[idx]}
+                  onChangeText={(t) => {
+                    const v = t.replace(/[^0-9]/g, '');
+                    const next = [...signupOtpDigits];
+                    next[idx] = v;
+                    setSignupOtpDigits(next);
+                    if (v && idx < 5) {
+                      signupOtpRefs.current[idx + 1]?.focus();
+                    }
+                  }}
+                  onKeyPress={({ nativeEvent }) => {
+                    if (nativeEvent.key === 'Backspace' && !signupOtpDigits[idx] && idx > 0) {
+                      signupOtpRefs.current[idx - 1]?.focus();
+                    }
+                  }}
+                />
+              ))}
             </View>
-            {fieldErrors.phone ? <Text style={styles.inlineError}>{String(fieldErrors.phone)}</Text> : null}
+            {fieldErrors.otp ? <Text style={styles.inlineError}>{String(fieldErrors.otp)}</Text> : null}
+            {signupOtpInfoText ? <Text style={[styles.subtleText, { textAlign: 'center' }]}>{signupOtpInfoText}</Text> : null}
 
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => animateToStep(1)}
+                onPress={() => { 
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setSignupStep(1); 
+                  setSignupOtpDigits(['','','','','','']);
+                  clearOTP((email || '').trim().toLowerCase());
+                }}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
-              <ActionButton title="Next" onPress={goNextFromStep2} />
+              <ActionButton 
+                title="Verify & Continue"
+                onPress={async () => {
+                  const code = signupOtpDigits.join('');
+                  if (code.length !== 6) { setFieldErrors(prev => ({ ...prev, otp: 'Enter the 6-digit code.' })); return; }
+                  setIsLoading(true);
+                  const res = await verifyOTP((email || '').trim().toLowerCase(), code);
+                  if (res.success) {
+                    setSuccessText('Email verified. Continue setup.');
+                    setSignupOtpDigits(['','','','','','']);
+                    setSignupStep(3);
+                  } else {
+                    setErrorText(res.error || 'Invalid code.');
+                  }
+                  setIsLoading(false);
+                }} 
+                loading={isLoading}
+              />
+            </View>
+
+            <View style={[styles.actionRow, { marginTop: 10 }]}>
+              <Pressable
+                disabled={isSendingSignupOtp || signupResendCooldown > 0}
+                onPress={() => handleSendSignupOtp((email || '').trim().toLowerCase())}
+                style={[styles.ghostButton, (isSendingSignupOtp || signupResendCooldown > 0) && styles.buttonDisabled]}
+              >
+                <Text style={styles.ghostButtonText}>
+                  {signupResendCooldown > 0 ? `Resend in ${signupResendCooldown}s` : (isSendingSignupOtp ? 'Sending...' : 'Resend code')}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { setIsLoginView(true); setSignupStep(1); }}
+                style={styles.ghostButton}
+              >
+                <Text style={styles.ghostButtonText}>Back to Login</Text>
+              </Pressable>
             </View>
           </Animated.View>
         );
       case 3:
         return (
-          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
-            <Text style={styles.smallLabel}>Height (cm)</Text>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
             <View style={styles.inputAffixContainer}>
               <Ionicons name="resize-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.inputAffix}
-                placeholder="e.g. 170"
+                placeholder="Height (cm)"
                 placeholderTextColor={styles.placeholderColor.color}
                 value={heightVal}
                 onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))}
                 keyboardType="numeric"
               />
             </View>
-
-            <Text style={styles.smallLabel}>Weight (kg)</Text>
             <View style={styles.inputAffixContainer}>
               <Ionicons name="fitness-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
               <TextInput
                 style={styles.inputAffix}
-                placeholder="e.g. 68"
+                placeholder="Weight (kg)"
                 placeholderTextColor={styles.placeholderColor.color}
                 value={weightVal}
                 onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ''))}
@@ -792,10 +995,29 @@ export default function AuthScreen() {
             ) : null}
             {fieldErrors.bloodGroup ? <Text style={styles.inlineError}>{String(fieldErrors.bloodGroup)}</Text> : null}
 
-            <Text style={styles.smallLabel}>Existing conditions (optional)</Text>
+            <Text style={styles.smallLabel}>Gender</Text>
+            <View style={styles.genderSelector}>
+              <Pressable style={[styles.genderButton, gender === 'male' && styles.genderButtonSelected]}
+                onPress={() => { setGender('male'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
+                <Ionicons name="male" size={20} color={gender === 'male' ? '#fff' : styles.placeholderColor.color} />
+                <Text style={[styles.genderText, gender === 'male' && styles.genderTextSelected]}>Male</Text>
+              </Pressable>
+              <Pressable style={[styles.genderButton, gender === 'female' && styles.genderButtonSelected]}
+                onPress={() => { setGender('female'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
+                <Ionicons name="female" size={20} color={gender === 'female' ? '#fff' : styles.placeholderColor.color} />
+                <Text style={[styles.genderText, gender === 'female' && styles.genderTextSelected]}>Female</Text>
+              </Pressable>
+              <Pressable style={[styles.genderButton, gender === 'other' && styles.genderButtonSelected]}
+                onPress={() => { setGender('other'); setFieldErrors(prev => ({ ...prev, gender: undefined })); }}>
+                <Ionicons name="transgender" size={20} color={gender === 'other' ? '#fff' : styles.placeholderColor.color} />
+                <Text style={[styles.genderText, gender === 'other' && styles.genderTextSelected]}>Other</Text>
+              </Pressable>
+            </View>
+            {fieldErrors.gender ? <Text style={styles.inlineError}>{String(fieldErrors.gender)}</Text> : null}
+
             <TextInput
               style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
-              placeholder="Type or pick from suggestions"
+              placeholder="Existing conditions (optional)"
               placeholderTextColor={styles.placeholderColor.color}
               value={conditions}
               onChangeText={setConditions}
@@ -812,259 +1034,102 @@ export default function AuthScreen() {
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => animateToStep(2)}
+                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(2); }}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
-              <ActionButton title="Next" onPress={() => animateToStep(4)} />
+              <ActionButton title="Next" onPress={() => setSignupStep(4)} />
             </View>
           </Animated.View>
         );
       case 4:
         return (
-          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
-            <View style={styles.habitSection}>
-              <View style={styles.habitHeader}>
-                <Ionicons name="fitness-outline" size={20} color="#6DBF6A" />
-                <Text style={styles.habitTitle}>Lifestyle Habits</Text>
-              </View>
-              
-              <View style={styles.habitItem}>
-                <Text style={styles.habitLabel}>Do you smoke?</Text>
-                <View style={styles.habitOptions}>
-                  <Pressable 
-                    style={[styles.habitPill, smoking === 'no' && styles.habitPillSelected]} 
-                    onPress={() => setSmoking('no')}
-                  >
-                    <Text style={[styles.habitPillText, smoking === 'no' && styles.habitPillTextSelected]}>No</Text>
-                  </Pressable>
-                  <Pressable 
-                    style={[styles.habitPill, smoking === 'occasionally' && styles.habitPillSelected]} 
-                    onPress={() => setSmoking('occasionally')}
-                  >
-                    <Text style={[styles.habitPillText, smoking === 'occasionally' && styles.habitPillTextSelected]}>Sometimes</Text>
-                  </Pressable>
-                  <Pressable 
-                    style={[styles.habitPill, smoking === 'daily' && styles.habitPillSelected]} 
-                    onPress={() => setSmoking('daily')}
-                  >
-                    <Text style={[styles.habitPillText, smoking === 'daily' && styles.habitPillTextSelected]}>Daily</Text>
-                  </Pressable>
-                </View>
-                {smoking === 'occasionally' && (
-                  <Animatable.View animation="fadeInDown" duration={300}>
-                    <TextInput
-                      style={[styles.input, { marginTop: 8 }]}
-                      placeholder="How many per day/week? (optional)"
-                      placeholderTextColor={styles.placeholderColor.color}
-                      value={smokingFreq}
-                      onChangeText={setSmokingFreq}
-                    />
-                  </Animatable.View>
-                )}
-              </View>
-
-              <View style={styles.habitItem}>
-                <Text style={styles.habitLabel}>Do you drink alcohol?</Text>
-                <View style={styles.habitOptions}>
-                  <Pressable 
-                    style={[styles.habitPill, drinking === 'no' && styles.habitPillSelected]} 
-                    onPress={() => setDrinking('no')}
-                  >
-                    <Text style={[styles.habitPillText, drinking === 'no' && styles.habitPillTextSelected]}>No</Text>
-                  </Pressable>
-                  <Pressable 
-                    style={[styles.habitPill, drinking === 'occasionally' && styles.habitPillSelected]} 
-                    onPress={() => setDrinking('occasionally')}
-                  >
-                    <Text style={[styles.habitPillText, drinking === 'occasionally' && styles.habitPillTextSelected]}>Sometimes</Text>
-                  </Pressable>
-                  <Pressable 
-                    style={[styles.habitPill, drinking === 'daily' && styles.habitPillSelected]} 
-                    onPress={() => setDrinking('daily')}
-                  >
-                    <Text style={[styles.habitPillText, drinking === 'daily' && styles.habitPillTextSelected]}>Daily</Text>
-                  </Pressable>
-                </View>
-                {drinking === 'occasionally' && (
-                  <Animatable.View animation="fadeInDown" duration={300}>
-                    <TextInput
-                      style={[styles.input, { marginTop: 8 }]}
-                      placeholder="How many units per week? (optional)"
-                      placeholderTextColor={styles.placeholderColor.color}
-                      value={drinkingFreq}
-                      onChangeText={setDrinkingFreq}
-                    />
-                  </Animatable.View>
-                )}
-              </View>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+            <Text style={styles.smallLabel}>Do you smoke?</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Pressable style={[styles.smallPill, smoking === 'no' && styles.smallPillSelected]} onPress={() => setSmoking('no')}>
+                <Text style={[styles.smallPillText, smoking === 'no' && styles.smallPillTextSelected]}>No</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, smoking === 'occasionally' && styles.smallPillSelected]} onPress={() => setSmoking('occasionally')}>
+                <Text style={[styles.smallPillText, smoking === 'occasionally' && styles.smallPillTextSelected]}>Occasionally</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, smoking === 'daily' && styles.smallPillSelected]} onPress={() => setSmoking('daily')}>
+                <Text style={[styles.smallPillText, smoking === 'daily' && styles.smallPillTextSelected]}>Daily</Text>
+              </Pressable>
             </View>
+            {smoking === 'occasionally' && (
+              <TextInput
+                style={styles.input}
+                placeholder="How many per day / week? (optional)"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={smokingFreq}
+                onChangeText={setSmokingFreq}
+              />
+            )}
+
+            <Text style={[styles.smallLabel, { marginTop: 8 }]}>Do you drink alcohol?</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Pressable style={[styles.smallPill, drinking === 'no' && styles.smallPillSelected]} onPress={() => setDrinking('no')}>
+                <Text style={[styles.smallPillText, drinking === 'no' && styles.smallPillTextSelected]}>No</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, drinking === 'occasionally' && styles.smallPillSelected]} onPress={() => setDrinking('occasionally')}>
+                <Text style={[styles.smallPillText, drinking === 'occasionally' && styles.smallPillTextSelected]}>Occasionally</Text>
+              </Pressable>
+              <Pressable style={[styles.smallPill, drinking === 'daily' && styles.smallPillSelected]} onPress={() => setDrinking('daily')}>
+                <Text style={[styles.smallPillText, drinking === 'daily' && styles.smallPillTextSelected]}>Daily</Text>
+              </Pressable>
+            </View>
+            {drinking === 'occasionally' && (
+              <TextInput
+                style={styles.input}
+                placeholder="How many units per week? (optional)"
+                placeholderTextColor={styles.placeholderColor.color}
+                value={drinkingFreq}
+                onChangeText={setDrinkingFreq}
+              />
+            )}
 
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => animateToStep(3)}
+                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(3); }}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
-              <ActionButton title="Next" onPress={() => animateToStep(5)} />
+              <ActionButton title="Next" onPress={() => setSignupStep(5)} />
             </View>
           </Animated.View>
         );
       case 5:
-        const ITEM_SIZE = 120;
-        const SPACING = 20;
-        const SIDE_ITEM_SIZE = 80;
-        
         return (
-          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
-            <Text style={{ textAlign: 'center', marginBottom: 20, color: styles.textColor.color, fontSize: 17, fontWeight: '700' }}>
-              Choose Your Avatar
-            </Text>
-            
-            <View style={{ height: ITEM_SIZE + 60, marginBottom: 20 }}>
-              <ScrollView
-                ref={avatarScrollRef}
-                horizontal
-                pagingEnabled={false}
-                showsHorizontalScrollIndicator={false}
-                snapToInterval={ITEM_SIZE + SPACING}
-                decelerationRate="fast"
-                contentContainerStyle={{
-                  paddingHorizontal: (cardWidth - ITEM_SIZE) / 2,
-                  alignItems: 'center',
-                }}
-                onScroll={(event) => {
-                  const offsetX = event.nativeEvent.contentOffset.x;
-                  const index = Math.round(offsetX / (ITEM_SIZE + SPACING));
-                  setActiveAvatarIndex(index);
-                  const key = avatarKeys[index];
-                  if (key) {
-                    setSelectedAvatarKey(key);
-                    setFieldErrors(prev => ({ ...prev, avatar: undefined }));
-                  }
-                  // Update animated value
-                  scrollX.setValue(offsetX);
-                }}
-                scrollEventThrottle={16}
-              >
-                {avatarKeys.map((key, index) => {
-                  const inputRange = [
-                    (index - 1) * (ITEM_SIZE + SPACING),
-                    index * (ITEM_SIZE + SPACING),
-                    (index + 1) * (ITEM_SIZE + SPACING),
-                  ];
-                  
-                  const scale = scrollX.interpolate({
-                    inputRange,
-                    outputRange: [0.7, 1, 0.7],
-                    extrapolate: 'clamp',
-                  });
-                  
-                  const opacity = scrollX.interpolate({
-                    inputRange,
-                    outputRange: [0.4, 1, 0.4],
-                    extrapolate: 'clamp',
-                  });
-
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => {
-                        avatarScrollRef.current?.scrollTo({
-                          x: index * (ITEM_SIZE + SPACING),
-                          animated: true,
-                        });
-                        if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                      style={{
-                        width: ITEM_SIZE,
-                        height: ITEM_SIZE,
-                        marginHorizontal: SPACING / 2,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Animated.View
-                        style={[
-                          {
-                            width: ITEM_SIZE,
-                            height: ITEM_SIZE,
-                            borderRadius: 20,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            backgroundColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
-                            borderWidth: 3,
-                            borderColor: selectedAvatarKey === key ? '#6DBF6A' : 'transparent',
-                            transform: [{ scale }],
-                            opacity,
-                          },
-                          selectedAvatarKey === key && {
-                            shadowColor: '#6DBF6A',
-                            shadowOpacity: 0.4,
-                            shadowRadius: 15,
-                            shadowOffset: { width: 0, height: 5 },
-                            elevation: 8,
-                          }
-                        ]}
-                      >
-                        <Image 
-                          source={getAvatarSource(key)} 
-                          style={{ 
-                            width: ITEM_SIZE - 20, 
-                            height: ITEM_SIZE - 20,
-                            borderRadius: 16,
-                          }} 
-                        />
-                      </Animated.View>
-                      {selectedAvatarKey === key && (
-                        <Animatable.View 
-                          animation="bounceIn" 
-                          duration={400}
-                          style={{
-                            position: 'absolute',
-                            top: -5,
-                            right: 10,
-                            backgroundColor: '#fff',
-                            borderRadius: 15,
-                            padding: 2,
-                            shadowColor: '#000',
-                            shadowOpacity: 0.3,
-                            shadowRadius: 4,
-                            shadowOffset: { width: 0, height: 2 },
-                            elevation: 5,
-                          }}
-                        >
-                          <Ionicons name="checkmark-circle" size={28} color="#6DBF6A" />
-                        </Animatable.View>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
-              {avatarKeys.map((_, index) => (
-                <View
-                  key={index}
-                  style={{
-                    width: index === activeAvatarIndex ? 24 : 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: index === activeAvatarIndex ? '#6DBF6A' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'),
-                    marginHorizontal: 4,
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+            <Text style={{ textAlign: 'center', marginBottom: 12, color: styles.textColor.color, fontSize: 15, fontWeight: '600' }}>Choose your avatar</Text>
+            <View style={styles.avatarGrid}>
+              {avatarKeys.map(key => (
+                <Pressable 
+                  key={key} 
+                  onPress={() => { 
+                    setSelectedAvatarKey(key); 
+                    setFieldErrors(prev => ({ ...prev, avatar: undefined })); 
+                    if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
-                />
+                  style={[styles.avatarWrapper, selectedAvatarKey === key && styles.avatarWrapperSelected]}
+                >
+                  <Image source={getAvatarSource(key)} style={styles.avatar} />
+                  {selectedAvatarKey === key && (
+                    <View style={styles.avatarCheckmark}>
+                      <Ionicons name="checkmark-circle" size={24} color="#6DBF6A" />
+                    </View>
+                  )}
+                </Pressable>
               ))}
             </View>
-            
             {fieldErrors.avatar ? <Text style={styles.inlineError}>{String(fieldErrors.avatar)}</Text> : null}
 
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => animateToStep(4)}
+                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(4); }}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
@@ -1077,16 +1142,28 @@ export default function AuthScreen() {
     }
   };
 
+  const stepAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    stepAnim.setValue(0);
+    Animated.timing(stepAnim, {
+      toValue: 1,
+      duration: 320,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [signupStep]);
+
   return (
     <SafeAreaView style={[styles.safeArea]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.container}>
@@ -1126,29 +1203,35 @@ export default function AuthScreen() {
               animation="fadeInUp"
               duration={500}
               delay={200}
-              style={[styles.cardWrapper]}
+              style={[{ width: cardWidth, marginTop: cardShiftY }]}
             >
-              <View style={styles.cardStroke}>
-                <View style={[styles.card, glassEnabled ? styles.cardGlass : null]}>
+              <Animated.View
+                style={[styles.cardStroke, { width: cardWidth, height: contentHeightAnim }]}
+              >
+                <View style={[styles.card, glassEnabled ? styles.cardGlass : null, isLoginView && styles.loginGlassCard, { flex: 1 }]}>
                   {glassEnabled ? (
-                    <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.cardBlur} />
+                    <BlurView intensity={isLoginView ? 120 : 85} tint={isDark ? 'dark' : 'light'} style={styles.cardBlur} />
                   ) : (
                     <View style={styles.cardBlurFallback} />
                   )}
 
                   <LinearGradient
-                    colors={isDark ? ['rgba(109,191,106,0.03)', 'rgba(109,191,106,0)'] : ['rgba(109,191,106,0.08)', 'rgba(109,191,106,0.01)']}
+                    colors={
+                      isLoginView
+                        ? (isDark ? ['rgba(255,255,255,0.06)', 'rgba(109,191,106,0.06)'] : ['rgba(255,255,255,0.18)', 'rgba(109,191,106,0.10)'])
+                        : (isDark ? ['rgba(109,191,106,0.03)', 'rgba(109,191,106,0)'] : ['rgba(109,191,106,0.08)', 'rgba(109,191,106,0.01)'])
+                    }
                     style={styles.cardInnerGradient}
                   />
 
-                  <View style={styles.cardContent}>
+                  <View style={styles.cardContent} onLayout={handleContentLayout}>
                     {!isLoginView && <SignupProgressBar currentStep={signupStep} totalSteps={5} isDark={isDark} />}
 
                     <View style={styles.headerRow}>
                       {!isLoginView ? (
                         <Pressable onPress={() => {
-                          if (signupStep > 1) animateToStep(signupStep - 1); 
-                          else setIsLoginView(true);
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                          if (signupStep > 1) setSignupStep(p => p - 1); else setIsLoginView(true);
                         }}>
                           <Ionicons name="arrow-back" size={22} color={styles.placeholderColor.color} />
                         </Pressable>
@@ -1170,41 +1253,97 @@ export default function AuthScreen() {
                     <ErrorBanner message={errorText} onClose={() => setErrorText('')} />
 
                     {isLoginView ? (
-                      <Animated.View style={{ opacity: 1 }}>
-                        <Text style={styles.fieldLabel}>Email</Text>
-                        <TextInput
-                          style={[styles.input, focusedField === 'email' ? styles.focusedInput : null]}
-                          placeholder="Email"
-                          placeholderTextColor={styles.placeholderColor.color}
-                          value={email}
-                          onChangeText={setEmail}
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                          onFocus={() => setFocusedField('email')}
-                          onBlur={() => setFocusedField(null)}
-                        />
+                      <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [6,0] }) }] }}>
+                        {loginStep === 'credentials' ? (
+                          <>
+                            <TextInput
+                              style={[styles.input, focusedField === 'email' ? styles.focusedInput : null]}
+                              placeholder="Email"
+                              placeholderTextColor={styles.placeholderColor.color}
+                              value={email}
+                              onChangeText={setEmail}
+                              keyboardType="email-address"
+                              autoCapitalize="none"
+                              onFocus={() => setFocusedField('email')}
+                              onBlur={() => setFocusedField(null)}
+                            />
+                            <View style={styles.passwordContainer}>
+                              <TextInput
+                                style={styles.passwordInput}
+                                placeholder="Password"
+                                placeholderTextColor={styles.placeholderColor.color}
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry={!showPassword}
+                                onFocus={() => setFocusedField('password')}
+                                onBlur={() => setFocusedField(null)}
+                              />
+                              <Pressable onPress={() => setShowPassword(s => !s)} style={styles.iconPress}>
+                                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={styles.placeholderColor.color} />
+                              </Pressable>
+                            </View>
 
-                        <Text style={styles.fieldLabel}>Password</Text>
-                        <View style={styles.passwordContainer}>
-                          <TextInput
-                            style={styles.passwordInput}
-                            placeholder="Password"
-                            placeholderTextColor={styles.placeholderColor.color}
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!showPassword}
-                            onFocus={() => setFocusedField('password')}
-                            onBlur={() => setFocusedField(null)}
-                          />
-                          <Pressable onPress={() => setShowPassword(s => !s)} style={styles.iconPress}>
-                            <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={styles.placeholderColor.color} />
-                          </Pressable>
-                        </View>
+                            <ActionButton title="Sign In" onPress={handleLogin} loading={isLoading} style={{ marginTop: 14 }} />
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.fieldLabel}>Enter verification code</Text>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                              {loginOtpDigits.map((d, idx) => (
+                                <TextInput
+                                  key={idx}
+                                  ref={ref => (loginOtpRefs.current[idx] = ref)}
+                                  style={[styles.input, { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700' }]}
+                                  keyboardType="number-pad"
+                                  maxLength={1}
+                                  value={loginOtpDigits[idx]}
+                                  onChangeText={(t) => {
+                                    const v = t.replace(/[^0-9]/g, '');
+                                    const next = [...loginOtpDigits];
+                                    next[idx] = v;
+                                    setLoginOtpDigits(next);
+                                    if (v && idx < 5) {
+                                      loginOtpRefs.current[idx + 1]?.focus();
+                                    }
+                                  }}
+                                  onKeyPress={({ nativeEvent }) => {
+                                    if (nativeEvent.key === 'Backspace' && !loginOtpDigits[idx] && idx > 0) {
+                                      loginOtpRefs.current[idx - 1]?.focus();
+                                    }
+                                  }}
+                                />
+                              ))}
+                            </View>
+                            {fieldErrors.otp ? <Text style={styles.inlineError}>{String(fieldErrors.otp)}</Text> : null}
+                            {otpInfoText ? <Text style={styles.subtleText}>{otpInfoText}</Text> : null}
 
-                        <ActionButton title="Sign In" onPress={handleLogin} loading={isLoading} style={{ marginTop: 14 }} />
+                            <View style={styles.actionRow}>
+                              <Pressable
+                                style={styles.ghostButton}
+                                onPress={() => { setLoginStep('credentials'); setOtp(''); clearOTP(email.trim().toLowerCase()); }}
+                              >
+                                <Text style={styles.ghostButtonText}>Back</Text>
+                              </Pressable>
+                              <ActionButton title="Verify & Continue" onPress={handleVerifyOtpAndFinishLogin} loading={isLoading} />
+                            </View>
+
+                            <View style={[styles.actionRow, { marginTop: 10 }]}>
+                              <Pressable
+                                disabled={isSendingOtp || resendCooldown > 0}
+                                onPress={() => handleSendOtp(email.trim().toLowerCase())}
+                                style={[styles.ghostButton, (isSendingOtp || resendCooldown > 0) && styles.buttonDisabled]}
+                              >
+                                <Text style={styles.ghostButtonText}>
+                                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : (isSendingOtp ? 'Sending...' : 'Resend code')}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </>
+                        )}
 
                         <Pressable
                           onPress={() => {
+                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                             setIsLoginView(false); setSignupStep(1); setFieldErrors({});
                           }}
                           style={styles.linkRow}
@@ -1213,13 +1352,21 @@ export default function AuthScreen() {
                         </Pressable>
                       </Animated.View>
                     ) : (
-                      <View style={styles.signupContentWrapper}>
-                        {renderSignupStep()}
-                      </View>
+                      <>
+                        <ScrollView
+                          showsVerticalScrollIndicator={false}
+                          style={{ marginTop: 6 }}
+                          contentContainerStyle={{ paddingBottom: 12 }}
+                          nestedScrollEnabled={true}
+                          keyboardShouldPersistTaps="handled"
+                        >
+                          {renderSignupStep()}
+                        </ScrollView>
+                      </>
                     )}
                   </View>
                 </View>
-              </View>
+              </Animated.View>
             </Animatable.View>
 
             {isLoading && (
@@ -1234,7 +1381,7 @@ export default function AuthScreen() {
   );
 }
 
-const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, glassEnabled }) => {
+const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled }) => {
   if (width === undefined || height === undefined) {
     return StyleSheet.create({
       safeArea: { flex: 1, backgroundColor: '#f4f4f8' },
@@ -1246,6 +1393,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
   cardWidth = cardWidth || width * 0.9;
   cardMinHeight = cardMinHeight || 360;
   cardMaxHeight = cardMaxHeight || 800;
+  cardShiftY = cardShiftY || 10;
   glassEnabled = glassEnabled ?? true;
   
   const colors = {
@@ -1258,56 +1406,33 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     brand: '#6DBF6A'
   };
 
-  const padding = Math.max(18, Math.round(cardWidth * 0.04));
-  const inputHeight = Math.max(50, Math.round(cardMinHeight * 0.09));
+  const padding = Math.max(10, Math.round(cardWidth * 0.03));
+  const inputHeight = Math.max(44, Math.round(cardMinHeight * 0.07));
   const logoSize = Math.max(120, Math.round(Math.min(width, height) * 0.20));
 
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: isDark ? '#06121A' : '#F7FBFF' },
-    scrollContainer: { 
-      flexGrow: 1, 
-      justifyContent: 'center',
-      paddingVertical: 20,
-    },
-    container: { 
-      flex: 1, 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      minHeight: height,
-    },
-    blobContainer: { 
-      ...StyleSheet.absoluteFillObject, 
-      zIndex: 0, 
-      overflow: 'hidden' 
-    },
+    scrollContainer: { flexGrow: 1, justifyContent: height > 740 ? 'center' : 'flex-start', paddingVertical: 24 },
+    container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    blobContainer: { ...StyleSheet.absoluteFillObject, zIndex: 0, overflow: 'hidden' },
 
     logoWrapper: {
       zIndex: 4,
       alignSelf: 'center',
-      marginBottom: 16,
+      marginTop: Math.max(8, Math.round(height * 0.02)),
+      marginBottom: Math.max(6, Math.round(height * 0.01)),
       alignItems: 'center',
       justifyContent: 'center',
     },
     logo: { width: logoSize + 100, height: logoSize },
     logoLight: { tintColor: undefined },
     logoDark: { tintColor: undefined },
-    logoTextFallback: { 
-      width: logoSize, 
-      height: logoSize, 
-      borderRadius: logoSize / 2, 
-      backgroundColor: 'rgba(109,191,106,0.1)', 
-      alignItems: 'center', 
-      justifyContent: 'center' 
-    },
+    logoTextFallback: { width: logoSize, height: logoSize, borderRadius: logoSize / 2, backgroundColor: 'rgba(109,191,106,0.1)', alignItems: 'center', justifyContent: 'center' },
     logoText: { color: colors.brand, fontWeight: '700', fontSize: 24 },
 
-    cardWrapper: {
-      width: cardWidth,
-      zIndex: 2,
-    },
     cardStroke: {
       borderRadius: 28,
-      padding: 1.5,
+      padding: 6,
       shadowColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(109,191,106,0.15)',
       shadowOpacity: isDark ? 0.45 : 0.2,
       shadowRadius: 20,
@@ -1318,68 +1443,96 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)'
     },
     card: {
-      borderRadius: 26,
-      overflow: 'hidden',
+      width: '100%',
+      height: undefined,
+      borderRadius: 18,
+      overflow: 'visible',
       backgroundColor: glassEnabled ? 'rgba(255,255,255,0.02)' : (isDark ? 'rgba(6,9,12,0.66)' : 'rgba(255,255,255,0.98)'),
       borderWidth: 0.6,
       borderColor: glassEnabled ? (isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.15)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
     },
 
-    cardBlur: { ...StyleSheet.absoluteFillObject, zIndex: 0, borderRadius: 26 },
+    cardBlur: { ...StyleSheet.absoluteFillObject, zIndex: 0, borderRadius: 18 },
     cardBlurFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent', zIndex: 0 },
-    cardInnerGradient: { ...StyleSheet.absoluteFillObject, zIndex: 1, borderRadius: 26 },
-    cardContent: { 
-      padding: padding, 
-      zIndex: 2,
-      minHeight: cardMinHeight,
+    cardInnerGradient: { ...StyleSheet.absoluteFillObject, zIndex: 1, borderRadius: 18 },
+    cardContent: { padding: padding, zIndex: 2 },
+
+    progressContainer: {
+      marginBottom: 20,
+      marginTop: 8,
+    },
+    progressBarBackground: {
+      height: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+      borderRadius: 10,
+      overflow: 'hidden',
+    },
+    progressBarFill: {
+      height: '100%',
+      borderRadius: 10,
+      position: 'relative',
+      overflow: 'hidden',
+    },
+    progressGlow: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#6DBF6A',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.6,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+    },
+    progressSteps: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 12,
+      paddingHorizontal: 4,
+    },
+    progressDot: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      borderWidth: 2,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    progressDotActive: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#6DBF6A',
+    },
+    progressDotCurrent: {
+      backgroundColor: '#6DBF6A',
+      borderColor: '#8AF3C5',
+      shadowColor: '#6DBF6A',
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 4,
+    },
+    progressText: {
+      textAlign: 'center',
+      marginTop: 8,
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.subtext,
     },
 
-    signupContentWrapper: {
-      minHeight: 300,
-    },
+    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+    headerTitle: { fontSize: Math.max(18, Math.round(cardWidth * 0.048)), fontWeight: '800', color: colors.text, textAlign: 'center' },
+    headerSubtitle: { fontSize: 13, color: colors.subtext, marginTop: 4, textAlign: 'center' },
 
-    headerRow: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      marginBottom: 12 
-    },
-    headerTitle: { 
-      fontSize: Math.max(20, Math.round(cardWidth * 0.05)), 
-      fontWeight: '800', 
-      color: colors.text, 
-      textAlign: 'center' 
-    },
-    headerSubtitle: { 
-      fontSize: 13, 
-      color: colors.subtext, 
-      marginTop: 4, 
-      textAlign: 'center' 
-    },
-
-    fieldLabel: { 
-      color: colors.subtext, 
-      marginTop: 12, 
-      marginBottom: 6, 
-      fontSize: 13, 
-      fontWeight: '600' 
-    },
-    smallLabel: { 
-      color: colors.subtext, 
-      marginTop: 10, 
-      marginBottom: 6, 
-      fontSize: 13, 
-      fontWeight: '600' 
-    },
+    fieldLabel: { color: colors.subtext, marginTop: 12, marginBottom: 6, fontSize: 13, fontWeight: '600' },
+    smallLabel: { color: colors.subtext, marginTop: 10, marginBottom: 6, fontSize: 13, fontWeight: '600' },
 
     input: {
       width: '100%',
       height: inputHeight,
       backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
-      borderWidth: 1.5,
+      borderWidth: 1,
       borderRadius: 12,
-      marginBottom: 8,
+      marginBottom: 6,
       paddingHorizontal: 14,
       color: colors.text,
       justifyContent: 'center',
@@ -1403,9 +1556,9 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       height: inputHeight,
       backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
-      borderWidth: 1.5,
+      borderWidth: 1,
       borderRadius: 12,
-      marginBottom: 8,
+      marginBottom: 6,
       paddingLeft: 14,
       paddingRight: 8,
     },
@@ -1446,7 +1599,6 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
       borderWidth: 1.5,
       backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
-      justifyContent: 'center',
     },
 
     dropdownItem: { 
@@ -1495,8 +1647,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       borderWidth: 1.5, 
       borderColor: isDark ? 'rgba(109,191,106,0.15)' : 'rgba(109,191,106,0.25)', 
       backgroundColor: 'transparent', 
-      minWidth: 110,
-      height: inputHeight,
+      minWidth: 110 
     },
     ghostButtonText: { color: colors.text, fontWeight: '600' },
 
@@ -1661,70 +1812,18 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     smallPillText: { color: colors.text, fontSize: 13, fontWeight: '500' },
     smallPillTextSelected: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-    // Step 4 Habit Styles
-    habitSection: {
-      marginBottom: 8,
-    },
-    habitHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: 16,
-      paddingBottom: 12,
-      borderBottomWidth: 1.5,
-      borderBottomColor: isDark ? 'rgba(109,191,106,0.1)' : 'rgba(109,191,106,0.15)',
-    },
-    habitTitle: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    habitItem: {
-      marginBottom: 20,
-    },
-    habitLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: 10,
-    },
-    habitOptions: {
-      flexDirection: 'row',
-      gap: 10,
-    },
-    habitPill: {
-      flex: 1,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      backgroundColor: 'transparent',
-      borderWidth: 1.5,
-      borderColor: isDark ? 'rgba(109,191,106,0.12)' : 'rgba(109,191,106,0.2)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    habitPillSelected: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-      shadowColor: colors.primary,
-      shadowOpacity: 0.25,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 4,
-    },
-    habitPillText: {
-      color: colors.text,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    habitPillTextSelected: {
-      color: '#fff',
-      fontWeight: '700',
-    },
-
     cardGlass: {
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.15)',
       backgroundColor: 'transparent',
+    },
+    loginGlassCard: {
+      backgroundColor: 'rgba(255,255,255,0.04)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      shadowColor: isDark ? '#000' : '#6DBF6A',
+      shadowOpacity: isDark ? 0.35 : 0.25,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 12,
     },
   });
 };

@@ -1,4 +1,12 @@
-1. Chatbot Disclaimer
-2. dob picker
-3. check for the existence of email or mobile number
-4. Notification timing
+1. authscreen 
+- There is a toast after login which says verification code is sent to your email, which should not be there, as we need verification code only on signup and that toast should only be shown there
+- Update this authscreen for the User interface and make sure to have a user friendly flow of signup, you should use modern UIUX practices for this.
+- 
+
+
+
+
+- There is a toast after login which says verification code is sent to your email, the mail is being sent to the email id which we are loggin in, so fix it, as we need verification code only on signup, that toast should only be shown there
+- Update this authscreen for the User interface and make sure to have a user friendly flow of signup, you should use modern UIUX practices for this.
+
+if you take a break, and i hit continue, you should continue writing the code, instead of writing the code again from scratch

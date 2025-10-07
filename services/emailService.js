@@ -1,12 +1,7 @@
 // services/emailService.js
-import emailjs from '@emailjs/browser';
-
 const SERVICE_ID = 'service_o7gkvbu';
 const TEMPLATE_ID = 'Design';
 const PUBLIC_KEY = 'IriL9iG7M4NdMiljz';
-
-// Initialize EmailJS
-emailjs.init(PUBLIC_KEY);
 
 // Store OTPs temporarily (in production, use secure backend)
 const otpStore = new Map();
@@ -36,20 +31,33 @@ export const sendOTP = async (email, userName = 'User') => {
       attempts: 0
     });
 
-    // Send email via EmailJS
+    // Send email via EmailJS REST API to avoid browser-only globals in React Native
     const templateParams = {
       to_email: email,
       to_name: userName,
-      otp_code: otp,
-      expiry_minutes: '10'
+      otp: otp,
+      message: `Your Asizto verification code is ${otp}. It expires in 10 minutes.`
     };
 
-    await emailjs.send(
-      SERVICE_ID,
-      TEMPLATE_ID,
-      templateParams,
-      PUBLIC_KEY
-    );
+    const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        // EmailJS requires an origin header when called from non-browser environments
+        'origin': 'http://localhost'
+      },
+      body: JSON.stringify({
+        service_id: SERVICE_ID,
+        template_id: TEMPLATE_ID,
+        user_id: PUBLIC_KEY,
+        template_params: templateParams
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `EmailJS send failed with status ${response.status}`);
+    }
 
     return { success: true, otp }; // Return OTP for development; remove in production
   } catch (error) {
