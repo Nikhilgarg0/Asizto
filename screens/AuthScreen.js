@@ -192,6 +192,7 @@ const WaveLayer = ({ width, height, color, top, duration = 15000, delay = 0 }) =
   );
 };
 
+// Updated Progress Bar - Horizontal Only
 const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
   const progress = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -222,73 +223,21 @@ const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
     outputRange: [0.3, 0.8],
   });
 
-  const progressStyles = StyleSheet.create({
-    progressContainer: {
-      marginBottom: 20,
-      marginTop: 8,
-    },
-    progressBarBackground: {
-      height: 6,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
-      borderRadius: 10,
-      overflow: 'hidden',
-    },
-    progressBarFill: {
-      height: '100%',
-      borderRadius: 10,
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    progressGlow: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: '#6DBF6A',
-      shadowColor: '#6DBF6A',
-      shadowOpacity: 0.6,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 0 },
-    },
-    progressSteps: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 12,
-      paddingHorizontal: 4,
-    },
-    progressDot: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-      borderWidth: 2,
-      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    progressDotActive: {
-      backgroundColor: '#6DBF6A',
-      borderColor: '#6DBF6A',
-    },
-    progressDotCurrent: {
-      backgroundColor: '#6DBF6A',
-      borderColor: '#8AF3C5',
-      shadowColor: '#6DBF6A',
-      shadowOpacity: 0.4,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 4,
-    },
-    progressText: {
-      textAlign: 'center',
-      marginTop: 8,
-      fontSize: 12,
-      fontWeight: '600',
-      color: isDark ? '#9FB3C8' : '#6B7280',
-    },
-  });
-
   return (
-    <View style={progressStyles.progressContainer}>
-      <View style={progressStyles.progressBarBackground}>
-        <Animated.View style={[progressStyles.progressBarFill, { width: progressWidth }]}>
+    <View style={{ marginBottom: 16, marginTop: 8 }}>
+      <View style={{
+        height: 8,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)',
+        borderRadius: 10,
+        overflow: 'hidden',
+      }}>
+        <Animated.View style={{
+          height: '100%',
+          borderRadius: 10,
+          width: progressWidth,
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
           <LinearGradient
             colors={['#8AF3C5', '#6DBF6A', '#5DA860']}
             start={{ x: 0, y: 0 }}
@@ -296,30 +245,14 @@ const SignupProgressBar = ({ currentStep, totalSteps = 5, isDark }) => {
             style={StyleSheet.absoluteFill}
           />
           <Animated.View 
-            style={[
-              progressStyles.progressGlow, 
-              { opacity: glowOpacity }
-            ]} 
+            style={{
+              ...StyleSheet.absoluteFillObject,
+              backgroundColor: '#6DBF6A',
+              opacity: glowOpacity,
+            }} 
           />
         </Animated.View>
       </View>
-      <View style={progressStyles.progressSteps}>
-        {[...Array(totalSteps)].map((_, index) => (
-          <Animated.View
-            key={index}
-            style={[
-              progressStyles.progressDot,
-              index < currentStep && progressStyles.progressDotActive,
-              index === currentStep - 1 && progressStyles.progressDotCurrent,
-            ]}
-          >
-            {index < currentStep && (
-              <Ionicons name="checkmark" size={10} color="#fff" />
-            )}
-          </Animated.View>
-        ))}
-      </View>
-      <Text style={progressStyles.progressText}>Step {currentStep} of {totalSteps}</Text>
     </View>
   );
 };
@@ -364,9 +297,8 @@ export default function AuthScreen() {
 
   const CARD_MAX_WIDTH = 680;
   const cardWidth = Math.min(CARD_MAX_WIDTH, Math.round(width * 0.94));
-  const cardMinHeight = Math.max(360, Math.round(height * 0.34));
-  const cardMaxHeight = Math.min(820, Math.round(height * 0.86));
-  const cardShiftY = Math.round(Math.max(6, Math.min(12, height * 0.045)));
+  const cardMinHeight = Math.max(360, Math.round(height * 0.36));
+  const cardMaxHeight = Math.min(820, Math.round(height * 0.82));
 
   const [isLoginView, setIsLoginView] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -391,6 +323,11 @@ export default function AuthScreen() {
   const [drinkingFreq, setDrinkingFreq] = useState('');
   const glassEnabled = true;
 
+  // Avatar carousel state
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const avatarScrollRef = useRef(null);
+  const [activeAvatarIndex, setActiveAvatarIndex] = useState(0);
+
   const avatarKeys = useMemo(() => {
     if (gender === 'male') return AVATAR_KEYS.male;
     if (gender === 'female') return AVATAR_KEYS.female;
@@ -405,6 +342,9 @@ export default function AuthScreen() {
   const [focusedField, setFocusedField] = useState(null);
   const [showBloodList, setShowBloodList] = useState(false);
   const emailCheckTimeout = useRef(null);
+
+  // Slide animation for transitions
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     setErrorText(''); setSuccessText(''); setFieldErrors({});
@@ -475,30 +415,6 @@ export default function AuthScreen() {
     return 'Weak';
   };
 
-  const contentHeightAnim = useRef(new Animated.Value(Math.max(cardMinHeight, 420))).current;
-  const lastMeasuredHeight = useRef(null);
-  const contentMeasureTimeout = useRef(null);
-
-  const handleContentLayout = (event) => {
-    const measured = Math.round(event.nativeEvent.layout.height);
-    const buffer = 64;
-    const desired = Math.max(cardMinHeight, Math.min(cardMaxHeight, measured + buffer));
-    if (lastMeasuredHeight.current === desired) return;
-    lastMeasuredHeight.current = desired;
-
-    if (contentMeasureTimeout.current) clearTimeout(contentMeasureTimeout.current);
-    contentMeasureTimeout.current = setTimeout(() => {
-      Animated.timing(contentHeightAnim, {
-        toValue: desired,
-        duration: 360,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    }, 40);
-  };
-
-  useEffect(() => { return () => { if (contentMeasureTimeout.current) clearTimeout(contentMeasureTimeout.current); }; }, []);
-
   const handleLogin = async () => {
     setErrorText(''); setSuccessText('');
     if (!email.trim() || !password) {
@@ -524,10 +440,10 @@ export default function AuthScreen() {
     setErrorText(''); setSuccessText('');
     const ok1 = validateStep1();
     const ok2 = validateStep2();
-    if (!ok1) { setSignupStep(1); return; }
-    if (!ok2) { setSignupStep(2); return; }
-    if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); setSignupStep(5); return; }
-    if (!bloodGroup) { setFieldErrors(prev => ({ ...prev, bloodGroup: 'Please select blood group.' })); setSignupStep(3); return; }
+    if (!ok1) { animateToStep(1); return; }
+    if (!ok2) { animateToStep(2); return; }
+    if (!selectedAvatarKey) { setFieldErrors(prev => ({ ...prev, avatar: 'Please select an avatar.' })); animateToStep(5); return; }
+    if (!bloodGroup) { setFieldErrors(prev => ({ ...prev, bloodGroup: 'Please select blood group.' })); animateToStep(3); return; }
 
     setIsLoading(true);
     try {
@@ -570,20 +486,42 @@ export default function AuthScreen() {
     }
   };
 
+  // Smooth slide transition animation - improved
+  const animateToStep = (newStep) => {
+    const direction = newStep > signupStep ? 1 : -1;
+    
+    Animated.timing(slideAnim, {
+      toValue: direction * -30,
+      duration: 150,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      setSignupStep(newStep);
+      slideAnim.setValue(direction * 30);
+      
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 65,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
   const goNextFromStep1 = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setErrorText(''); if (!validateStep1()) return;
-    setSignupStep(2);
+    setErrorText(''); 
+    if (!validateStep1()) return;
+    animateToStep(2);
   };
 
   const goNextFromStep2 = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setErrorText(''); if (!validateStep2()) return;
-    setSignupStep(3);
+    setErrorText(''); 
+    if (!validateStep2()) return;
+    animateToStep(3);
   };
 
   const logoSource = isDark ? (logoDark || logoLight || logoFallback) : (logoLight || logoDark || logoFallback);
-  const styles = createStyles({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled });
+  const styles = createStyles({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, glassEnabled });
 
   if (!styles || !styles.safeArea || !styles.container) {
     return (
@@ -631,7 +569,7 @@ export default function AuthScreen() {
     switch (signupStep) {
       case 1:
         return (
-          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
             <Text style={styles.smallLabel}>First name</Text>
             <TextInput
               style={styles.input}
@@ -709,7 +647,6 @@ export default function AuthScreen() {
             <View style={styles.actionRow}>
               <Pressable
                 onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   setIsLoginView(true); setSignupStep(1); setFieldErrors({});
                 }}
                 style={styles.ghostButton}
@@ -726,7 +663,7 @@ export default function AuthScreen() {
         );
       case 2:
         return (
-          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
             <Text style={styles.smallLabel}>Gender</Text>
             <View style={styles.genderSelector}>
               <Pressable style={[styles.genderButton, gender === 'male' && styles.genderButtonSelected]}
@@ -787,7 +724,7 @@ export default function AuthScreen() {
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(1); }}
+                onPress={() => animateToStep(1)}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
@@ -797,7 +734,7 @@ export default function AuthScreen() {
         );
       case 3:
         return (
-          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
+          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
             <Text style={styles.smallLabel}>Height (cm)</Text>
             <View style={styles.inputAffixContainer}>
               <Ionicons name="resize-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
@@ -875,102 +812,259 @@ export default function AuthScreen() {
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(2); }}
+                onPress={() => animateToStep(2)}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
-              <ActionButton title="Next" onPress={() => setSignupStep(4)} />
+              <ActionButton title="Next" onPress={() => animateToStep(4)} />
             </View>
           </Animated.View>
         );
       case 4:
         return (
-          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
-            <Text style={styles.smallLabel}>Do you smoke?</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Pressable style={[styles.smallPill, smoking === 'no' && styles.smallPillSelected]} onPress={() => setSmoking('no')}>
-                <Text style={[styles.smallPillText, smoking === 'no' && styles.smallPillTextSelected]}>No</Text>
-              </Pressable>
-              <Pressable style={[styles.smallPill, smoking === 'occasionally' && styles.smallPillSelected]} onPress={() => setSmoking('occasionally')}>
-                <Text style={[styles.smallPillText, smoking === 'occasionally' && styles.smallPillTextSelected]}>Occasionally</Text>
-              </Pressable>
-              <Pressable style={[styles.smallPill, smoking === 'daily' && styles.smallPillSelected]} onPress={() => setSmoking('daily')}>
-                <Text style={[styles.smallPillText, smoking === 'daily' && styles.smallPillTextSelected]}>Daily</Text>
-              </Pressable>
-            </View>
-            {smoking === 'occasionally' && (
-              <TextInput
-                style={styles.input}
-                placeholder="How many per day / week? (optional)"
-                placeholderTextColor={styles.placeholderColor.color}
-                value={smokingFreq}
-                onChangeText={setSmokingFreq}
-              />
-            )}
+          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
+            <View style={styles.habitSection}>
+              <View style={styles.habitHeader}>
+                <Ionicons name="fitness-outline" size={20} color="#6DBF6A" />
+                <Text style={styles.habitTitle}>Lifestyle Habits</Text>
+              </View>
+              
+              <View style={styles.habitItem}>
+                <Text style={styles.habitLabel}>Do you smoke?</Text>
+                <View style={styles.habitOptions}>
+                  <Pressable 
+                    style={[styles.habitPill, smoking === 'no' && styles.habitPillSelected]} 
+                    onPress={() => setSmoking('no')}
+                  >
+                    <Text style={[styles.habitPillText, smoking === 'no' && styles.habitPillTextSelected]}>No</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.habitPill, smoking === 'occasionally' && styles.habitPillSelected]} 
+                    onPress={() => setSmoking('occasionally')}
+                  >
+                    <Text style={[styles.habitPillText, smoking === 'occasionally' && styles.habitPillTextSelected]}>Sometimes</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.habitPill, smoking === 'daily' && styles.habitPillSelected]} 
+                    onPress={() => setSmoking('daily')}
+                  >
+                    <Text style={[styles.habitPillText, smoking === 'daily' && styles.habitPillTextSelected]}>Daily</Text>
+                  </Pressable>
+                </View>
+                {smoking === 'occasionally' && (
+                  <Animatable.View animation="fadeInDown" duration={300}>
+                    <TextInput
+                      style={[styles.input, { marginTop: 8 }]}
+                      placeholder="How many per day/week? (optional)"
+                      placeholderTextColor={styles.placeholderColor.color}
+                      value={smokingFreq}
+                      onChangeText={setSmokingFreq}
+                    />
+                  </Animatable.View>
+                )}
+              </View>
 
-            <Text style={[styles.smallLabel, { marginTop: 8 }]}>Do you drink alcohol?</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Pressable style={[styles.smallPill, drinking === 'no' && styles.smallPillSelected]} onPress={() => setDrinking('no')}>
-                <Text style={[styles.smallPillText, drinking === 'no' && styles.smallPillTextSelected]}>No</Text>
-              </Pressable>
-              <Pressable style={[styles.smallPill, drinking === 'occasionally' && styles.smallPillSelected]} onPress={() => setDrinking('occasionally')}>
-                <Text style={[styles.smallPillText, drinking === 'occasionally' && styles.smallPillTextSelected]}>Occasionally</Text>
-              </Pressable>
-              <Pressable style={[styles.smallPill, drinking === 'daily' && styles.smallPillSelected]} onPress={() => setDrinking('daily')}>
-                <Text style={[styles.smallPillText, drinking === 'daily' && styles.smallPillTextSelected]}>Daily</Text>
-              </Pressable>
+              <View style={styles.habitItem}>
+                <Text style={styles.habitLabel}>Do you drink alcohol?</Text>
+                <View style={styles.habitOptions}>
+                  <Pressable 
+                    style={[styles.habitPill, drinking === 'no' && styles.habitPillSelected]} 
+                    onPress={() => setDrinking('no')}
+                  >
+                    <Text style={[styles.habitPillText, drinking === 'no' && styles.habitPillTextSelected]}>No</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.habitPill, drinking === 'occasionally' && styles.habitPillSelected]} 
+                    onPress={() => setDrinking('occasionally')}
+                  >
+                    <Text style={[styles.habitPillText, drinking === 'occasionally' && styles.habitPillTextSelected]}>Sometimes</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={[styles.habitPill, drinking === 'daily' && styles.habitPillSelected]} 
+                    onPress={() => setDrinking('daily')}
+                  >
+                    <Text style={[styles.habitPillText, drinking === 'daily' && styles.habitPillTextSelected]}>Daily</Text>
+                  </Pressable>
+                </View>
+                {drinking === 'occasionally' && (
+                  <Animatable.View animation="fadeInDown" duration={300}>
+                    <TextInput
+                      style={[styles.input, { marginTop: 8 }]}
+                      placeholder="How many units per week? (optional)"
+                      placeholderTextColor={styles.placeholderColor.color}
+                      value={drinkingFreq}
+                      onChangeText={setDrinkingFreq}
+                    />
+                  </Animatable.View>
+                )}
+              </View>
             </View>
-            {drinking === 'occasionally' && (
-              <TextInput
-                style={styles.input}
-                placeholder="How many units per week? (optional)"
-                placeholderTextColor={styles.placeholderColor.color}
-                value={drinkingFreq}
-                onChangeText={setDrinkingFreq}
-              />
-            )}
 
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(3); }}
+                onPress={() => animateToStep(3)}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
-              <ActionButton title="Next" onPress={() => setSignupStep(5)} />
+              <ActionButton title="Next" onPress={() => animateToStep(5)} />
             </View>
           </Animated.View>
         );
       case 5:
+        const ITEM_SIZE = 120;
+        const SPACING = 20;
+        const SIDE_ITEM_SIZE = 80;
+        
         return (
-          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [8,0] }) }] }}>
-            <Text style={{ textAlign: 'center', marginBottom: 12, color: styles.textColor.color, fontSize: 15, fontWeight: '600' }}>Choose your avatar</Text>
-            <View style={styles.avatarGrid}>
-              {avatarKeys.map(key => (
-                <Pressable 
-                  key={key} 
-                  onPress={() => { 
-                    setSelectedAvatarKey(key); 
-                    setFieldErrors(prev => ({ ...prev, avatar: undefined })); 
-                    if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          <Animated.View style={{ opacity: 1, transform: [{ translateX: slideAnim }] }}>
+            <Text style={{ textAlign: 'center', marginBottom: 20, color: styles.textColor.color, fontSize: 17, fontWeight: '700' }}>
+              Choose Your Avatar
+            </Text>
+            
+            <View style={{ height: ITEM_SIZE + 60, marginBottom: 20 }}>
+              <ScrollView
+                ref={avatarScrollRef}
+                horizontal
+                pagingEnabled={false}
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={ITEM_SIZE + SPACING}
+                decelerationRate="fast"
+                contentContainerStyle={{
+                  paddingHorizontal: (cardWidth - ITEM_SIZE) / 2,
+                  alignItems: 'center',
+                }}
+                onScroll={(event) => {
+                  const offsetX = event.nativeEvent.contentOffset.x;
+                  const index = Math.round(offsetX / (ITEM_SIZE + SPACING));
+                  setActiveAvatarIndex(index);
+                  const key = avatarKeys[index];
+                  if (key) {
+                    setSelectedAvatarKey(key);
+                    setFieldErrors(prev => ({ ...prev, avatar: undefined }));
+                  }
+                  // Update animated value
+                  scrollX.setValue(offsetX);
+                }}
+                scrollEventThrottle={16}
+              >
+                {avatarKeys.map((key, index) => {
+                  const inputRange = [
+                    (index - 1) * (ITEM_SIZE + SPACING),
+                    index * (ITEM_SIZE + SPACING),
+                    (index + 1) * (ITEM_SIZE + SPACING),
+                  ];
+                  
+                  const scale = scrollX.interpolate({
+                    inputRange,
+                    outputRange: [0.7, 1, 0.7],
+                    extrapolate: 'clamp',
+                  });
+                  
+                  const opacity = scrollX.interpolate({
+                    inputRange,
+                    outputRange: [0.4, 1, 0.4],
+                    extrapolate: 'clamp',
+                  });
+
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => {
+                        avatarScrollRef.current?.scrollTo({
+                          x: index * (ITEM_SIZE + SPACING),
+                          animated: true,
+                        });
+                        if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      style={{
+                        width: ITEM_SIZE,
+                        height: ITEM_SIZE,
+                        marginHorizontal: SPACING / 2,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Animated.View
+                        style={[
+                          {
+                            width: ITEM_SIZE,
+                            height: ITEM_SIZE,
+                            borderRadius: 20,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            backgroundColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
+                            borderWidth: 3,
+                            borderColor: selectedAvatarKey === key ? '#6DBF6A' : 'transparent',
+                            transform: [{ scale }],
+                            opacity,
+                          },
+                          selectedAvatarKey === key && {
+                            shadowColor: '#6DBF6A',
+                            shadowOpacity: 0.4,
+                            shadowRadius: 15,
+                            shadowOffset: { width: 0, height: 5 },
+                            elevation: 8,
+                          }
+                        ]}
+                      >
+                        <Image 
+                          source={getAvatarSource(key)} 
+                          style={{ 
+                            width: ITEM_SIZE - 20, 
+                            height: ITEM_SIZE - 20,
+                            borderRadius: 16,
+                          }} 
+                        />
+                      </Animated.View>
+                      {selectedAvatarKey === key && (
+                        <Animatable.View 
+                          animation="bounceIn" 
+                          duration={400}
+                          style={{
+                            position: 'absolute',
+                            top: -5,
+                            right: 10,
+                            backgroundColor: '#fff',
+                            borderRadius: 15,
+                            padding: 2,
+                            shadowColor: '#000',
+                            shadowOpacity: 0.3,
+                            shadowRadius: 4,
+                            shadowOffset: { width: 0, height: 2 },
+                            elevation: 5,
+                          }}
+                        >
+                          <Ionicons name="checkmark-circle" size={28} color="#6DBF6A" />
+                        </Animatable.View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
+              {avatarKeys.map((_, index) => (
+                <View
+                  key={index}
+                  style={{
+                    width: index === activeAvatarIndex ? 24 : 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: index === activeAvatarIndex ? '#6DBF6A' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'),
+                    marginHorizontal: 4,
                   }}
-                  style={[styles.avatarWrapper, selectedAvatarKey === key && styles.avatarWrapperSelected]}
-                >
-                  <Image source={getAvatarSource(key)} style={styles.avatar} />
-                  {selectedAvatarKey === key && (
-                    <View style={styles.avatarCheckmark}>
-                      <Ionicons name="checkmark-circle" size={24} color="#6DBF6A" />
-                    </View>
-                  )}
-                </Pressable>
+                />
               ))}
             </View>
+            
             {fieldErrors.avatar ? <Text style={styles.inlineError}>{String(fieldErrors.avatar)}</Text> : null}
 
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.ghostButton}
-                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(4); }}
+                onPress={() => animateToStep(4)}
               >
                 <Text style={styles.ghostButtonText}>Back</Text>
               </Pressable>
@@ -983,28 +1077,16 @@ export default function AuthScreen() {
     }
   };
 
-  const stepAnim = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    stepAnim.setValue(0);
-    Animated.timing(stepAnim, {
-      toValue: 1,
-      duration: 320,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [signupStep]);
-
   return (
     <SafeAreaView style={[styles.safeArea]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContainer}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.container}>
@@ -1044,12 +1126,10 @@ export default function AuthScreen() {
               animation="fadeInUp"
               duration={500}
               delay={200}
-              style={[{ width: cardWidth, marginTop: cardShiftY }]}
+              style={[styles.cardWrapper]}
             >
-              <Animated.View
-                style={[styles.cardStroke, { width: cardWidth, height: contentHeightAnim }]}
-              >
-                <View style={[styles.card, glassEnabled ? styles.cardGlass : null, { flex: 1 }]}>
+              <View style={styles.cardStroke}>
+                <View style={[styles.card, glassEnabled ? styles.cardGlass : null]}>
                   {glassEnabled ? (
                     <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.cardBlur} />
                   ) : (
@@ -1061,14 +1141,14 @@ export default function AuthScreen() {
                     style={styles.cardInnerGradient}
                   />
 
-                  <View style={styles.cardContent} onLayout={handleContentLayout}>
+                  <View style={styles.cardContent}>
                     {!isLoginView && <SignupProgressBar currentStep={signupStep} totalSteps={5} isDark={isDark} />}
 
                     <View style={styles.headerRow}>
                       {!isLoginView ? (
                         <Pressable onPress={() => {
-                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                          if (signupStep > 1) setSignupStep(p => p - 1); else setIsLoginView(true);
+                          if (signupStep > 1) animateToStep(signupStep - 1); 
+                          else setIsLoginView(true);
                         }}>
                           <Ionicons name="arrow-back" size={22} color={styles.placeholderColor.color} />
                         </Pressable>
@@ -1090,7 +1170,7 @@ export default function AuthScreen() {
                     <ErrorBanner message={errorText} onClose={() => setErrorText('')} />
 
                     {isLoginView ? (
-                      <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [6,0] }) }] }}>
+                      <Animated.View style={{ opacity: 1 }}>
                         <Text style={styles.fieldLabel}>Email</Text>
                         <TextInput
                           style={[styles.input, focusedField === 'email' ? styles.focusedInput : null]}
@@ -1125,7 +1205,6 @@ export default function AuthScreen() {
 
                         <Pressable
                           onPress={() => {
-                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                             setIsLoginView(false); setSignupStep(1); setFieldErrors({});
                           }}
                           style={styles.linkRow}
@@ -1134,21 +1213,13 @@ export default function AuthScreen() {
                         </Pressable>
                       </Animated.View>
                     ) : (
-                      <>
-                        <ScrollView
-                          showsVerticalScrollIndicator={false}
-                          style={{ marginTop: 6 }}
-                          contentContainerStyle={{ paddingBottom: 12 }}
-                          nestedScrollEnabled={true}
-                          keyboardShouldPersistTaps="handled"
-                        >
-                          {renderSignupStep()}
-                        </ScrollView>
-                      </>
+                      <View style={styles.signupContentWrapper}>
+                        {renderSignupStep()}
+                      </View>
                     )}
                   </View>
                 </View>
-              </Animated.View>
+              </View>
             </Animatable.View>
 
             {isLoading && (
@@ -1163,7 +1234,7 @@ export default function AuthScreen() {
   );
 }
 
-const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, cardShiftY, glassEnabled }) => {
+const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMaxHeight, glassEnabled }) => {
   if (width === undefined || height === undefined) {
     return StyleSheet.create({
       safeArea: { flex: 1, backgroundColor: '#f4f4f8' },
@@ -1175,7 +1246,6 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
   cardWidth = cardWidth || width * 0.9;
   cardMinHeight = cardMinHeight || 360;
   cardMaxHeight = cardMaxHeight || 800;
-  cardShiftY = cardShiftY || 10;
   glassEnabled = glassEnabled ?? true;
   
   const colors = {
@@ -1188,33 +1258,56 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     brand: '#6DBF6A'
   };
 
-  const padding = Math.max(12, Math.round(cardWidth * 0.036));
-  const inputHeight = Math.max(48, Math.round(cardMinHeight * 0.08));
+  const padding = Math.max(18, Math.round(cardWidth * 0.04));
+  const inputHeight = Math.max(50, Math.round(cardMinHeight * 0.09));
   const logoSize = Math.max(120, Math.round(Math.min(width, height) * 0.20));
 
   return StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: isDark ? '#06121A' : '#F7FBFF' },
-    scrollContainer: { flexGrow: 1, justifyContent: height > 740 ? 'center' : 'flex-start', paddingVertical: 24 },
-    container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    blobContainer: { ...StyleSheet.absoluteFillObject, zIndex: 0, overflow: 'hidden' },
+    scrollContainer: { 
+      flexGrow: 1, 
+      justifyContent: 'center',
+      paddingVertical: 20,
+    },
+    container: { 
+      flex: 1, 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      minHeight: height,
+    },
+    blobContainer: { 
+      ...StyleSheet.absoluteFillObject, 
+      zIndex: 0, 
+      overflow: 'hidden' 
+    },
 
     logoWrapper: {
       zIndex: 4,
       alignSelf: 'center',
-      marginTop: Math.max(8, Math.round(height * 0.02)),
-      marginBottom: Math.max(6, Math.round(height * 0.01)),
+      marginBottom: 16,
       alignItems: 'center',
       justifyContent: 'center',
     },
     logo: { width: logoSize + 100, height: logoSize },
     logoLight: { tintColor: undefined },
     logoDark: { tintColor: undefined },
-    logoTextFallback: { width: logoSize, height: logoSize, borderRadius: logoSize / 2, backgroundColor: 'rgba(109,191,106,0.1)', alignItems: 'center', justifyContent: 'center' },
+    logoTextFallback: { 
+      width: logoSize, 
+      height: logoSize, 
+      borderRadius: logoSize / 2, 
+      backgroundColor: 'rgba(109,191,106,0.1)', 
+      alignItems: 'center', 
+      justifyContent: 'center' 
+    },
     logoText: { color: colors.brand, fontWeight: '700', fontSize: 24 },
 
+    cardWrapper: {
+      width: cardWidth,
+      zIndex: 2,
+    },
     cardStroke: {
       borderRadius: 28,
-      padding: 6,
+      padding: 1.5,
       shadowColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(109,191,106,0.15)',
       shadowOpacity: isDark ? 0.45 : 0.2,
       shadowRadius: 20,
@@ -1225,87 +1318,59 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)'
     },
     card: {
-      width: '100%',
-      height: undefined,
-      borderRadius: 18,
-      overflow: 'visible',
+      borderRadius: 26,
+      overflow: 'hidden',
       backgroundColor: glassEnabled ? 'rgba(255,255,255,0.02)' : (isDark ? 'rgba(6,9,12,0.66)' : 'rgba(255,255,255,0.98)'),
       borderWidth: 0.6,
       borderColor: glassEnabled ? (isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.15)') : (isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.035)'),
     },
 
-    cardBlur: { ...StyleSheet.absoluteFillObject, zIndex: 0, borderRadius: 18 },
+    cardBlur: { ...StyleSheet.absoluteFillObject, zIndex: 0, borderRadius: 26 },
     cardBlurFallback: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent', zIndex: 0 },
-    cardInnerGradient: { ...StyleSheet.absoluteFillObject, zIndex: 1, borderRadius: 18 },
-    cardContent: { padding: padding, zIndex: 2 },
-
-    progressContainer: {
-      marginBottom: 20,
-      marginTop: 8,
-    },
-    progressBarBackground: {
-      height: 6,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
-      borderRadius: 10,
-      overflow: 'hidden',
-    },
-    progressBarFill: {
-      height: '100%',
-      borderRadius: 10,
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    progressGlow: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: '#6DBF6A',
-      shadowColor: '#6DBF6A',
-      shadowOpacity: 0.6,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 0 },
-    },
-    progressSteps: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 12,
-      paddingHorizontal: 4,
-    },
-    progressDot: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-      borderWidth: 2,
-      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    progressDotActive: {
-      backgroundColor: '#6DBF6A',
-      borderColor: '#6DBF6A',
-    },
-    progressDotCurrent: {
-      backgroundColor: '#6DBF6A',
-      borderColor: '#8AF3C5',
-      shadowColor: '#6DBF6A',
-      shadowOpacity: 0.4,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 4,
-    },
-    progressText: {
-      textAlign: 'center',
-      marginTop: 8,
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.subtext,
+    cardInnerGradient: { ...StyleSheet.absoluteFillObject, zIndex: 1, borderRadius: 26 },
+    cardContent: { 
+      padding: padding, 
+      zIndex: 2,
+      minHeight: cardMinHeight,
     },
 
-    headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-    headerTitle: { fontSize: Math.max(18, Math.round(cardWidth * 0.048)), fontWeight: '800', color: colors.text, textAlign: 'center' },
-    headerSubtitle: { fontSize: 13, color: colors.subtext, marginTop: 4, textAlign: 'center' },
+    signupContentWrapper: {
+      minHeight: 300,
+    },
 
-    fieldLabel: { color: colors.subtext, marginTop: 12, marginBottom: 6, fontSize: 13, fontWeight: '600' },
-    smallLabel: { color: colors.subtext, marginTop: 10, marginBottom: 6, fontSize: 13, fontWeight: '600' },
+    headerRow: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      justifyContent: 'space-between', 
+      marginBottom: 12 
+    },
+    headerTitle: { 
+      fontSize: Math.max(20, Math.round(cardWidth * 0.05)), 
+      fontWeight: '800', 
+      color: colors.text, 
+      textAlign: 'center' 
+    },
+    headerSubtitle: { 
+      fontSize: 13, 
+      color: colors.subtext, 
+      marginTop: 4, 
+      textAlign: 'center' 
+    },
+
+    fieldLabel: { 
+      color: colors.subtext, 
+      marginTop: 12, 
+      marginBottom: 6, 
+      fontSize: 13, 
+      fontWeight: '600' 
+    },
+    smallLabel: { 
+      color: colors.subtext, 
+      marginTop: 10, 
+      marginBottom: 6, 
+      fontSize: 13, 
+      fontWeight: '600' 
+    },
 
     input: {
       width: '100%',
@@ -1381,6 +1446,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)',
       borderWidth: 1.5,
       backgroundColor: isDark ? 'rgba(109,191,106,0.03)' : 'rgba(109,191,106,0.04)',
+      justifyContent: 'center',
     },
 
     dropdownItem: { 
@@ -1429,7 +1495,8 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       borderWidth: 1.5, 
       borderColor: isDark ? 'rgba(109,191,106,0.15)' : 'rgba(109,191,106,0.25)', 
       backgroundColor: 'transparent', 
-      minWidth: 110 
+      minWidth: 110,
+      height: inputHeight,
     },
     ghostButtonText: { color: colors.text, fontWeight: '600' },
 
@@ -1593,6 +1660,67 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     },
     smallPillText: { color: colors.text, fontSize: 13, fontWeight: '500' },
     smallPillTextSelected: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+    // Step 4 Habit Styles
+    habitSection: {
+      marginBottom: 8,
+    },
+    habitHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
+      paddingBottom: 12,
+      borderBottomWidth: 1.5,
+      borderBottomColor: isDark ? 'rgba(109,191,106,0.1)' : 'rgba(109,191,106,0.15)',
+    },
+    habitTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    habitItem: {
+      marginBottom: 20,
+    },
+    habitLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 10,
+    },
+    habitOptions: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    habitPill: {
+      flex: 1,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(109,191,106,0.12)' : 'rgba(109,191,106,0.2)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    habitPillSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 4,
+    },
+    habitPillText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    habitPillTextSelected: {
+      color: '#fff',
+      fontWeight: '700',
+    },
 
     cardGlass: {
       borderColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.15)',
