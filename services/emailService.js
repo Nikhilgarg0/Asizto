@@ -1,6 +1,6 @@
 // services/emailService.js
 const SERVICE_ID = 'service_o7gkvbu';
-const TEMPLATE_ID = 'Design';
+const TEMPLATE_ID = 'template_t96dpdb';
 const PUBLIC_KEY = 'IriL9iG7M4NdMiljz';
 
 // Store OTPs temporarily (in production, use secure backend)
