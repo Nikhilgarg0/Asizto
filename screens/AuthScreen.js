@@ -608,9 +608,10 @@ export default function AuthScreen() {
     try {
       await signInWithEmailAndPassword(auth, trimmedEmail, password);
       setIsLoading(false);
-      await handleSendOtp(trimmedEmail);
-      setLoginStep('otp');
-      try { Toast.show({ type: 'success', text1: 'Verification code sent to your email', position: 'top', visibilityTime: 2500, topOffset: 50 }); } catch(e) {}
+      // OTP should NOT be sent after login. If you want to require OTP for login, implement a separate step and trigger explicitly.
+      // setLoginStep('otp'); // Remove this if OTP is not required for login
+      // Optionally, navigate to dashboard or home screen here
+      // Example: navigation.navigate('Dashboard');
     } catch (e) {
       const friendly = getAuthErrorMessage(e, 'login') || '';
       const code = e?.code || '';
