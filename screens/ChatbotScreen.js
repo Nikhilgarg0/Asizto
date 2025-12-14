@@ -60,6 +60,64 @@ const dayString = (ts) => {
   return d.toDateString();
 };
 
+// Parse markdown-style bold text (*text* or **text**) and return Text components
+const parseMarkdownBold = (text, baseStyle) => {
+  if (!text) return null;
+  
+  const parts = [];
+  let currentIndex = 0;
+  
+  // Match *text* or **text** patterns (non-greedy)
+  const boldPattern = /(\*\*?)([^*\n]+?)\1/g;
+  let match;
+  let hasMatches = false;
+  
+  while ((match = boldPattern.exec(text)) !== null) {
+    hasMatches = true;
+    
+    // Add text before the match
+    if (match.index > currentIndex) {
+      const beforeText = text.substring(currentIndex, match.index);
+      if (beforeText) {
+        parts.push(
+          <Text key={`text-${currentIndex}`} style={baseStyle}>
+            {beforeText}
+          </Text>
+        );
+      }
+    }
+    
+    // Add the bold text (without the asterisks)
+    parts.push(
+      <Text key={`bold-${match.index}`} style={[baseStyle, { fontWeight: '700' }]}>
+        {match[2]}
+      </Text>
+    );
+    
+    currentIndex = match.index + match[0].length;
+  }
+  
+  // Add remaining text after the last match
+  if (currentIndex < text.length) {
+    const remainingText = text.substring(currentIndex);
+    if (remainingText) {
+      parts.push(
+        <Text key={`text-${currentIndex}`} style={baseStyle}>
+          {remainingText}
+        </Text>
+      );
+    }
+  }
+  
+  // If no matches found, return the original text
+  if (!hasMatches || parts.length === 0) {
+    return <Text style={baseStyle}>{text}</Text>;
+  }
+  
+  // Return nested Text components (React Native supports nested Text)
+  return <Text style={baseStyle}>{parts}</Text>;
+};
+
 // Enhanced message component with animations
 const AnimatedMessage = ({ children, delay = 0 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -106,7 +164,7 @@ const AnimatedMessage = ({ children, delay = 0 }) => {
   );
 };
 
-const AnimatedChatMessage = ({ content, onComplete, msgId, colors }) => {
+const AnimatedChatMessage = ({ content, onComplete, msgId, colors, textStyle }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [isAnimating, setIsAnimating] = useState(true);
 
@@ -134,11 +192,18 @@ const AnimatedChatMessage = ({ content, onComplete, msgId, colors }) => {
     return () => clearInterval(interval);
   }, [content, msgId, onComplete]);
 
+  const baseStyle = textStyle || { color: colors.text };
+  
+  // Parse the displayed text with markdown formatting
+  const formattedText = parseMarkdownBold(displayedText, baseStyle);
+  
   return (
-    <Text style={{ color: colors.text }}>
-      {displayedText}
-      {isAnimating && <Text style={{ opacity: 0.5 }}>|</Text>}
-    </Text>
+    <View>
+      {formattedText}
+      {isAnimating && (
+        <Text style={[baseStyle, { opacity: 0.5 }]}>|</Text>
+      )}
+    </View>
   );
 };
 
@@ -308,17 +373,103 @@ export default function ChatbotScreen({ route, navigation }) {
       const userDocSnap = await getDoc(userDocRef);
       const userProfile = userDocSnap.exists() ? userDocSnap.data() : {};
 
+      // Calculate age from date of birth if age is not directly available
+      let age = userProfile.age;
+      if (!age && userProfile.dob) {
+        try {
+          const dob = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob);
+          const now = new Date();
+          age = now.getFullYear() - dob.getFullYear();
+          const monthDiff = now.getMonth() - dob.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+            age -= 1;
+          }
+        } catch (e) {
+          console.warn('Error calculating age from DOB:', e);
+        }
+      }
+
+      // Fetch detailed medicine information
       const medQuery = query(collection(db, 'medicines'), where('userId', '==', userId));
       const medSnap = await getDocs(medQuery);
-      const medicines = medSnap.empty ? null : medSnap.docs.map(d => d.data().name).join(', ');
+      const medicinesList = medSnap.empty ? [] : medSnap.docs.map(d => {
+        const medData = d.data();
+        return {
+          name: medData.name || 'Unknown',
+          duration: medData.duration || null,
+          quantity: medData.quantity || 0,
+          times: medData.times || [],
+          takenCount: medData.takenTimestamps?.length || 0
+        };
+      });
 
+      // Build comprehensive context
       let context = '--- User Health Context ---\n';
-      if (userProfile.name) context += `Name: ${userProfile.name}\n`;
-      if (userProfile.age) context += `Age: ${userProfile.age}\n`;
+      
+      // Basic Information
+      if (userProfile.name || userProfile.firstName) {
+        const fullName = userProfile.name || `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim();
+        if (fullName) context += `Name: ${fullName}\n`;
+      }
+      
+      if (age) context += `Age: ${age} years\n`;
+      if (userProfile.gender) context += `Gender: ${userProfile.gender}\n`;
+      
+      // Physical Measurements
       if (userProfile.weight) context += `Weight: ${userProfile.weight} kg\n`;
       if (userProfile.height) context += `Height: ${userProfile.height} cm\n`;
-      if (userProfile.conditions) context += `Conditions: ${userProfile.conditions}\n`;
-      if (medicines) context += `Current Medicines: ${medicines}\n`;
+      
+      // Calculate BMI if both weight and height are available
+      if (userProfile.weight && userProfile.height) {
+        const bmi = (userProfile.weight / Math.pow(userProfile.height / 100, 2)).toFixed(1);
+        context += `BMI: ${bmi}\n`;
+      }
+      
+      // Medical Information
+      if (userProfile.bloodGroup) context += `Blood Group: ${userProfile.bloodGroup}\n`;
+      
+      // Lifestyle Factors
+      if (userProfile.smoking || userProfile.smokingFreq) {
+        const smoking = userProfile.smokingFreq || userProfile.smoking || 'Not specified';
+        context += `Smoking: ${smoking}\n`;
+      }
+      if (userProfile.drinking || userProfile.drinkingFreq) {
+        const drinking = userProfile.drinkingFreq || userProfile.drinking || 'Not specified';
+        context += `Drinking: ${drinking}\n`;
+      }
+      
+      // Medical Conditions and Allergies
+      if (userProfile.conditions) {
+        context += `Medical Conditions/Allergies: ${userProfile.conditions}\n`;
+      }
+      
+      // Detailed Medicine Information
+      if (medicinesList.length > 0) {
+        context += `\nCurrent Medicines in Cabinet (${medicinesList.length}):\n`;
+        medicinesList.forEach((med, index) => {
+          context += `  ${index + 1}. ${med.name}`;
+          if (med.duration) context += ` - Duration: ${med.duration} days`;
+          if (med.quantity) {
+            const remaining = med.quantity - med.takenCount;
+            context += ` - Total doses: ${med.quantity}, Taken: ${med.takenCount}, Remaining: ${remaining}`;
+          }
+          if (med.times && med.times.length > 0) {
+            try {
+              const timeStrings = med.times.map(t => {
+                const time = t.toDate ? t.toDate() : new Date(t);
+                return time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              });
+              context += ` - Schedule: ${timeStrings.join(', ')}`;
+            } catch (e) {
+              context += ` - Schedule: ${med.times.length} time(s) per day`;
+            }
+          }
+          context += '\n';
+        });
+      } else {
+        context += `Current Medicines: None\n`;
+      }
+      
       context += '--- End of Context ---\n\n';
       return context;
     } catch (err) {
@@ -344,23 +495,88 @@ export default function ChatbotScreen({ route, navigation }) {
     try {
       const userContext = await fetchUserContext();
       const prompt = `${userContext}User Question: ${input}`;
-      const systemInstruction = 'You are Asizto, a helpful AI health assistant. Use the provided user context to give personalized and safe information. Always remind users to consult healthcare professionals for medical advice. Be concise and friendly.';
+      const systemInstruction = 'You are Asizto, a helpful AI health assistant. Use the provided user context to give personalized and safe information. Be concise and friendly.';
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemInstruction }] },
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          }),
+      // Try different models and API versions
+      // Updated to use current models (gemini-2.5 series) as older models are deprecated
+      const tryApiCall = async (model, apiVersion = 'v1beta') => {
+        const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        
+        const requestBody = {
+          system_instruction: { parts: [{ text: systemInstruction }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        };
+        
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+          });
+          return { response: res, error: null };
+        } catch (err) {
+          return { response: null, error: err };
         }
-      );
-
-      if (!response.ok) throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message || 'API returned an error');
+      };
+      
+      let response = null;
+      let data = null;
+      let lastError = null;
+      
+      // Try current models first, then fallback to older ones
+      // Models to try: gemini-2.5-flash, gemini-2.5-pro, gemini-1.5-pro, gemini-1.5-flash, gemini-pro
+      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
+      const apiVersions = ['v1beta', 'v1']; // Try both API versions
+      
+      let foundWorking = false;
+      
+      outerLoop: for (const apiVersion of apiVersions) {
+        for (const model of models) {
+          console.log(`Trying ${apiVersion}/${model}...`);
+          const result = await tryApiCall(model, apiVersion);
+          
+          if (result.error) {
+            console.error(`Error calling ${model}:`, result.error);
+            lastError = result.error;
+            continue;
+          }
+          
+          response = result.response;
+          
+          if (response.ok) {
+            try {
+              data = await response.json();
+              if (data.error) {
+                console.error(`API error for ${model}:`, data.error);
+                lastError = new Error(data.error.message || 'API returned an error');
+                continue;
+              }
+              console.log(`Success with ${apiVersion}/${model}`);
+              foundWorking = true;
+              break outerLoop; // Success, exit both loops
+            } catch (parseError) {
+              console.error(`Failed to parse response for ${model}:`, parseError);
+              lastError = parseError;
+              continue;
+            }
+          } else {
+            const errorText = await response.text().catch(() => 'Unable to read error response');
+            console.error(`API call failed for ${apiVersion}/${model}: ${response.status} ${response.statusText}`, errorText);
+            lastError = new Error(`API request failed: ${response.status} ${response.statusText}. ${errorText.substring(0, 200)}`);
+            
+            // If it's not a 404 or 400, we might want to stop trying other models
+            if (response.status !== 404 && response.status !== 400) {
+              break; // Stop trying other models for this API version
+            }
+          }
+        }
+      }
+      
+      if (!foundWorking || !response || !response.ok || !data) {
+        const errorMsg = lastError?.message || 'All model endpoints failed. Please check your API key and model availability.';
+        console.error('Final error:', errorMsg);
+        throw new Error(errorMsg);
+      }
 
       const botMessageContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that. Please try rephrasing your question.";
       const botMessage = { role: 'model', content: botMessageContent, timestamp: Date.now() };
@@ -369,9 +585,17 @@ export default function ChatbotScreen({ route, navigation }) {
     } catch (error) {
       console.error('API error:', error);
       let errorMessage = "Sorry, I'm having trouble connecting right now. Please try again in a moment.";
-      if (error.message?.includes && error.message.includes('API request failed: 429')) errorMessage = "I'm receiving too many requests. Please wait a moment before trying again.";
-      else if (error.message?.includes && error.message.includes('API request failed: 403')) errorMessage = "I'm not authorized to process this request. Please check your settings.";
-      else if (error.message?.includes && error.message.includes('network')) errorMessage = "Network connection issue. Please check your internet connection.";
+      if (error.message?.includes && error.message.includes('API request failed: 429')) {
+        errorMessage = "I'm receiving too many requests. Please wait a moment before trying again.";
+      } else if (error.message?.includes && error.message.includes('API request failed: 403')) {
+        errorMessage = "I'm not authorized to process this request. Please check your API key settings.";
+      } else if (error.message?.includes && error.message.includes('404')) {
+        errorMessage = "API endpoint not found. Please check your API configuration or contact support.";
+      } else if (error.message?.includes && error.message.includes('All model endpoints failed')) {
+        errorMessage = "Unable to connect to AI service. Please verify your API key is valid and has proper permissions.";
+      } else if (error.message?.includes && error.message.includes('network')) {
+        errorMessage = "Network connection issue. Please check your internet connection.";
+      }
       const errorMsg = { role: 'model', content: errorMessage, timestamp: Date.now() };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
@@ -728,7 +952,8 @@ export default function ChatbotScreen({ route, navigation }) {
                       animatedMsgIdsRef.current.add(item.timestamp); 
                     } catch(e){} 
                   }} 
-                  colors={colors} 
+                  colors={colors}
+                  textStyle={styles.botText}
                 />
               ) : (
                 <View>
@@ -738,7 +963,7 @@ export default function ChatbotScreen({ route, navigation }) {
                       style={{ width: 180, height: 120, borderRadius: 8, marginBottom: 8 }} 
                     />
                   ) : null}
-                  <Text style={isUser ? styles.userText : styles.botText}>{item.content}</Text>
+                  {parseMarkdownBold(item.content, isUser ? styles.userText : styles.botText)}
                 </View>
               )}
 

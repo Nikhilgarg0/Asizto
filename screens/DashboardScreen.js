@@ -391,17 +391,34 @@ export default function DashboardScreen({ navigation }) {
       
       const prompt = `Provide a brief, one-paragraph summary for the medicine: "${searchText}". Include its primary use and one or two common side effects. Format it as a simple paragraph.`;
       
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ "contents": [{ "parts": [{ "text": prompt }] }] })
+      // Try current models first, then fallback to older ones
+      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
+      const apiVersions = ['v1beta', 'v1'];
+      let response = null;
+      
+      outerLoop: for (const apiVersion of apiVersions) {
+        for (const model of models) {
+          response = await fetch(
+            `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ "contents": [{ "parts": [{ "text": prompt }] }] })
+            }
+          );
+          
+          if (response.ok) {
+            break outerLoop; // Success, exit both loops
+          } else if (response.status === 404) {
+            continue; // Try next model
+          } else if (response.status !== 400) {
+            break; // Stop trying other models for this API version
+          }
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
+      }
+      
+      if (!response || !response.ok) {
+        throw new Error(`API request failed: All models unavailable`);
       }
 
       const data = await response.json();
@@ -558,18 +575,37 @@ export default function DashboardScreen({ navigation }) {
         ? `Provide a short, uplifting one-sentence quote about ${category} and wellbeing suitable for an app banner.`
         : `Give one concise, evidence-backed health tip about ${category}. Keep it under 30 words and friendly.`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      // Try current models first, then fallback to older ones
+      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
+      const apiVersions = ['v1beta', 'v1'];
+      let res = null;
+      
+      outerLoop: for (const apiVersion of apiVersions) {
+        for (const model of models) {
+          res = await fetch(
+            `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            }
+          );
+          
+          if (res.ok) {
+            break outerLoop; // Success, exit both loops
+          } else if (res.status === 404) {
+            continue; // Try next model
+          } else if (res.status !== 400) {
+            logger.warn('AI fact request failed', { status: res.status });
+            if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
+            return null;
+          }
         }
-      );
-
-      if (!res.ok) {
-        logger.warn('AI fact request failed', { status: res.status });
-        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
+      }
+      
+      if (!res || !res.ok) {
+        logger.warn('AI fact request failed: All models unavailable', { status: res?.status });
+        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res?.status || 404, false);
         return null;
       }
 
@@ -611,18 +647,37 @@ export default function DashboardScreen({ navigation }) {
 
       const prompt = `You are a friendly, evidence-based health assistant. Provide one concise (max 30 words) personalized health tip for a user with the following profile: Age: ${age}; Conditions: ${conditions}; BMI: ${bmiVal}; Smoking: ${smoking}; Drinking: ${drinking}; Medication adherence: ${adherenceSummary}. The tip should be actionable, prioritize safety, and include one specific recommendation.`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      // Try current models first, then fallback to older ones
+      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
+      const apiVersions = ['v1beta', 'v1'];
+      let res = null;
+      
+      outerLoop: for (const apiVersion of apiVersions) {
+        for (const model of models) {
+          res = await fetch(
+            `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            }
+          );
+          
+          if (res.ok) {
+            break outerLoop; // Success, exit both loops
+          } else if (res.status === 404) {
+            continue; // Try next model
+          } else if (res.status !== 400) {
+            logger.warn('AI personal tip request failed', { status: res.status });
+            if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
+            return null;
+          }
         }
-      );
-
-      if (!res.ok) {
-        logger.warn('AI personal tip request failed', { status: res.status });
-        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
+      }
+      
+      if (!res || !res.ok) {
+        logger.warn('AI personal tip request failed: All models unavailable', { status: res?.status });
+        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res?.status || 404, false);
         return null;
       }
 
