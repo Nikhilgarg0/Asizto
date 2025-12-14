@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Pressable, Image,
   Platform, ActivityIndicator, Animated, Easing, UIManager, LayoutAnimation,
-  SafeAreaView, KeyboardAvoidingView, useColorScheme, useWindowDimensions, Linking
+  SafeAreaView, KeyboardAvoidingView, useColorScheme, useWindowDimensions, Linking, ScrollView
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Toast from 'react-native-toast-message';
@@ -342,6 +342,60 @@ function getAuthErrorMessage(error, context = 'login') {
         : 'Failed to sign in. Please try again.';
   }
 }
+
+// FIX 1: Extracted OTPInput component outside to prevent keyboard dismissal
+const OTPInput = ({ digits, setDigits, refs, fieldErrors, styles, isDark }) => {
+  return (
+    <>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+        {digits.map((d, idx) => (
+          <Animated.View key={idx} style={{ flex: 1 }}>
+            <TextInput
+              ref={ref => (refs.current[idx] = ref)}
+              style={[
+                styles.input,
+                { 
+                  textAlign: 'center', 
+                  fontSize: 24, 
+                  fontWeight: '700',
+                  paddingVertical: 0, // Fix for visibility
+                  height: 54, // Fixed height for visibility
+                  justifyContent: 'center',
+                },
+                d && { borderColor: '#6DBF6A', borderWidth: 2, backgroundColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)' }
+              ]}
+              keyboardType="number-pad"
+              maxLength={1}
+              value={digits[idx]}
+              onChangeText={(t) => {
+                const v = t.replace(/[^0-9]/g, '');
+                const next = [...digits];
+                next[idx] = v;
+                setDigits(next);
+                if (v && idx < 5) {
+                  setTimeout(() => {
+                    refs.current[idx + 1]?.focus();
+                  }, 50);
+                  if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+              }}
+              onKeyPress={({ nativeEvent }) => {
+                if (nativeEvent.key === 'Backspace' && !digits[idx] && idx > 0) {
+                  setTimeout(() => {
+                    refs.current[idx - 1]?.focus();
+                  }, 50);
+                }
+              }}
+              returnKeyType={idx === 5 ? 'done' : 'next'}
+              blurOnSubmit={idx === 5}
+            />
+          </Animated.View>
+        ))}
+      </View>
+      {fieldErrors?.otp && <Text style={styles.inlineError}>{String(fieldErrors.otp)}</Text>}
+    </>
+  );
+};
 
 export default function AuthScreen() {
   const scheme = useColorScheme();
@@ -783,60 +837,6 @@ export default function AuthScreen() {
     );
   };
 
-  // Enhanced OTP Input Component with fixed keyboard behavior
-  const OTPInput = ({ digits, setDigits, refs, fieldErrors }) => {
-    return (
-      <>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          {digits.map((d, idx) => (
-            <Animated.View key={idx} style={{ flex: 1 }}>
-              <TextInput
-                ref={ref => (refs.current[idx] = ref)}
-                style={[
-                  styles.input,
-                  { 
-                    textAlign: 'center', 
-                    fontSize: 24, 
-                    fontWeight: '700',
-                    paddingVertical: 16,
-                    paddingHorizontal: 8,
-                    lineHeight: 28,
-                  },
-                  d && { borderColor: '#6DBF6A', borderWidth: 2, backgroundColor: isDark ? 'rgba(109,191,106,0.08)' : 'rgba(109,191,106,0.12)' }
-                ]}
-                keyboardType="number-pad"
-                maxLength={1}
-                value={digits[idx]}
-                onChangeText={(t) => {
-                  const v = t.replace(/[^0-9]/g, '');
-                  const next = [...digits];
-                  next[idx] = v;
-                  setDigits(next);
-                  if (v && idx < 5) {
-                    setTimeout(() => {
-                      refs.current[idx + 1]?.focus();
-                    }, 50);
-                    if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                }}
-                onKeyPress={({ nativeEvent }) => {
-                  if (nativeEvent.key === 'Backspace' && !digits[idx] && idx > 0) {
-                    setTimeout(() => {
-                      refs.current[idx - 1]?.focus();
-                    }, 50);
-                  }
-                }}
-                returnKeyType={idx === 5 ? 'done' : 'next'}
-                blurOnSubmit={idx === 5}
-              />
-            </Animated.View>
-          ))}
-        </View>
-        {fieldErrors?.otp && <Text style={styles.inlineError}>{String(fieldErrors.otp)}</Text>}
-      </>
-    );
-  };
-
   const renderSignupStep = () => {
     const trimmed = (email || '').trim().toLowerCase();
     const emailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
@@ -1003,6 +1003,8 @@ export default function AuthScreen() {
               setDigits={setSignupOtpDigits} 
               refs={signupOtpRefs}
               fieldErrors={fieldErrors}
+              styles={styles}
+              isDark={isDark}
             />
             
             {signupOtpInfoText && <Text style={[styles.subtleText, { textAlign: 'center', marginTop: 8 }]}>{signupOtpInfoText}</Text>}
@@ -1158,177 +1160,184 @@ export default function AuthScreen() {
       
       case 4:
         return (
-          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [20,0] }) }] }}>
+          <Animated.View style={{ opacity: stepAnim, transform: [{ translateY: stepAnim.interpolate({ inputRange: [0,1], outputRange: [20,0] }) }], flex: 1 }}>
             <Text style={styles.stepTitle}>Health Profile</Text>
             
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Height (cm)</Text>
-                <View style={styles.inputAffixContainer}>
-                  <Ionicons name="resize-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={styles.inputAffix}
-                    placeholder="170"
-                    placeholderTextColor={styles.placeholderColor.color}
-                    value={heightVal}
-                    onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))}
-                    keyboardType="numeric"
-                  />
+            {/* FIX 2: Added ScrollView with fixed max height to allow scrolling when content overflows */}
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: height * 0.55 }} 
+              contentContainerStyle={{ paddingBottom: 10 }}
+            >
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Height (cm)</Text>
+                  <View style={styles.inputAffixContainer}>
+                    <Ionicons name="resize-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+                    <TextInput
+                      style={styles.inputAffix}
+                      placeholder="170"
+                      placeholderTextColor={styles.placeholderColor.color}
+                      value={heightVal}
+                      onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Weight (kg)</Text>
+                  <View style={styles.inputAffixContainer}>
+                    <Ionicons name="fitness-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+                    <TextInput
+                      style={styles.inputAffix}
+                      placeholder="70"
+                      placeholderTextColor={styles.placeholderColor.color}
+                      value={weightVal}
+                      onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ''))}
+                      keyboardType="numeric"
+                    />
+                  </View>
                 </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Weight (kg)</Text>
-                <View style={styles.inputAffixContainer}>
-                  <Ionicons name="fitness-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={styles.inputAffix}
-                    placeholder="70"
-                    placeholderTextColor={styles.placeholderColor.color}
-                    value={weightVal}
-                    onChangeText={t => setWeight(t.replace(/[^0-9.]/g, ''))}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-            </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Blood Group</Text>
-              <Pressable
-                onPress={() => setShowBloodList(prev => !prev)}
-                style={[styles.dropdown, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="water-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
-                  <Text style={{ color: bloodGroup ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>
-                    {bloodGroup || 'Select Blood Group'}
-                  </Text>
-                </View>
-                <Ionicons name={showBloodList ? 'chevron-up' : 'chevron-down'} size={18} color={styles.placeholderColor.color} />
-              </Pressable>
-              {showBloodList && (
-                <View style={styles.dropdownListContainer}> 
-                  {bloodGroupData.map(item => {
-                    const selected = item.value === bloodGroup;
-                    return (
-                      <Pressable
-                        key={item.value}
-                        onPress={() => { 
-                          setBloodGroup(item.value); 
-                          setFieldErrors(prev => ({ ...prev, bloodGroup: undefined })); 
-                          setShowBloodList(false);
-                          if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        }}
-                        style={[styles.dropdownItem, selected && styles.dropdownItemSelected]}
-                      >
-                        <Text style={[styles.dropdownItemText, selected && styles.dropdownItemTextSelected]}>{item.label}</Text>
-                        {selected && <Ionicons name="checkmark" size={20} color="#fff" />}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-              {fieldErrors.bloodGroup && <Text style={styles.inlineError}>{String(fieldErrors.bloodGroup)}</Text>}
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Medical Conditions (Optional)</Text>
-              <TextInput
-                style={[styles.input, { height: 90, textAlignVertical: 'top', paddingTop: 14 }]}
-                placeholder="E.g., Diabetes, Hypertension, etc."
-                placeholderTextColor={styles.placeholderColor.color}
-                value={conditions}
-                onChangeText={setConditions}
-                multiline
-              />
-              <View style={styles.suggestionContainer}>
-                {["Diabetes", "Hypertension", "Asthma", "Thyroid", "Arthritis"].map(c => (
-                  <Pressable 
-                    key={c} 
-                    onPress={() => {
-                      setConditions(prev => (prev ? `${prev}, ${c}` : c));
-                      if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }} 
-                    style={styles.suggestionChip}
-                  >
-                    <Text style={styles.suggestionText}>+ {c}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Smoking Habits</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                {['no', 'occasionally', 'daily'].map(option => (
-                  <Pressable 
-                    key={option}
-                    style={[styles.smallPill, smoking === option && styles.smallPillSelected]} 
-                    onPress={() => {
-                      setSmoking(option);
-                      if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                  >
-                    <Text style={[styles.smallPillText, smoking === option && styles.smallPillTextSelected]}>
-                      {option === 'no' ? 'No' : option === 'occasionally' ? 'Sometimes' : 'Daily'}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-              {smoking === 'occasionally' && (
-                <TextInput
-                  style={[styles.input, { marginTop: 8 }]}
-                  placeholder="How many per day/week?"
-                  placeholderTextColor={styles.placeholderColor.color}
-                  value={smokingFreq}
-                  onChangeText={setSmokingFreq}
-                />
-              )}
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Drinking Habits</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                {['no', 'occasionally', 'daily'].map(option => (
-                  <Pressable 
-                    key={option}
-                    style={[styles.smallPill, drinking === option && styles.smallPillSelected]} 
-                    onPress={() => {
-                      setDrinking(option);
-                      if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                  >
-                    <Text style={[styles.smallPillText, drinking === option && styles.smallPillTextSelected]}>
-                      {option === 'no' ? 'No' : option === 'occasionally' ? 'Sometimes' : 'Daily'}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-              {drinking === 'occasionally' && (
-                <TextInput
-                  style={[styles.input, { marginTop: 8 }]}
-                  placeholder="How many units per week?"
-                  placeholderTextColor={styles.placeholderColor.color}
-                  value={drinkingFreq}
-                  onChangeText={setDrinkingFreq}
-                />
-              )}
-            </View>
-
-            <View style={styles.actionRow}>
-              <View style={{ flex: 1, marginRight: 8 }}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Blood Group</Text>
                 <Pressable
-                  style={[styles.ghostButton, { alignItems: 'center' }]}
-                  onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(3); }}
+                  onPress={() => setShowBloodList(prev => !prev)}
+                  style={[styles.dropdown, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
                 >
-                  <Ionicons name="arrow-back" size={16} color={styles.textColor.color} style={{ marginRight: 6 }} />
-                  <Text style={styles.ghostButtonText}>Back</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="water-outline" size={18} color={styles.placeholderColor.color} style={{ marginRight: 8 }} />
+                    <Text style={{ color: bloodGroup ? styles.textColor.color : styles.placeholderColor.color, fontSize: 16 }}>
+                      {bloodGroup || 'Select Blood Group'}
+                    </Text>
+                  </View>
+                  <Ionicons name={showBloodList ? 'chevron-up' : 'chevron-down'} size={18} color={styles.placeholderColor.color} />
                 </Pressable>
+                {showBloodList && (
+                  <View style={styles.dropdownListContainer}> 
+                    {bloodGroupData.map(item => {
+                      const selected = item.value === bloodGroup;
+                      return (
+                        <Pressable
+                          key={item.value}
+                          onPress={() => { 
+                            setBloodGroup(item.value); 
+                            setFieldErrors(prev => ({ ...prev, bloodGroup: undefined })); 
+                            setShowBloodList(false);
+                            if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          style={[styles.dropdownItem, selected && styles.dropdownItemSelected]}
+                        >
+                          <Text style={[styles.dropdownItemText, selected && styles.dropdownItemTextSelected]}>{item.label}</Text>
+                          {selected && <Ionicons name="checkmark" size={20} color="#fff" />}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+                {fieldErrors.bloodGroup && <Text style={styles.inlineError}>{String(fieldErrors.bloodGroup)}</Text>}
               </View>
-              <View style={{ flex: 1 }}>
-                <ActionButton title="Continue" icon="arrow-forward" onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(5); }} />
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Medical Conditions (Optional)</Text>
+                <TextInput
+                  style={[styles.input, { height: 90, textAlignVertical: 'top', paddingTop: 14 }]}
+                  placeholder="E.g., Diabetes, Hypertension, etc."
+                  placeholderTextColor={styles.placeholderColor.color}
+                  value={conditions}
+                  onChangeText={setConditions}
+                  multiline
+                />
+                <View style={styles.suggestionContainer}>
+                  {["Diabetes", "Hypertension", "Asthma", "Thyroid", "Arthritis"].map(c => (
+                    <Pressable 
+                      key={c} 
+                      onPress={() => {
+                        setConditions(prev => (prev ? `${prev}, ${c}` : c));
+                        if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }} 
+                      style={styles.suggestionChip}
+                    >
+                      <Text style={styles.suggestionText}>+ {c}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
-            </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Smoking Habits</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  {['no', 'occasionally', 'daily'].map(option => (
+                    <Pressable 
+                      key={option}
+                      style={[styles.smallPill, smoking === option && styles.smallPillSelected]} 
+                      onPress={() => {
+                        setSmoking(option);
+                        if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={[styles.smallPillText, smoking === option && styles.smallPillTextSelected]}>
+                        {option === 'no' ? 'No' : option === 'occasionally' ? 'Sometimes' : 'Daily'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {smoking === 'occasionally' && (
+                  <TextInput
+                    style={[styles.input, { marginTop: 8 }]}
+                    placeholder="How many per day/week?"
+                    placeholderTextColor={styles.placeholderColor.color}
+                    value={smokingFreq}
+                    onChangeText={setSmokingFreq}
+                  />
+                )}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Drinking Habits</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                  {['no', 'occasionally', 'daily'].map(option => (
+                    <Pressable 
+                      key={option}
+                      style={[styles.smallPill, drinking === option && styles.smallPillSelected]} 
+                      onPress={() => {
+                        setDrinking(option);
+                        if (Haptics) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={[styles.smallPillText, drinking === option && styles.smallPillTextSelected]}>
+                        {option === 'no' ? 'No' : option === 'occasionally' ? 'Sometimes' : 'Daily'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {drinking === 'occasionally' && (
+                  <TextInput
+                    style={[styles.input, { marginTop: 8 }]}
+                    placeholder="How many units per week?"
+                    placeholderTextColor={styles.placeholderColor.color}
+                    value={drinkingFreq}
+                    onChangeText={setDrinkingFreq}
+                  />
+                )}
+              </View>
+
+              <View style={styles.actionRow}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Pressable
+                    style={[styles.ghostButton, { alignItems: 'center' }]}
+                    onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(3); }}
+                  >
+                    <Ionicons name="arrow-back" size={16} color={styles.textColor.color} style={{ marginRight: 6 }} />
+                    <Text style={styles.ghostButtonText}>Back</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <ActionButton title="Continue" icon="arrow-forward" onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSignupStep(5); }} />
+                </View>
+              </View>
+            </ScrollView>
           </Animated.View>
         );
       
@@ -1558,6 +1567,8 @@ export default function AuthScreen() {
                               setDigits={setLoginOtpDigits} 
                               refs={loginOtpRefs}
                               fieldErrors={fieldErrors}
+                              styles={styles}
+                              isDark={isDark}
                             />
                             
                             {otpInfoText && <Text style={[styles.subtleText, { textAlign: 'center', marginTop: 8 }]}>{otpInfoText}</Text>}
@@ -2028,7 +2039,7 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
     
     successBanner: {
       backgroundColor: isDark ? 'rgba(109,191,106,0.12)' : 'rgba(230,255,230,1)',
-      borderRadius: 14,
+      borderRadius: 14, 
       padding: 14,
       flexDirection: 'row',
       alignItems: 'center',

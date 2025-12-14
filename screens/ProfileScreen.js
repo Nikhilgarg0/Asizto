@@ -1,8 +1,8 @@
-// ProfileScreen.js - Enhanced Version
+// ProfileScreen.js - Premium Enhanced Version
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Switch, Alert, ScrollView, TouchableOpacity,
-  Modal, Image, TextInput, Platform, Keyboard, LayoutAnimation, UIManager, Dimensions
+  Modal, Image, TextInput, Platform, Keyboard, LayoutAnimation, UIManager, Dimensions, Animated
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
@@ -58,6 +58,13 @@ const bloodGroupData = [
   { label: 'O+', value: 'O+' }, { label: 'O-', value: 'O-' },
 ];
 
+const genderData = [
+  { label: 'Male', value: 'Male' },
+  { label: 'Female', value: 'Female' },
+  { label: 'Other', value: 'Other' },
+  { label: 'Prefer not to say', value: 'Prefer not to say' },
+];
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -73,8 +80,11 @@ export default function ProfileScreen() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [units, setUnits] = useState('metric');
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview'); // overview, health, medical
 
   const scrollViewRef = useRef(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -135,11 +145,12 @@ export default function ProfileScreen() {
     const bmi = Number((Number(weightKg) / (heightM * heightM)).toFixed(1));
     let category = 'Unknown';
     let color = colors.subtext;
-    if (bmi < 18.5) { category = 'Underweight'; color = '#3498db'; }
-    else if (bmi < 25) { category = 'Normal'; color = '#27ae60'; }
-    else if (bmi < 30) { category = 'Overweight'; color = '#f39c12'; }
-    else { category = 'Obese'; color = '#e74c3c'; }
-    return { bmi, category, color };
+    let emoji = '📊';
+    if (bmi < 18.5) { category = 'Underweight'; color = '#3498db'; emoji = '📉'; }
+    else if (bmi < 25) { category = 'Normal'; color = '#27ae60'; emoji = '✅'; }
+    else if (bmi < 30) { category = 'Overweight'; color = '#f39c12'; emoji = '⚠️'; }
+    else { category = 'Obese'; color = '#e74c3c'; emoji = '🔴'; }
+    return { bmi, category, color, emoji };
   };
 
   const computeBMIEditable = () => {
@@ -160,6 +171,11 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
+    ]).start();
+
     try {
       const rawHeight = editableData.height !== '' && editableData.height != null ? Number(editableData.height) : null;
       const rawWeight = editableData.weight !== '' && editableData.weight != null ? Number(editableData.weight) : null;
@@ -192,10 +208,19 @@ export default function ProfileScreen() {
         scrollViewRef.current?.scrollTo({ y: 0, animated: true });
       }, 220);
 
-      Toast.show({ type: 'success', text1: '✓ Profile Updated Successfully' });
+      Toast.show({ 
+        type: 'success', 
+        text1: '✅ Profile Updated', 
+        text2: 'Your changes have been saved successfully',
+        visibilityTime: 3000,
+      });
       Keyboard.dismiss();
     } catch (error) {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Could not save profile.' });
+      Toast.show({ 
+        type: 'error', 
+        text1: '❌ Error', 
+        text2: 'Could not save profile. Please try again.' 
+      });
     }
   };
 
@@ -207,7 +232,18 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    signOut(auth).catch(err => Alert.alert('Logout Error', err.message));
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Sign Out', 
+          style: 'destructive',
+          onPress: () => signOut(auth).catch(err => Alert.alert('Logout Error', err.message))
+        }
+      ]
+    );
   };
 
   const handleDeleteAccount = async () => {
@@ -217,24 +253,28 @@ export default function ProfileScreen() {
     }
     try {
       await deleteUser(auth.currentUser);
-      Toast.show({ type: 'success', text1: 'Account Deleted' });
+      Toast.show({ type: 'success', text1: '✅ Account Deleted' });
       setIsDeleteModalVisible(false);
     } catch (error) {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Could not delete account. Please log in again first.' });
+      Toast.show({ 
+        type: 'error', 
+        text1: '❌ Error', 
+        text2: 'Could not delete account. Please re-authenticate first.' 
+      });
     }
   };
 
   const styles = createStyles(colors, theme);
 
-  const InfoRow = ({icon, label, value, isLast}) => (
+  const InfoRow = ({icon, label, value, isLast, highlight}) => (
     <View style={[styles.infoRow, isLast && { borderBottomWidth: 0 }]}>
       <View style={styles.infoRowLeft}>
-        <View style={styles.iconCircle}>
-          <Ionicons name={icon} size={18} color={colors.primary} />
+        <View style={[styles.iconCircle, highlight && { backgroundColor: `${highlight}20` }]}>
+          <Ionicons name={icon} size={18} color={highlight || colors.primary} />
         </View>
         <Text style={styles.infoLabel}>{label}</Text>
       </View>
-      <Text style={styles.infoValue}>{value}</Text>
+      <Text style={[styles.infoValue, highlight && { color: highlight }]}>{value}</Text>
     </View>
   );
 
@@ -250,6 +290,18 @@ export default function ProfileScreen() {
     return Math.min(75 + ((value - 30) / 10) * 25, 100);
   };
 
+  const getHealthScore = () => {
+    let score = 0;
+    if (profileData.height) score += 20;
+    if (profileData.weight) score += 20;
+    if (profileData.bloodGroup) score += 20;
+    if (profileData.dob) score += 20;
+    if (savedBMI && savedBMI.category === 'Normal') score += 20;
+    return score;
+  };
+
+  const healthScore = getHealthScore();
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom','left','right']}>
       <ScrollView
@@ -259,22 +311,35 @@ export default function ProfileScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Enhanced Header with Gradient */}
-        <Animatable.View animation="fadeInDown" duration={600} delay={100}>
-          <View style={styles.headerCard}>
+        {/* Premium Header with Gradient */}
+        <Animatable.View animation="fadeInDown" duration={700} delay={100}>
+          <LinearGradient
+            colors={theme === 'dark' 
+              ? [colors.card, `${colors.card}DD`] 
+              : [colors.card, '#ffffff']}
+            start={{x: 0, y: 0}}
+            end={{x: 1, y: 1}}
+            style={styles.headerCard}
+          >
             <View style={styles.headerContent}>
               <TouchableOpacity 
                 onPress={() => isEditing && setShowAvatarModal(true)}
                 style={styles.avatarContainer}
+                activeOpacity={isEditing ? 0.7 : 1}
               >
-                <View style={styles.avatarGradientWrap}>
-                  <Image source={getImageSourceFromProfile(isEditing ? editableData : profileData)} style={styles.avatar} />
+                <Animated.View style={[styles.avatarGradientWrap, { transform: [{ scale: scaleAnim }] }]}>
+                  <LinearGradient
+                    colors={[colors.primary, `${colors.primary}AA`]}
+                    style={styles.avatarGradient}
+                  >
+                    <Image source={getImageSourceFromProfile(isEditing ? editableData : profileData)} style={styles.avatar} />
+                  </LinearGradient>
                   {isEditing && (
-                    <View style={styles.avatarEditBadge}>
+                    <Animatable.View animation="pulse" iterationCount="infinite" duration={2000} style={styles.avatarEditBadge}>
                       <Ionicons name="camera" size={14} color="#fff" />
-                    </View>
+                    </Animatable.View>
                   )}
-                </View>
+                </Animated.View>
               </TouchableOpacity>
               
               <View style={styles.headerInfo}>
@@ -284,13 +349,19 @@ export default function ProfileScreen() {
                 <View style={styles.headerMetaRow}>
                   <View style={styles.metaBadge}>
                     <Ionicons name="mail-outline" size={14} color={colors.primary} />
-                    <Text style={styles.metaText}>{profileData.email || 'N/A'}</Text>
+                    <Text style={styles.metaText} numberOfLines={1}>{profileData.email || 'N/A'}</Text>
                   </View>
                 </View>
                 {profileData.dob && (
                   <View style={[styles.metaBadge, { marginTop: 6 }]}>
                     <Ionicons name="calendar-outline" size={14} color={colors.primary} />
                     <Text style={styles.metaText}>{computeAge(profileData.dob)} years old</Text>
+                  </View>
+                )}
+                {profileData.gender && (
+                  <View style={[styles.metaBadge, { marginTop: 6 }]}>
+                    <Ionicons name="person-outline" size={14} color={colors.primary} />
+                    <Text style={styles.metaText}>{profileData.gender}</Text>
                   </View>
                 )}
               </View>
@@ -303,326 +374,542 @@ export default function ProfileScreen() {
                 setIsEditing(prev => !prev);
                 if (!isEditing) setTimeout(() => scrollViewRef.current?.scrollTo({ y: 200, animated: true }), 200);
               }}
+              activeOpacity={0.8}
             >
               <Ionicons 
                 name={isEditing ? "checkmark-circle" : "create-outline"} 
-                size={24} 
+                size={22} 
                 color={isEditing ? '#fff' : colors.primary} 
               />
               <Text style={[styles.editToggleText, isEditing && { color: '#fff' }]}>
-                {isEditing ? 'Done' : 'Edit'}
+                {isEditing ? 'Done Editing' : 'Edit Profile'}
               </Text>
             </TouchableOpacity>
-          </View>
+
+            {/* Health Score Badge */}
+            {!isEditing && (
+              <Animatable.View animation="fadeIn" delay={400} style={styles.healthScoreBadge}>
+                <View style={styles.healthScoreContent}>
+                  <Ionicons name="shield-checkmark" size={20} color={healthScore >= 80 ? '#27ae60' : healthScore >= 60 ? '#f39c12' : '#e74c3c'} />
+                  <Text style={styles.healthScoreText}>Profile: {healthScore}%</Text>
+                </View>
+                <View style={styles.healthScoreBar}>
+                  <View style={[styles.healthScoreBarFill, { 
+                    width: `${healthScore}%`,
+                    backgroundColor: healthScore >= 80 ? '#27ae60' : healthScore >= 60 ? '#f39c12' : '#e74c3c'
+                  }]} />
+                </View>
+              </Animatable.View>
+            )}
+          </LinearGradient>
         </Animatable.View>
 
-        {/* Quick Stats Bar */}
+        {/* Enhanced Quick Stats */}
         {!isEditing && (
-          <Animatable.View animation="fadeIn" duration={600} delay={200} style={styles.quickStatsContainer}>
-            <View style={styles.quickStatCard}>
-              <Ionicons name="body-outline" size={24} color={colors.primary} />
+          <Animatable.View animation="fadeIn" duration={700} delay={250} style={styles.quickStatsContainer}>
+            <LinearGradient
+              colors={theme === 'dark' ? ['#3498db30', '#3498db20'] : ['#3498db15', '#3498db08']}
+              style={styles.quickStatCard}
+            >
+              <View style={styles.quickStatIconBg}>
+                <Ionicons name="body-outline" size={24} color="#3498db" />
+              </View>
               <Text style={styles.quickStatValue}>
                 {profileData.height ? (units === 'metric' ? `${profileData.height}cm` : `${(profileData.height / 2.54).toFixed(1)}"`) : 'N/A'}
               </Text>
               <Text style={styles.quickStatLabel}>Height</Text>
-            </View>
-            <View style={styles.quickStatCard}>
-              <Ionicons name="scale-outline" size={24} color={colors.primary} />
+            </LinearGradient>
+            
+            <LinearGradient
+              colors={theme === 'dark' ? ['#9b59b630', '#9b59b620'] : ['#9b59b615', '#9b59b608']}
+              style={styles.quickStatCard}
+            >
+              <View style={styles.quickStatIconBg}>
+                <Ionicons name="scale-outline" size={24} color="#9b59b6" />
+              </View>
               <Text style={styles.quickStatValue}>
                 {profileData.weight ? (units === 'metric' ? `${profileData.weight}kg` : `${(profileData.weight * 2.2046226218).toFixed(1)}lb`) : 'N/A'}
               </Text>
               <Text style={styles.quickStatLabel}>Weight</Text>
-            </View>
-            <View style={styles.quickStatCard}>
-              <Ionicons name="water-outline" size={24} color={colors.primary} />
+            </LinearGradient>
+            
+            <LinearGradient
+              colors={theme === 'dark' ? ['#e74c3c30', '#e74c3c20'] : ['#e74c3c15', '#e74c3c08']}
+              style={styles.quickStatCard}
+            >
+              <View style={styles.quickStatIconBg}>
+                <Ionicons name="water-outline" size={24} color="#e74c3c" />
+              </View>
               <Text style={styles.quickStatValue}>{profileData.bloodGroup || 'N/A'}</Text>
               <Text style={styles.quickStatLabel}>Blood</Text>
-            </View>
-            <View style={styles.quickStatCard}>
-              <Ionicons name="fitness-outline" size={24} color={savedBMI?.color || colors.primary} />
+            </LinearGradient>
+            
+            <LinearGradient
+              colors={savedBMI 
+                ? theme === 'dark' 
+                  ? [`${savedBMI.color}30`, `${savedBMI.color}20`]
+                  : [`${savedBMI.color}15`, `${savedBMI.color}08`]
+                : [colors.card, colors.card]
+              }
+              style={styles.quickStatCard}
+            >
+              <View style={styles.quickStatIconBg}>
+                <Ionicons name="fitness-outline" size={24} color={savedBMI?.color || colors.primary} />
+              </View>
               <Text style={[styles.quickStatValue, savedBMI && { color: savedBMI.color }]}>
                 {savedBMI ? savedBMI.bmi : 'N/A'}
               </Text>
               <Text style={styles.quickStatLabel}>BMI</Text>
-            </View>
+            </LinearGradient>
           </Animatable.View>
         )}
 
         {isEditing ? (
-          <Animatable.View animation="fadeInUp" duration={500} style={styles.editContainer}>
-            {/* Personal Details Edit */}
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="person-outline" size={22} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Personal Information</Text>
-              </View>
+          <Animated.View style={{ opacity: fadeAnim }}>
+            <Animatable.View animation="fadeInUp" duration={600}>
+              {/* Personal Details Edit */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderLeft}>
+                    <View style={styles.sectionIconCircle}>
+                      <Ionicons name="person-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.sectionTitle}>Personal Information</Text>
+                  </View>
+                </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>First Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter first name"
-                  value={editableData.firstName}
-                  onChangeText={(val) => handleInputChange('firstName', val)}
-                  placeholderTextColor={colors.subtext}
-                />
-              </View>
+                <View style={styles.inputRow}>
+                  <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                    <Text style={styles.inputLabel}>
+                      <Ionicons name="person" size={14} color={colors.primary} /> First Name
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter first name"
+                      value={editableData.firstName}
+                      onChangeText={(val) => handleInputChange('firstName', val)}
+                      placeholderTextColor={colors.subtext}
+                    />
+                  </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Last Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter last name"
-                  value={editableData.lastName}
-                  onChangeText={(val) => handleInputChange('lastName', val)}
-                  placeholderTextColor={colors.subtext}
-                />
-              </View>
+                  <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                    <Text style={styles.inputLabel}>
+                      <Ionicons name="person" size={14} color={colors.primary} /> Last Name
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter last name"
+                      value={editableData.lastName}
+                      onChangeText={(val) => handleInputChange('lastName', val)}
+                      placeholderTextColor={colors.subtext}
+                    />
+                  </View>
+                </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Date of Birth</Text>
-                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}>
-                  <Text style={{color: colors.text}}>
-                    {editableData.dob ? (editableData.dob instanceof Date ? editableData.dob.toLocaleDateString() : new Date(editableData.dob).toLocaleDateString()) : 'Select date'}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    <Ionicons name="calendar" size={14} color={colors.primary} /> Date of Birth
                   </Text>
-                  <Ionicons name="calendar-outline" size={20} color={colors.primary} style={{ position: 'absolute', right: 15 }} />
-                </TouchableOpacity>
-              </View>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={editableData.dob || new Date()}
-                  mode="date"
-                  display="spinner"
-                  onChange={onDateChange}
-                />
-              )}
-            </View>
+                  <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}>
+                    <Text style={{color: colors.text}}>
+                      {editableData.dob ? (editableData.dob instanceof Date ? editableData.dob.toLocaleDateString() : new Date(editableData.dob).toLocaleDateString()) : 'Select date'}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} style={{ position: 'absolute', right: 15 }} />
+                  </TouchableOpacity>
+                </View>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={editableData.dob || new Date()}
+                    mode="date"
+                    display="spinner"
+                    onChange={onDateChange}
+                    maximumDate={new Date()}
+                  />
+                )}
 
-            {/* Health Metrics Edit */}
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="fitness-outline" size={22} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Health Metrics</Text>
-                <TouchableOpacity 
-                  onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
-                  style={styles.unitToggle}
-                >
-                  <Text style={styles.unitToggleText}>{units === 'metric' ? 'Metric' : 'Imperial'}</Text>
-                  <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.inputRow}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={styles.inputLabel}>Height</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={units === 'metric' ? "cm" : "inches"}
-                    value={editableData.height}
-                    onChangeText={(val) => handleInputChange('height', val.replace(/[^0-9.]/g, ''))}
-                    keyboardType="numeric"
-                    placeholderTextColor={colors.subtext}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    <Ionicons name="male-female" size={14} color={colors.primary} /> Gender
+                  </Text>
+                  <Dropdown
+                    style={styles.dropdown}
+                    placeholderStyle={{ color: colors.subtext, fontSize: 16 }}
+                    selectedTextStyle={{ color: colors.text, fontSize: 16 }}
+                    containerStyle={{ backgroundColor: colors.card, borderColor: colors.border, borderRadius: 12 }}
+                    activeColor={colors.background}
+                    itemTextStyle={{ color: colors.text }}
+                    data={genderData}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Select gender"
+                    value={editableData.gender}
+                    onChange={item => handleInputChange('gender', item.value)}
                   />
                 </View>
 
-                <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={styles.inputLabel}>Weight</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    <Ionicons name="call" size={14} color={colors.primary} /> Phone Number
+                  </Text>
                   <TextInput
                     style={styles.input}
-                    placeholder={units === 'metric' ? "kg" : "lbs"}
-                    value={editableData.weight}
-                    onChangeText={(val) => handleInputChange('weight', val.replace(/[^0-9.]/g, ''))}
-                    keyboardType="numeric"
+                    placeholder="Enter phone number"
+                    value={editableData.phone}
+                    onChangeText={(val) => handleInputChange('phone', val)}
+                    keyboardType="phone-pad"
                     placeholderTextColor={colors.subtext}
                   />
                 </View>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Blood Group</Text>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={{ color: colors.subtext, fontSize: 16 }}
-                  selectedTextStyle={{ color: colors.text, fontSize: 16 }}
-                  containerStyle={{ backgroundColor: colors.card, borderColor: colors.border, borderRadius: 12 }}
-                  activeColor={colors.background}
-                  itemTextStyle={{ color: colors.text }}
-                  data={bloodGroupData}
-                  labelField="label"
-                  valueField="value"
-                  placeholder="Select blood group"
-                  value={editableData.bloodGroup}
-                  onChange={item => handleInputChange('bloodGroup', item.value)}
-                />
-              </View>
-
-              {editableBMI && (
-                <View style={styles.bmiPreview}>
-                  <View style={styles.bmiHeader}>
-                    <Text style={styles.bmiLabel}>Current BMI</Text>
-                    <Text style={[styles.bmiValue, { color: editableBMI.color }]}>{editableBMI.bmi}</Text>
+              {/* Health Metrics Edit */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderLeft}>
+                    <View style={styles.sectionIconCircle}>
+                      <Ionicons name="fitness-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.sectionTitle}>Health Metrics</Text>
                   </View>
-                  <View style={styles.bmiBarContainer}>
-                    <View style={styles.bmiBar}>
-                      <View style={[styles.bmiBarFill, { 
-                        width: `${getBMIProgress(editableBMI)}%`,
-                        backgroundColor: editableBMI.color 
-                      }]} />
+                  <TouchableOpacity 
+                    onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
+                    style={styles.unitToggle}
+                  >
+                    <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
+                    <Text style={styles.unitToggleText}>{units === 'metric' ? 'Metric' : 'Imperial'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputRow}>
+                  <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                    <Text style={styles.inputLabel}>
+                      <Ionicons name="body" size={14} color={colors.primary} /> Height
+                    </Text>
+                    <View style={styles.inputWithUnit}>
+                      <TextInput
+                        style={[styles.input, { flex: 1 }]}
+                        placeholder="0"
+                        value={editableData.height}
+                        onChangeText={(val) => handleInputChange('height', val.replace(/[^0-9.]/g, ''))}
+                        keyboardType="numeric"
+                        placeholderTextColor={colors.subtext}
+                      />
+                      <Text style={styles.unitLabel}>{units === 'metric' ? 'cm' : 'in'}</Text>
                     </View>
                   </View>
-                  <Text style={[styles.bmiCategory, { color: editableBMI.color }]}>{editableBMI.category}</Text>
-                </View>
-              )}
-            </View>
 
-            {/* Medical Conditions Edit */}
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="medical-outline" size={22} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Medical Conditions</Text>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Conditions & Allergies</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Describe any medical conditions, allergies, or medications..."
-                  value={editableData.conditions}
-                  onChangeText={(val) => handleInputChange('conditions', val)}
-                  placeholderTextColor={colors.subtext}
-                  multiline
-                  numberOfLines={5}
-                  textAlignVertical="top"
-                />
-              </View>
-            </View>
-
-            {/* Dark Mode Toggle */}
-            <View style={styles.sectionCard}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingLeft}>
-                  <View style={styles.settingIconCircle}>
-                    <Ionicons name={theme === 'dark' ? 'moon' : 'sunny'} size={20} color={colors.primary} />
-                  </View>
-                  <View>
-                    <Text style={styles.settingTitle}>Dark Mode</Text>
-                    <Text style={styles.settingSubtitle}>Switch between light and dark theme</Text>
+                  <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                    <Text style={styles.inputLabel}>
+                      <Ionicons name="scale" size={14} color={colors.primary} /> Weight
+                    </Text>
+                    <View style={styles.inputWithUnit}>
+                      <TextInput
+                        style={[styles.input, { flex: 1 }]}
+                        placeholder="0"
+                        value={editableData.weight}
+                        onChangeText={(val) => handleInputChange('weight', val.replace(/[^0-9.]/g, ''))}
+                        keyboardType="numeric"
+                        placeholderTextColor={colors.subtext}
+                      />
+                      <Text style={styles.unitLabel}>{units === 'metric' ? 'kg' : 'lb'}</Text>
+                    </View>
                   </View>
                 </View>
-                <Switch
-                  value={theme === 'dark'}
-                  onValueChange={toggleTheme}
-                  trackColor={{ false: "#d1d5db", true: colors.primary }}
-                  thumbColor={theme === 'dark' ? '#fff' : '#f4f3f4'}
-                  ios_backgroundColor="#d1d5db"
-                />
-              </View>
-            </View>
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
-              <Ionicons name="checkmark-circle" size={22} color="#fff" />
-              <Text style={styles.saveButtonText}>Save All Changes</Text>
-            </TouchableOpacity>
-          </Animatable.View>
-        ) : (
-          <Animatable.View animation="fadeIn" duration={500}>
-            {/* Personal Details View */}
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="person-outline" size={22} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Personal Information</Text>
-              </View>
-              <InfoRow icon="person" label="Full Name" value={`${profileData.firstName || ''} ${profileData.lastName || ''}`} />
-              <InfoRow icon="mail" label="Email" value={profileData.email || 'N/A'} />
-              <InfoRow icon="calendar" label="Date of Birth" value={profileData.dob ? profileData.dob.toLocaleDateString() : 'N/A'} />
-              <InfoRow icon="call" label="Phone" value={profileData.phone || 'N/A'} />
-              <InfoRow icon="male-female" label="Gender" value={profileData.gender || 'N/A'} isLast />
-            </View>
-
-            {/* Health Metrics View */}
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="fitness-outline" size={22} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Health Metrics</Text>
-                <TouchableOpacity 
-                  onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
-                  style={styles.unitToggle}
-                >
-                  <Text style={styles.unitToggleText}>{units === 'metric' ? 'Metric' : 'Imperial'}</Text>
-                  <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-
-              {savedBMI && (
-                <View style={styles.bmiCard}>
-                  <View style={styles.bmiCardHeader}>
-                    <Text style={styles.bmiCardTitle}>Body Mass Index</Text>
-                    <Text style={[styles.bmiCardValue, { color: savedBMI.color }]}>{savedBMI.bmi}</Text>
-                  </View>
-                  <View style={styles.bmiBarContainer}>
-                    <View style={styles.bmiBar}>
-                      <View style={[styles.bmiBarFill, { 
-                        width: `${getBMIProgress(savedBMI)}%`,
-                        backgroundColor: savedBMI.color 
-                      }]} />
-                    </View>
-                  </View>
-                  <View style={styles.bmiLegend}>
-                    <View style={styles.bmiLegendItem}>
-                      <View style={[styles.bmiLegendDot, { backgroundColor: '#3498db' }]} />
-                      <Text style={styles.bmiLegendText}>Under</Text>
-                    </View>
-                    <View style={styles.bmiLegendItem}>
-                      <View style={[styles.bmiLegendDot, { backgroundColor: '#27ae60' }]} />
-                      <Text style={styles.bmiLegendText}>Normal</Text>
-                    </View>
-                    <View style={styles.bmiLegendItem}>
-                      <View style={[styles.bmiLegendDot, { backgroundColor: '#f39c12' }]} />
-                      <Text style={styles.bmiLegendText}>Over</Text>
-                    </View>
-                    <View style={styles.bmiLegendItem}>
-                      <View style={[styles.bmiLegendDot, { backgroundColor: '#e74c3c' }]} />
-                      <Text style={styles.bmiLegendText}>Obese</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.bmiStatus, { color: savedBMI.color }]}>● {savedBMI.category}</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    <Ionicons name="water" size={14} color={colors.primary} /> Blood Group
+                  </Text>
+                  <Dropdown
+                    style={styles.dropdown}
+                    placeholderStyle={{ color: colors.subtext, fontSize: 16 }}
+                    selectedTextStyle={{ color: colors.text, fontSize: 16 }}
+                    containerStyle={{ backgroundColor: colors.card, borderColor: colors.border, borderRadius: 12 }}
+                    activeColor={colors.background}
+                    itemTextStyle={{ color: colors.text }}
+                    data={bloodGroupData}
+                    labelField="label"
+                    valueField="value"
+                    placeholder="Select blood group"
+                    value={editableData.bloodGroup}
+                    onChange={item => handleInputChange('bloodGroup', item.value)}
+                  />
                 </View>
-              )}
 
-              <InfoRow icon="body" label="Height" value={(() => {
-                if (profileData.height == null) return 'N/A';
-                return units === 'metric' ? `${profileData.height} cm` : `${(profileData.height / 2.54).toFixed(2)} in`;
-              })()} />
-              <InfoRow icon="scale" label="Weight" value={(() => {
-                if (profileData.weight == null) return 'N/A';
-                return units === 'metric' ? `${profileData.weight} kg` : `${(profileData.weight * 2.2046226218).toFixed(2)} lb`;
-              })()} />
-              <InfoRow icon="water" label="Blood Group" value={profileData.bloodGroup || 'N/A'} isLast />
-            </View>
-
-            {/* Medical Conditions View */}
-            <View style={[styles.sectionCard, styles.medicalCard]}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="medical-outline" size={22} color="#e74c3c" />
-                <Text style={[styles.sectionTitle, { color: '#e74c3c' }]}>Medical Conditions</Text>
-              </View>
-              <View style={styles.medicalConditionsContent}>
-                {profileData.conditions ? (
-                  <Text style={styles.medicalConditionsText}>{profileData.conditions}</Text>
-                ) : (
-                  <View style={styles.emptyState}>
-                    <Ionicons name="checkmark-circle-outline" size={48} color="#27ae60" />
-                    <Text style={styles.emptyStateText}>No medical conditions reported</Text>
-                  </View>
+                {editableBMI && (
+                  <Animatable.View animation="fadeIn" style={styles.bmiPreview}>
+                    <View style={styles.bmiHeader}>
+                      <Text style={styles.bmiLabel}>Current BMI {editableBMI.emoji}</Text>
+                      <Text style={[styles.bmiValue, { color: editableBMI.color }]}>{editableBMI.bmi}</Text>
+                    </View>
+                    <View style={styles.bmiBarContainer}>
+                      <View style={styles.bmiBar}>
+                        <Animated.View style={[styles.bmiBarFill, { 
+                          width: `${getBMIProgress(editableBMI)}%`,
+                          backgroundColor: editableBMI.color 
+                        }]} />
+                      </View>
+                    </View>
+                    <Text style={[styles.bmiCategory, { color: editableBMI.color }]}>{editableBMI.category}</Text>
+                  </Animatable.View>
                 )}
               </View>
+
+              {/* Medical Conditions Edit */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderLeft}>
+                    <View style={[styles.sectionIconCircle, { backgroundColor: '#e74c3c20' }]}>
+                      <Ionicons name="medical-outline" size={20} color="#e74c3c" />
+                    </View>
+                    <Text style={styles.sectionTitle}>Medical Information</Text>
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>
+                    <Ionicons name="medical" size={14} color="#e74c3c" /> Conditions & Allergies
+                  </Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    placeholder="Describe any medical conditions, allergies, or medications..."
+                    value={editableData.conditions}
+                    onChangeText={(val) => handleInputChange('conditions', val)}
+                    placeholderTextColor={colors.subtext}
+                    multiline
+                    numberOfLines={5}
+                    textAlignVertical="top"
+                  />
+                  <Text style={styles.inputHint}>
+                    💡 Include allergies, chronic conditions, medications, and emergency contacts
+                  </Text>
+                </View>
+              </View>
+
+              {/* Settings */}
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderLeft}>
+                    <View style={styles.sectionIconCircle}>
+                      <Ionicons name="settings-outline" size={20} color={colors.primary} />
+                    </View>
+                    <Text style={styles.sectionTitle}>Preferences</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.settingRow}>
+                  <View style={styles.settingLeft}>
+                    <View style={styles.settingIconCircle}>
+                      <Ionicons name={theme === 'dark' ? 'moon' : 'sunny'} size={20} color={colors.primary} />
+                    </View>
+                    <View>
+                      <Text style={styles.settingTitle}>Dark Mode</Text>
+                      <Text style={styles.settingSubtitle}>Switch between light and dark theme</Text>
+                    </View>
+                  </View>
+                  <Switch
+                    value={theme === 'dark'}
+                    onValueChange={toggleTheme}
+                    trackColor={{ false: "#d1d5db", true: colors.primary }}
+                    thumbColor={theme === 'dark' ? '#fff' : '#f4f3f4'}
+                    ios_backgroundColor="#d1d5db"
+                  />
+                </View>
+              </View>
+
+              <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
+                  <LinearGradient
+                    colors={[colors.primary, `${colors.primary}DD`]}
+                    start={{x: 0, y: 0}}
+                    end={{x: 1, y: 0}}
+                    style={styles.saveButtonGradient}
+                  >
+                    <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                    <Text style={styles.saveButtonText}>Save All Changes</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </Animated.View>
+            </Animatable.View>
+          </Animated.View>
+        ) : (
+          <Animatable.View animation="fadeIn" duration={600}>
+            {/* Tab Selector */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity 
+                style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
+                onPress={() => setActiveTab('overview')}
+              >
+                <Ionicons name="person-outline" size={18} color={activeTab === 'overview' ? colors.primary : colors.subtext} />
+                <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>Overview</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.tab, activeTab === 'health' && styles.tabActive]}
+                onPress={() => setActiveTab('health')}
+              >
+                <Ionicons name="fitness-outline" size={18} color={activeTab === 'health' ? colors.primary : colors.subtext} />
+                <Text style={[styles.tabText, activeTab === 'health' && styles.tabTextActive]}>Health</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.tab, activeTab === 'medical' && styles.tabActive]}
+                onPress={() => setActiveTab('medical')}
+              >
+                <Ionicons name="medical-outline" size={18} color={activeTab === 'medical' ? '#e74c3c' : colors.subtext} />
+                <Text style={[styles.tabText, activeTab === 'medical' && styles.tabTextActive, activeTab === 'medical' && { color: '#e74c3c' }]}>Medical</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Settings */}
+            {/* Overview Tab */}
+            {activeTab === 'overview' && (
+              <Animatable.View animation="fadeIn" duration={400}>
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionHeaderLeft}>
+                      <View style={styles.sectionIconCircle}>
+                        <Ionicons name="person-outline" size={20} color={colors.primary} />
+                      </View>
+                      <Text style={styles.sectionTitle}>Personal Information</Text>
+                    </View>
+                  </View>
+                  <InfoRow icon="person" label="Full Name" value={`${profileData.firstName || ''} ${profileData.lastName || ''}`} />
+                  <InfoRow icon="mail" label="Email" value={profileData.email || 'N/A'} />
+                  <InfoRow icon="calendar" label="Date of Birth" value={profileData.dob ? profileData.dob.toLocaleDateString() : 'N/A'} />
+                  <InfoRow icon="call" label="Phone" value={profileData.phone || 'Not provided'} />
+                  <InfoRow icon="male-female" label="Gender" value={profileData.gender || 'Not specified'} isLast />
+                </View>
+              </Animatable.View>
+            )}
+
+            {/* Health Tab */}
+            {activeTab === 'health' && (
+              <Animatable.View animation="fadeIn" duration={400}>
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionHeaderLeft}>
+                      <View style={styles.sectionIconCircle}>
+                        <Ionicons name="fitness-outline" size={20} color={colors.primary} />
+                      </View>
+                      <Text style={styles.sectionTitle}>Health Metrics</Text>
+                    </View>
+                    <TouchableOpacity 
+                      onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
+                      style={styles.unitToggle}
+                    >
+                      <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
+                      <Text style={styles.unitToggleText}>{units === 'metric' ? 'Metric' : 'Imperial'}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {savedBMI && (
+                    <Animatable.View animation="pulse" duration={2000} style={styles.bmiCard}>
+                      <View style={styles.bmiCardHeader}>
+                        <View>
+                          <Text style={styles.bmiCardTitle}>Body Mass Index {savedBMI.emoji}</Text>
+                          <Text style={styles.bmiCardSubtitle}>Your overall health indicator</Text>
+                        </View>
+                        <Text style={[styles.bmiCardValue, { color: savedBMI.color }]}>{savedBMI.bmi}</Text>
+                      </View>
+                      <View style={styles.bmiBarContainer}>
+                        <View style={styles.bmiBar}>
+                          <Animated.View style={[styles.bmiBarFill, { 
+                            width: `${getBMIProgress(savedBMI)}%`,
+                            backgroundColor: savedBMI.color 
+                          }]} />
+                        </View>
+                      </View>
+                      <View style={styles.bmiLegend}>
+                        <View style={styles.bmiLegendItem}>
+                          <View style={[styles.bmiLegendDot, { backgroundColor: '#3498db' }]} />
+                          <Text style={styles.bmiLegendText}>Under</Text>
+                        </View>
+                        <View style={styles.bmiLegendItem}>
+                          <View style={[styles.bmiLegendDot, { backgroundColor: '#27ae60' }]} />
+                          <Text style={styles.bmiLegendText}>Normal</Text>
+                        </View>
+                        <View style={styles.bmiLegendItem}>
+                          <View style={[styles.bmiLegendDot, { backgroundColor: '#f39c12' }]} />
+                          <Text style={styles.bmiLegendText}>Over</Text>
+                        </View>
+                        <View style={styles.bmiLegendItem}>
+                          <View style={[styles.bmiLegendDot, { backgroundColor: '#e74c3c' }]} />
+                          <Text style={styles.bmiLegendText}>Obese</Text>
+                        </View>
+                      </View>
+                      <View style={[styles.bmiStatusBadge, { backgroundColor: `${savedBMI.color}20` }]}>
+                        <Ionicons name="information-circle" size={16} color={savedBMI.color} />
+                        <Text style={[styles.bmiStatus, { color: savedBMI.color }]}>{savedBMI.category}</Text>
+                      </View>
+                    </Animatable.View>
+                  )}
+
+                  <InfoRow icon="body" label="Height" value={(() => {
+                    if (profileData.height == null) return 'Not provided';
+                    return units === 'metric' ? `${profileData.height} cm` : `${(profileData.height / 2.54).toFixed(2)} in`;
+                  })()} highlight={profileData.height ? '#3498db' : null} />
+                  <InfoRow icon="scale" label="Weight" value={(() => {
+                    if (profileData.weight == null) return 'Not provided';
+                    return units === 'metric' ? `${profileData.weight} kg` : `${(profileData.weight * 2.2046226218).toFixed(2)} lb`;
+                  })()} highlight={profileData.weight ? '#9b59b6' : null} />
+                  <InfoRow icon="water" label="Blood Group" value={profileData.bloodGroup || 'Not provided'} highlight={profileData.bloodGroup ? '#e74c3c' : null} isLast />
+                </View>
+              </Animatable.View>
+            )}
+
+            {/* Medical Tab */}
+            {activeTab === 'medical' && (
+              <Animatable.View animation="fadeIn" duration={400}>
+                <View style={[styles.sectionCard, styles.medicalCard]}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionHeaderLeft}>
+                      <View style={[styles.sectionIconCircle, { backgroundColor: '#e74c3c20' }]}>
+                        <Ionicons name="medical-outline" size={20} color="#e74c3c" />
+                      </View>
+                      <Text style={[styles.sectionTitle, { color: '#e74c3c' }]}>Medical Information</Text>
+                    </View>
+                  </View>
+                  <View style={styles.medicalConditionsContent}>
+                    {profileData.conditions ? (
+                      <View>
+                        <View style={styles.medicalWarningBanner}>
+                          <Ionicons name="alert-circle" size={20} color="#e74c3c" />
+                          <Text style={styles.medicalWarningText}>Important Medical Information</Text>
+                        </View>
+                        <Text style={styles.medicalConditionsText}>{profileData.conditions}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.emptyState}>
+                        <Ionicons name="checkmark-circle-outline" size={48} color="#27ae60" />
+                        <Text style={styles.emptyStateTitle}>No Medical Conditions</Text>
+                        <Text style={styles.emptyStateText}>You haven't reported any medical conditions or allergies</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* Emergency Info Card */}
+                <View style={[styles.sectionCard, { backgroundColor: '#e74c3c10', borderColor: '#e74c3c', borderWidth: 1 }]}>
+                  <View style={styles.emergencyHeader}>
+                    <Ionicons name="warning" size={24} color="#e74c3c" />
+                    <Text style={styles.emergencyTitle}>Emergency Information</Text>
+                  </View>
+                  <Text style={styles.emergencyText}>
+                    In case of emergency, medical personnel can access this profile to view your blood type, allergies, and medical conditions.
+                  </Text>
+                </View>
+              </Animatable.View>
+            )}
+
+            {/* Settings - Always visible */}
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="settings-outline" size={22} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Preferences</Text>
+                <View style={styles.sectionHeaderLeft}>
+                  <View style={styles.sectionIconCircle}>
+                    <Ionicons name="settings-outline" size={20} color={colors.primary} />
+                  </View>
+                  <Text style={styles.sectionTitle}>Preferences</Text>
+                </View>
               </View>
               <View style={styles.settingRow}>
                 <View style={styles.settingLeft}>
@@ -648,16 +935,21 @@ export default function ProfileScreen() {
 
         {/* Action Buttons */}
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
             <Ionicons name="log-out-outline" size={22} color={colors.text} />
             <Text style={styles.logoutButtonText}>Sign Out</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => setIsDeleteModalVisible(true)}>
+          <TouchableOpacity style={styles.deleteButton} onPress={() => setIsDeleteModalVisible(true)} activeOpacity={0.7}>
             <Ionicons name="trash-outline" size={22} color="#e74c3c" />
           </TouchableOpacity>
         </View>
 
-        {/* Footer Spacer */}
+        {/* Footer Info */}
+        <View style={styles.footerInfo}>
+          <Ionicons name="shield-checkmark" size={16} color={colors.subtext} />
+          <Text style={styles.footerText}>Your data is encrypted and secure</Text>
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -678,8 +970,10 @@ export default function ProfileScreen() {
                   onPress={() => {
                     handleInputChange('avatarKey', key);
                     setShowAvatarModal(false);
+                    Toast.show({ type: 'success', text1: '✅ Avatar Updated' });
                   }}
                   style={styles.avatarGridItem}
+                  activeOpacity={0.7}
                 >
                   <Image
                     source={getAvatarSource(key)}
@@ -689,9 +983,9 @@ export default function ProfileScreen() {
                     ]}
                   />
                   {editableData.avatarKey === key && (
-                    <View style={styles.avatarCheckmark}>
+                    <Animatable.View animation="bounceIn" style={styles.avatarCheckmark}>
                       <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                    </View>
+                    </Animatable.View>
                   )}
                 </TouchableOpacity>
               ))}
@@ -704,18 +998,18 @@ export default function ProfileScreen() {
       <Modal visible={isDeleteModalVisible} transparent animationType="fade" onRequestClose={() => setIsDeleteModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <Animatable.View animation="zoomIn" duration={300} style={[styles.deleteModalContent, { backgroundColor: colors.card }]}>
-            <View style={styles.deleteModalIcon}>
+            <Animatable.View animation="shake" iterationCount={2} style={styles.deleteModalIcon}>
               <Ionicons name="warning" size={56} color="#e74c3c" />
-            </View>
-            <Text style={[styles.deleteModalTitle, { color: colors.text }]}>Delete Account</Text>
+            </Animatable.View>
+            <Text style={[styles.deleteModalTitle, { color: colors.text }]}>Delete Account?</Text>
             <Text style={[styles.deleteModalText, { color: colors.subtext }]}>
-              This action is <Text style={{ fontWeight: '700', color: '#e74c3c' }}>permanent</Text> and cannot be undone. All your data will be permanently deleted.
+              This action is <Text style={{ fontWeight: '700', color: '#e74c3c' }}>permanent</Text> and cannot be undone. All your data will be permanently deleted from our servers.
             </Text>
             <Text style={[styles.deleteModalInstruction, { color: colors.text }]}>
               Type <Text style={{ fontWeight: '700', color: '#e74c3c' }}>DELETE</Text> to confirm
             </Text>
             <TextInput
-              style={[styles.deleteModalInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+              style={[styles.deleteModalInput, { borderColor: deleteConfirmText === 'DELETE' ? '#e74c3c' : colors.border, color: colors.text, backgroundColor: colors.background }]}
               value={deleteConfirmText}
               onChangeText={(val) => setDeleteConfirmText(val.toUpperCase())}
               autoCapitalize="characters"
@@ -729,6 +1023,7 @@ export default function ProfileScreen() {
                   setDeleteConfirmText(''); 
                   setIsDeleteModalVisible(false); 
                 }}
+                activeOpacity={0.7}
               >
                 <Text style={[styles.deleteModalButtonText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
@@ -740,8 +1035,9 @@ export default function ProfileScreen() {
                 ]}
                 disabled={deleteConfirmText !== 'DELETE'}
                 onPress={handleDeleteAccount}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.deleteModalButtonText, { color: '#fff' }]}>Delete Account</Text>
+                <Text style={[styles.deleteModalButtonText, { color: '#fff' }]}>Delete Forever</Text>
               </TouchableOpacity>
             </View>
           </Animatable.View>
@@ -761,17 +1057,16 @@ const createStyles = (colors, theme) => StyleSheet.create({
     paddingTop: 8,
   },
   
-  // Enhanced Header
+  // Premium Header
   headerCard: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
     marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: theme === 'dark' ? 0.3 : 0.08,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: theme === 'dark' ? 0.4 : 0.1,
+    shadowRadius: 16,
+    elevation: 8,
   },
   headerContent: {
     flexDirection: 'row',
@@ -782,38 +1077,42 @@ const createStyles = (colors, theme) => StyleSheet.create({
     marginRight: 16,
   },
   avatarGradientWrap: {
-    width: 90,
-    height: 90,
+    width: 95,
+    height: 95,
+    borderRadius: 48,
+    padding: 3,
+  },
+  avatarGradient: {
+    width: '100%',
+    height: '100%',
     borderRadius: 45,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: `${colors.primary}15`,
-    borderWidth: 3,
-    borderColor: colors.primary,
+    padding: 3,
   },
   avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 86,
+    height: 86,
+    borderRadius: 43,
   },
   avatarEditBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: 2,
+    right: 2,
     backgroundColor: colors.primary,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: colors.card,
   },
   headerInfo: {
     flex: 1,
   },
   headerName: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
     color: colors.text,
     marginBottom: 8,
@@ -826,37 +1125,71 @@ const createStyles = (colors, theme) => StyleSheet.create({
   metaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: `${colors.primary}10`,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    backgroundColor: `${colors.primary}15`,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
     gap: 6,
+    maxWidth: '100%',
   },
   metaText: {
     fontSize: 13,
     color: colors.text,
-    fontWeight: '500',
+    fontWeight: '600',
+    flexShrink: 1,
   },
   editToggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: `${colors.primary}15`,
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 20,
     gap: 8,
     alignSelf: 'flex-start',
   },
   editToggleButtonActive: {
     backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   editToggleText: {
     fontSize: 15,
     fontWeight: '700',
     color: colors.primary,
   },
+  healthScoreBadge: {
+    marginTop: 16,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 12,
+  },
+  healthScoreContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  healthScoreText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  healthScoreBar: {
+    height: 6,
+    backgroundColor: `${colors.primary}20`,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  healthScoreBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
 
-  // Quick Stats
+  // Enhanced Quick Stats
   quickStatsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -865,63 +1198,118 @@ const createStyles = (colors, theme) => StyleSheet.create({
   },
   quickStatCard: {
     flex: 1,
+    borderRadius: 18,
+    padding: 14,
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  quickStatIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickStatValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 10,
+  },
+  quickStatLabel: {
+    fontSize: 11,
+    color: colors.subtext,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+
+  // Tab Container
+  tabContainer: {
+    flexDirection: 'row',
     backgroundColor: colors.card,
     borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
+    padding: 6,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
-  quickStatValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    marginTop: 8,
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
   },
-  quickStatLabel: {
-    fontSize: 11,
+  tabActive: {
+    backgroundColor: `${colors.primary}15`,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.subtext,
-    marginTop: 4,
-    fontWeight: '500',
+  },
+  tabTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
   },
 
   // Section Cards
   sectionCard: {
     backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: 18,
+    padding: 20,
     marginBottom: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: theme === 'dark' ? 0.3 : 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: theme === 'dark' ? 0.3 : 0.07,
+    shadowRadius: 10,
+    elevation: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 12,
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  sectionIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: `${colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    marginLeft: 10,
-    flex: 1,
   },
   unitToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: `${colors.primary}15`,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
     gap: 6,
   },
   unitToggleText: {
@@ -935,7 +1323,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -945,158 +1333,194 @@ const createStyles = (colors, theme) => StyleSheet.create({
     flex: 1,
   },
   iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: `${colors.primary}15`,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   infoLabel: {
     fontSize: 15,
     color: colors.subtext,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   infoValue: {
     fontSize: 15,
     color: colors.text,
     fontWeight: '700',
+    textAlign: 'right',
   },
 
   // Edit Mode
-  editContainer: {
-    marginBottom: 16,
-  },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 18,
   },
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   input: {
     backgroundColor: colors.background,
     borderColor: colors.border,
     borderWidth: 1.5,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 14,
+    padding: 16,
     fontSize: 16,
     color: colors.text,
     fontWeight: '500',
   },
+  inputWithUnit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  unitLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: 12,
+  },
   inputRow: {
     flexDirection: 'row',
-    marginBottom: 16,
+    marginBottom: 18,
   },
   textArea: {
-    height: 120,
-    paddingTop: 14,
+    height: 130,
+    paddingTop: 16,
     textAlignVertical: 'top',
+  },
+  inputHint: {
+    fontSize: 12,
+    color: colors.subtext,
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   dropdown: {
     backgroundColor: colors.background,
     borderColor: colors.border,
     borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    height: 50,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 54,
   },
 
   // BMI Display
   bmiCard: {
     backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 18,
+    borderWidth: 2,
+    borderColor: colors.border,
   },
   bmiCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   bmiCardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text,
+    marginBottom: 4,
+  },
+  bmiCardSubtitle: {
+    fontSize: 12,
+    color: colors.subtext,
   },
   bmiCardValue: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
   },
   bmiPreview: {
     backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
+    borderRadius: 14,
+    padding: 18,
+    marginTop: 18,
+    borderWidth: 2,
+    borderColor: colors.border,
   },
   bmiHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   bmiLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.subtext,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
   },
   bmiValue: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
   },
   bmiBarContainer: {
-    marginBottom: 12,
+    marginBottom: 14,
   },
   bmiBar: {
-    height: 8,
+    height: 10,
     backgroundColor: `${colors.primary}20`,
-    borderRadius: 4,
+    borderRadius: 5,
     overflow: 'hidden',
   },
   bmiBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 5,
   },
   bmiLegend: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 14,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   bmiLegendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
   },
   bmiLegendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   bmiLegendText: {
     fontSize: 11,
     color: colors.subtext,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   bmiCategory: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 10,
+  },
+  bmiStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 14,
   },
   bmiStatus: {
     fontSize: 15,
     fontWeight: '700',
-    textAlign: 'center',
   },
 
-  // Medical Conditions Card
+  // Medical Card
   medicalCard: {
     borderLeftWidth: 4,
     borderLeftColor: '#e74c3c',
@@ -1104,19 +1528,60 @@ const createStyles = (colors, theme) => StyleSheet.create({
   medicalConditionsContent: {
     paddingTop: 4,
   },
+  medicalWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#e74c3c15',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  medicalWarningText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#e74c3c',
+  },
   medicalConditionsText: {
     fontSize: 15,
     color: colors.text,
-    lineHeight: 22,
+    lineHeight: 24,
+    fontWeight: '500',
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingVertical: 32,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 12,
   },
   emptyStateText: {
     fontSize: 14,
     color: colors.subtext,
-    marginTop: 12,
+    marginTop: 6,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
+  // Emergency Info
+  emergencyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  emergencyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#e74c3c',
+  },
+  emergencyText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 22,
     fontWeight: '500',
   },
 
@@ -1132,9 +1597,9 @@ const createStyles = (colors, theme) => StyleSheet.create({
     flex: 1,
   },
   settingIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     backgroundColor: `${colors.primary}15`,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1142,13 +1607,14 @@ const createStyles = (colors, theme) => StyleSheet.create({
   },
   settingTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   settingSubtitle: {
     fontSize: 13,
     color: colors.subtext,
+    fontWeight: '500',
   },
 
   // Action Buttons
@@ -1156,6 +1622,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+    marginBottom: 16,
   },
   logoutButton: {
     flex: 1,
@@ -1163,11 +1630,16 @@ const createStyles = (colors, theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: 18,
+    borderRadius: 16,
     gap: 10,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: colors.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   logoutButtonText: {
     fontSize: 16,
@@ -1176,30 +1648,37 @@ const createStyles = (colors, theme) => StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: colors.card,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 14,
-    borderWidth: 1.5,
+    paddingHorizontal: 22,
+    paddingVertical: 18,
+    borderRadius: 16,
+    borderWidth: 2,
     borderColor: '#e74c3c',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: "#e74c3c",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
 
   // Save Button
   saveButton: {
-    backgroundColor: colors.primary,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+    marginTop: 8,
+  },
+  saveButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: 18,
     gap: 10,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-    marginTop: 8,
   },
   saveButtonText: {
     fontSize: 17,
@@ -1207,16 +1686,30 @@ const createStyles = (colors, theme) => StyleSheet.create({
     color: '#fff',
   },
 
+  // Footer
+  footerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  footerText: {
+    fontSize: 12,
+    color: colors.subtext,
+    fontWeight: '500',
+  },
+
   // Avatar Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'flex-end',
   },
   avatarModalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 24,
     paddingBottom: 40,
     maxHeight: '70%',
   },
@@ -1224,29 +1717,29 @@ const createStyles = (colors, theme) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   modalHeaderText: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 22,
+    fontWeight: '800',
   },
   avatarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    padding: 20,
-    gap: 16,
+    padding: 24,
+    gap: 18,
   },
   avatarGridItem: {
     position: 'relative',
   },
   avatarGridImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 85,
+    height: 85,
+    borderRadius: 43,
     borderWidth: 3,
     borderColor: 'transparent',
   },
@@ -1264,52 +1757,54 @@ const createStyles = (colors, theme) => StyleSheet.create({
 
   // Delete Modal
   deleteModalContent: {
-    margin: 20,
-    borderRadius: 24,
-    padding: 28,
+    margin: 24,
+    borderRadius: 28,
+    padding: 32,
     alignItems: 'center',
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 12,
   },
   deleteModalIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: '#fee',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
+    borderWidth: 3,
+    borderColor: '#e74c3c',
   },
   deleteModalTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   deleteModalText: {
     fontSize: 15,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 8,
+    lineHeight: 24,
+    marginBottom: 10,
   },
   deleteModalInstruction: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 16,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 20,
     textAlign: 'center',
   },
   deleteModalInput: {
     width: '100%',
-    height: 50,
+    height: 56,
     borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    fontSize: 16,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   deleteModalButtons: {
     flexDirection: 'row',
@@ -1318,18 +1813,23 @@ const createStyles = (colors, theme) => StyleSheet.create({
   },
   deleteModalButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   deleteModalCancelButton: {
     backgroundColor: colors.background,
-    borderWidth: 1.5,
+    borderWidth: 2,
     borderColor: colors.border,
   },
   deleteModalConfirmButton: {
     backgroundColor: '#e74c3c',
+    shadowColor: '#e74c3c',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   deleteModalButtonText: {
     fontSize: 16,
