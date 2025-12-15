@@ -1,4 +1,4 @@
-# Asizto
+# Lifeline
 
 A cross-platform **React Native app** built with **Expo**, featuring Firebase integration, modular components, and a scalable architecture.  
 
@@ -16,7 +16,7 @@ A cross-platform **React Native app** built with **Expo**, featuring Firebase in
 
 ## 📂 Project Structure
 ```
-Asizto/
+Lifeline/
 │── android/             # Android native files
 │── assets/              # App assets (images, icons, etc.)
 │── components/          # Reusable UI components
@@ -44,8 +44,8 @@ Asizto/
 ### Steps
 ```bash
 # Clone repository
-git clone https://github.com/your-username/asizto.git
-cd asizto
+git clone https://github.com/your-username/Lifeline.git
+cd Lifeline
 
 # Install dependencies
 npm install

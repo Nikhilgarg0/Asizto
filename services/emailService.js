@@ -36,7 +36,7 @@ export const sendOTP = async (email, userName = 'User') => {
       to_email: email,
       to_name: userName,
       otp: otp,
-      message: `Your Asizto verification code is ${otp}. It expires in 10 minutes.`
+      message: `Your Lifeline verification code is ${otp}. It expires in 10 minutes.`
     };
 
     const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {

@@ -90,6 +90,7 @@ const styles = StyleSheet.create({
   },
   logo: {
     width: Platform.OS === 'ios' ? 150 : 140,
-    height: 36,
+    height: 1000,
+    top: 230,
   },
 });

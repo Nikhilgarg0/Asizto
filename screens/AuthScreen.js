@@ -1688,7 +1688,10 @@ const createStyles = ({ isDark, width, height, cardWidth, cardMinHeight, cardMax
       alignItems: 'center',
       justifyContent: 'center',
     },
-    logo: { width: logoSize + 100, height: logoSize },
+    logo: { 
+       width: (logoSize + 100) * 2,
+  height: logoSize * 2.5,
+    },
     logoLight: { tintColor: undefined },
     logoDark: { tintColor: undefined },
     logoTextFallback: { width: logoSize, height: logoSize, borderRadius: logoSize / 2, backgroundColor: 'rgba(109,191,106,0.12)', alignItems: 'center', justifyContent: 'center' },

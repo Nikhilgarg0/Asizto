@@ -495,7 +495,7 @@ export default function ChatbotScreen({ route, navigation }) {
     try {
       const userContext = await fetchUserContext();
       const prompt = `${userContext}User Question: ${input}`;
-      const systemInstruction = 'You are Asizto, a helpful AI health assistant. Use the provided user context to give personalized and safe information. Be concise and friendly.';
+      const systemInstruction = 'You are Lifeline, a helpful AI health assistant. Use the provided user context to give personalized and safe information. Be concise and friendly.';
 
       // Try different models and API versions
       // Updated to use current models (gemini-2.5 series) as older models are deprecated
@@ -641,16 +641,16 @@ export default function ChatbotScreen({ route, navigation }) {
         return;
       }
       const exportText = messages.map(m => {
-        const who = m.role === 'user' ? 'You' : 'Asizto';
+        const who = m.role === 'user' ? 'You' : 'Lifeline';
         const time = m.timestamp ? ` [${new Date(m.timestamp).toLocaleString()}]` : '';
         return `${who}${time}: ${m.content}`;
       }).join('\n\n');
 
-      await Share.share({ message: exportText, title: 'Asizto Chat Export' });
+      await Share.share({ message: exportText, title: 'Lifeline Chat Export' });
     } catch (err) {
       try {
         const exportText = messages.map(m => {
-          const who = m.role === 'user' ? 'You' : 'Asizto';
+          const who = m.role === 'user' ? 'You' : 'Lifeline';
           const time = m.timestamp ? ` [${new Date(m.timestamp).toLocaleString()}]` : '';
           return `${who}${time}: ${m.content}`;
         }).join('\n\n');
@@ -1029,7 +1029,7 @@ export default function ChatbotScreen({ route, navigation }) {
             </View>
             
             <Text style={styles.disclaimerContent}>
-              Hello! I am Asizto, your AI health assistant. I use your profile information to provide personalized responses.{'\n\n'}
+              Hello! I am Lifeline, your AI health assistant. I use your profile information to provide personalized responses.{'\n\n'}
               <Text style={{ fontWeight: '600' }}>Important:</Text> I am not a medical professional. Always consult a qualified healthcare provider for medical advice, diagnosis, or treatment.
             </Text>
 
@@ -1055,7 +1055,7 @@ export default function ChatbotScreen({ route, navigation }) {
               <Ionicons name="medkit" size={18} color="#fff" />
             </View>
             <View>
-              <Text style={styles.headerTitle}>Asizto AI</Text>
+              <Text style={styles.headerTitle}>Lifeline AI</Text>
               <Text style={{ color: colors.subtext, fontSize: 12 }}>
                 Health assistant • Personalized
               </Text>
