@@ -796,20 +796,36 @@ export default function DashboardScreen({ navigation }) {
           
           {/* Search Section */}
           <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-            <TextInput
-              style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Search medicine info..."
-              placeholderTextColor={colors.subtext}
-              value={searchText}
-              onChangeText={setSearchText}
-              onSubmitEditing={handleSearch}
-              maxLength={100}
-            />
+            <View style={[styles.searchInputContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search medicine info..."
+                placeholderTextColor={colors.subtext}
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearch}
+                maxLength={100}
+                accessibilityLabel="Medicine search input"
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => { setSearchText(''); setSearchResult(''); }}
+                  style={styles.clearButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear search"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.subtext} />
+                </TouchableOpacity>
+              )}
+            </View>
             <TouchableOpacity 
               style={[styles.searchButton, { backgroundColor: colors.primary }]} 
               onPress={handleSearch}
               disabled={isSearching || searchText.trim().length < 3}
               activeOpacity={0.7}
+              accessibilityLabel="Search"
+              accessibilityRole="button"
             >
               {isSearching ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -830,7 +846,10 @@ export default function DashboardScreen({ navigation }) {
             >
               <View style={styles.searchResultHeader}>
                 <Ionicons name="medical" size={20} color={colors.primary} />
-                <Text style={[styles.searchResultTitle, { color: colors.primary }]}>
+                <Text
+                  style={[styles.searchResultTitle, { color: colors.primary }]}
+                  accessibilityRole="header"
+                >
                   {searchText}
                 </Text>
               </View>
@@ -1114,13 +1133,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 10,
   },
-  searchInput: {
+  searchInputContainer: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     height: 50,
     borderRadius: 14,
+    borderWidth: 1,
+    paddingRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
     paddingHorizontal: 16,
     fontSize: 15,
-    borderWidth: 1,
+  },
+  clearButton: {
+    padding: 4,
   },
   searchButton: {
     height: 50,
