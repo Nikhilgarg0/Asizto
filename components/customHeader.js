@@ -26,6 +26,7 @@ export default function Header() {
               onPress={() => navigation.goBack()}
               style={styles.iconButton}
               accessibilityLabel="Go back"
+              accessibilityRole="button"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="arrow-back-outline" size={26} color={colors.text} />
@@ -51,7 +52,8 @@ export default function Header() {
           <TouchableOpacity
             onPress={() => navigation.navigate('Notifications')}
             style={styles.iconButton}
-            accessibilityLabel="Notifications"
+            accessibilityLabel="View notifications"
+            accessibilityRole="button"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="notifications-outline" size={24} color={colors.text} />
