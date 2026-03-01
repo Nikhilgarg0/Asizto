@@ -197,6 +197,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
             style={styles.deleteButton}
             onPress={() => handleDelete(medicine)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="Delete medicine"
+            accessibilityRole="button"
           >
             <Ionicons name="trash-outline" size={20} color="#e74c3c" />
           </TouchableOpacity>
@@ -558,6 +560,8 @@ export default function MedicinesTab({ route }) {
         style={styles.fab}
         onPress={() => navigation.navigate('AddMedicine')}
         activeOpacity={0.8}
+        accessibilityLabel="Add medicine"
+        accessibilityRole="button"
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>

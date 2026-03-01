@@ -796,20 +796,34 @@ export default function DashboardScreen({ navigation }) {
           
           {/* Search Section */}
           <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-            <TextInput
-              style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Search medicine info..."
-              placeholderTextColor={colors.subtext}
-              value={searchText}
-              onChangeText={setSearchText}
-              onSubmitEditing={handleSearch}
-              maxLength={100}
-            />
+            <View style={[styles.searchInputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search medicine info..."
+                placeholderTextColor={colors.subtext}
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearch}
+                maxLength={100}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSearchText('')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear search text"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.subtext} />
+                </TouchableOpacity>
+              )}
+            </View>
             <TouchableOpacity 
               style={[styles.searchButton, { backgroundColor: colors.primary }]} 
               onPress={handleSearch}
               disabled={isSearching || searchText.trim().length < 3}
               activeOpacity={0.7}
+              accessibilityLabel="Search medicine"
+              accessibilityRole="button"
             >
               {isSearching ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -1114,13 +1128,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 10,
   },
-  searchInput: {
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
     height: 50,
     borderRadius: 14,
+    borderWidth: 1,
+    paddingRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
     paddingHorizontal: 16,
     fontSize: 15,
-    borderWidth: 1,
+    outlineStyle: 'none',
+    textDecorationLine: 'none',
   },
   searchButton: {
     height: 50,
