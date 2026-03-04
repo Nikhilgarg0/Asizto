@@ -375,6 +375,11 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [medicines]);
 
+  const handleClearSearch = useCallback(() => {
+    setSearchText('');
+    setSearchResult('');
+  }, []);
+
   const handleSearch = useCallback(async () => {
     if (searchText.trim().length < 3) {
       Alert.alert('Search Error', 'Please enter at least 3 characters to search.');
@@ -796,20 +801,36 @@ export default function DashboardScreen({ navigation }) {
           
           {/* Search Section */}
           <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-            <TextInput
-              style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Search medicine info..."
-              placeholderTextColor={colors.subtext}
-              value={searchText}
-              onChangeText={setSearchText}
-              onSubmitEditing={handleSearch}
-              maxLength={100}
-            />
+            <View style={[styles.searchInputWrapper, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search medicine info..."
+                placeholderTextColor={colors.subtext}
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearch}
+                maxLength={100}
+                accessibilityLabel="Search input"
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleClearSearch}
+                  style={styles.clearButton}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear search"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.subtext} />
+                </TouchableOpacity>
+              )}
+            </View>
             <TouchableOpacity 
               style={[styles.searchButton, { backgroundColor: colors.primary }]} 
               onPress={handleSearch}
-              disabled={isSearching || searchText.trim().length < 3}
+              disabled={isSearching}
               activeOpacity={0.7}
+              accessibilityLabel="Start search"
+              accessibilityRole="button"
             >
               {isSearching ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -1114,13 +1135,31 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 10,
   },
-  searchInput: {
+  searchInputWrapper: {
     flex: 1,
     height: 50,
     borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
     paddingHorizontal: 16,
     fontSize: 15,
-    borderWidth: 1,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none',
+        textDecorationLine: 'none',
+      },
+    }),
+  },
+  clearButton: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchButton: {
     height: 50,
