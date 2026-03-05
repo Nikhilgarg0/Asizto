@@ -47,7 +47,9 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     // This helps third-party components respect the theme
-    Appearance.setColorScheme(theme);
+    if (Appearance.setColorScheme) {
+      Appearance.setColorScheme(theme);
+    }
   }, [theme]);
 
   return (

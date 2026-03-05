@@ -796,20 +796,34 @@ export default function DashboardScreen({ navigation }) {
           
           {/* Search Section */}
           <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-            <TextInput
-              style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Search medicine info..."
-              placeholderTextColor={colors.subtext}
-              value={searchText}
-              onChangeText={setSearchText}
-              onSubmitEditing={handleSearch}
-              maxLength={100}
-            />
+            <View style={styles.searchInputWrapper}>
+              <TextInput
+                style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                placeholder="Search medicine info..."
+                placeholderTextColor={colors.subtext}
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearch}
+                maxLength={100}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearButton}
+                  onPress={() => setSearchText('')}
+                  accessibilityLabel="Clear search text"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.subtext} />
+                </TouchableOpacity>
+              )}
+            </View>
             <TouchableOpacity 
               style={[styles.searchButton, { backgroundColor: colors.primary }]} 
               onPress={handleSearch}
-              disabled={isSearching || searchText.trim().length < 3}
+              disabled={isSearching}
               activeOpacity={0.7}
+              accessibilityLabel="Search medicine information"
+              accessibilityRole="button"
             >
               {isSearching ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -1114,13 +1128,30 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 10,
   },
+  searchInputWrapper: {
+    flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+  },
   searchInput: {
     flex: 1,
     height: 50,
     borderRadius: 14,
     paddingHorizontal: 16,
+    paddingRight: 40,
     fontSize: 15,
     borderWidth: 1,
+    ...Platform.select({
+      web: {
+        outlineStyle: 'none',
+      }
+    }),
+    textDecorationLine: 'none',
+  },
+  clearButton: {
+    position: 'absolute',
+    right: 12,
+    padding: 4,
   },
   searchButton: {
     height: 50,
