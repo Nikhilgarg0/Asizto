@@ -1,34 +1,35 @@
 import { initializeApp } from "firebase/app";
-import { 
-  getAuth, 
-  initializeAuth, 
-  getReactNativePersistence 
-} from "firebase/auth";
+import { getAuth, initializeAuth, getReactNativePersistence } from "firebase/auth";
 import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import {
+  FIREBASE_API_KEY,
+  FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID,
+  FIREBASE_STORAGE_BUCKET,
+  FIREBASE_MESSAGING_SENDER_ID,
+  FIREBASE_APP_ID,
+} from '@env';
 
-// ✅ Your Firebase config
 const firebaseConfig = {
-  apiKey: "AIzaSyDpxQ74ubA0AiyRK0JG_15ANpQ71fj5pc0",
-  authDomain: "asizto-d0ced.firebaseapp.com",
-  projectId: "asizto-d0ced",
-  storageBucket: "asizto-d0ced.appspot.com", // ✅ fixed storage bucket
-  messagingSenderId: "313042070399",
-  appId: "1:313042070399:web:97ae79f578689a70f6084a"
+  apiKey: FIREBASE_API_KEY,
+  authDomain: FIREBASE_AUTH_DOMAIN,
+  projectId: FIREBASE_PROJECT_ID,
+  storageBucket: FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
+  appId: FIREBASE_APP_ID,
 };
 
-// ✅ Initialize Firebase only once
 const app = initializeApp(firebaseConfig);
 
-// ✅ Initialize Auth with persistence
 let auth;
 try {
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
   });
 } catch (e) {
-  auth = getAuth(app); // fallback if already initialized
+  auth = getAuth(app);
 }
 
 const db = getFirestore(app);

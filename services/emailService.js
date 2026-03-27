@@ -1,7 +1,8 @@
-// services/emailService.js
-const SERVICE_ID = 'service_o7gkvbu';
-const TEMPLATE_ID = 'template_t96dpdb';
-const PUBLIC_KEY = 'IriL9iG7M4NdMiljz';
+import { EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY } from '@env';
+
+const SERVICE_ID = EMAILJS_SERVICE_ID;
+const TEMPLATE_ID = EMAILJS_TEMPLATE_ID;
+const PUBLIC_KEY = EMAILJS_PUBLIC_KEY;
 
 // Store OTPs temporarily (in production, use secure backend)
 const otpStore = new Map();
