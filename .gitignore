@@ -77,6 +77,8 @@ yarn-error.*
 *.tsbuildinfo
 
 # @end expo-cli
+functions/.env
+functions/.env.local
 
 .env
 .env.local

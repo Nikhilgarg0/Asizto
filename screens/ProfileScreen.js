@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
-import { signOut, deleteUser } from 'firebase/auth';
+import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import Toast from 'react-native-toast-message';
@@ -24,6 +24,9 @@ const AVATAR_KEYS = {
   female:  ['female1','female2','female3','female4','female5','female6'],
 };
 const ALL_AVATAR_KEYS = [...AVATAR_KEYS.male, ...AVATAR_KEYS.female];
+
+const [deletePassword, setDeletePassword] = useState('');
+
 
 function getAvatarSource(key) {
   switch (key) {
@@ -246,23 +249,53 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== 'DELETE') {
-      Alert.alert("Incorrect Confirmation", "Please type 'DELETE' to confirm.");
-      return;
-    }
-    try {
-      await deleteUser(auth.currentUser);
-      Toast.show({ type: 'success', text1: '✅ Account Deleted' });
-      setIsDeleteModalVisible(false);
-    } catch (error) {
-      Toast.show({ 
-        type: 'error', 
-        text1: '❌ Error', 
-        text2: 'Could not delete account. Please re-authenticate first.' 
+ const handleDeleteAccount = async () => {
+  if (deleteConfirmText !== 'DELETE') {
+    Alert.alert('Incorrect Confirmation', "Please type 'DELETE' to confirm.");
+    return;
+  }
+
+  if (!deletePassword.trim()) {
+    Alert.alert('Password Required', 'Please enter your password to confirm.');
+    return;
+  }
+
+  try {
+    // Re-authenticate first — Firebase requires this for account deletion
+    const credential = EmailAuthProvider.credential(
+      auth.currentUser.email,
+      deletePassword
+    );
+    await reauthenticateWithCredential(auth.currentUser, credential);
+
+    // Now safe to delete
+    await deleteUser(auth.currentUser);
+
+    Toast.show({ type: 'success', text1: '✅ Account Deleted' });
+    setIsDeleteModalVisible(false);
+  } catch (error) {
+    if (error.code === 'auth/wrong-password' || 
+        error.code === 'auth/invalid-credential') {
+      Toast.show({
+        type: 'error',
+        text1: '❌ Wrong Password',
+        text2: 'The password you entered is incorrect.',
+      });
+    } else if (error.code === 'auth/too-many-requests') {
+      Toast.show({
+        type: 'error',
+        text1: '❌ Too Many Attempts',
+        text2: 'Please wait a moment and try again.',
+      });
+    } else {
+      Toast.show({
+        type: 'error',
+        text1: '❌ Error',
+        text2: error.message || 'Could not delete account. Please try again.',
       });
     }
-  };
+  }
+};
 
   const styles = createStyles(colors, theme);
 
@@ -1015,6 +1048,23 @@ export default function ProfileScreen() {
               autoCapitalize="characters"
               placeholder="DELETE"
               placeholderTextColor={colors.subtext}
+            />
+            <TextInput
+              style={[
+                styles.deleteModalInput,
+                {
+                  borderColor: colors.border,
+                  color: colors.text,
+                  backgroundColor: colors.background,
+                  marginBottom: 28,
+                },
+              ]}
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              placeholder="Enter your password"
+              placeholderTextColor={colors.subtext}
+              secureTextEntry
+              autoCapitalize="none"
             />
             <View style={styles.deleteModalButtons}>
               <TouchableOpacity 
