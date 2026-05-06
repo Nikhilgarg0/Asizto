@@ -27,7 +27,7 @@ try { Clipboard = require('expo-clipboard'); } catch (e) { Clipboard = null; }
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { GEMINI_API_KEY } from '../apiKeys';
+import { GEMINI_API_KEY } from '@env';
 import { db, auth } from '../firebaseConfig';
 import {
   doc,

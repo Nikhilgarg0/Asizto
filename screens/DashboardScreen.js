@@ -21,7 +21,7 @@ import { db, auth } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import * as Notifications from 'expo-notifications';
-import { GEMINI_API_KEY } from '../apiKeys';
+import { GEMINI_API_KEY } from '@env';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import logger from '../utils/Logger';
