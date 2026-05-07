@@ -83,3 +83,4 @@ functions/.env.local
 .env
 .env.local
 .env.production
+.env.email
