@@ -32,9 +32,6 @@ let LogoLight = null, LogoDark = null;
 try { LogoLight = require('../assets/Brandkit/LightLogo.png'); } catch (_) { }
 try { LogoDark = require('../assets/Brandkit/DarkLogo.png'); } catch (_) { }
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 function friendlyErr(e, ctx = 'login') {
   switch (e?.code) {
@@ -122,9 +119,8 @@ export default function AuthScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   // ── OTP ─────────────────────────────────────────────────────────────────────
-  const [signupOtpDigits, setSignupOtpDigits] = useState(['', '', '', '', '', '']);
-  const [loginOtpDigits, setLoginOtpDigits] = useState(['', '', '', '', '', '']);
-  const loginOtpRefs = useRef([null, null, null, null, null, null]);
+  const [signupOtp, setSignupOtp] = useState('');
+  const [loginOtp, setLoginOtp] = useState('');
   const [signupCooldown, setSignupCooldown] = useState(0);
   const [loginCooldown, setLoginCooldown] = useState(0);
   const [sendingSignupOtp, setSendingSignupOtp] = useState(false);
@@ -265,14 +261,13 @@ export default function AuthScreen() {
   };
 
   const fromStep2 = async () => {
-    const code = signupOtpDigits.join('');
-    if (code.length < 6) { setErrors(p => ({ ...p, otp: 'Enter the 6-digit code.' })); return; }
+    if (signupOtp.length < 6) { setErrors(p => ({ ...p, otp: 'Enter the 6-digit code.' })); return; }
     setIsLoading(true);
     try {
-      const res = await verifyOTP(email.trim().toLowerCase(), code);
+      const res = await verifyOTP(email.trim().toLowerCase(), signupOtp);
       if (res.success) {
         Toast.show({ type: 'success', text1: 'Email verified ✓', position: 'top', visibilityTime: 1800, topOffset: 55 });
-        setSignupOtpDigits(['', '', '', '', '', '']);
+        setSignupOtp('');
         goTo(3, 'forward');
       } else {
         setErrors(p => ({ ...p, otp: res.error || 'Invalid code. Try again.' }));
@@ -352,7 +347,7 @@ export default function AuthScreen() {
       case 2: return (
         <Step2Verify
           email={email.trim().toLowerCase()}
-          digits={signupOtpDigits} setDigits={setSignupOtpDigits}
+          otp={signupOtp} setOtp={v => { setSignupOtp(v); setErrors(p => ({ ...p, otp: undefined })); }}
           error={errors.otp} onVerify={fromStep2}
           onBack={() => goTo(1, 'back')}
           isLoading={isLoading} resendCooldown={signupCooldown}
@@ -479,8 +474,7 @@ export default function AuthScreen() {
                     email={email} setEmail={setEmail}
                     password={password} setPassword={setPassword}
                     loginStep={loginStep}
-                    loginOtpDigits={loginOtpDigits} setLoginOtpDigits={setLoginOtpDigits}
-                    loginOtpRefs={loginOtpRefs}
+                    loginOtp={loginOtp} setLoginOtp={setLoginOtp}
                     otpError={errors.otp}
                     resendCooldown={loginCooldown} isSendingOtp={sendingLoginOtp}
                     errors={errors} isDark={isDark}

@@ -11,7 +11,6 @@ import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
 import { Alert } from 'react-native';
 
-// Ensure notifications are displayed when app is in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -20,7 +19,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Import Screens
 import DashboardScreen from './screens/DashboardScreen';
 import CabinetScreen from './screens/CabinetScreen';
 import EmergencyScreen from './screens/EmergencyScreen';
@@ -40,9 +38,6 @@ import { navigationRef } from './RootNavigation';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-
-
-// Auth stack
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -51,12 +46,10 @@ function AuthStack() {
   );
 }
 
-// Handles theme + auth state and notification tapping
 function AppContent() {
   const { theme, colors } = useTheme();
   const [user, setUser] = useState(null);
 
-  // 5-tab bottom navigator - defined inside AppContent to access theme context
   function AppTabs() {
     return (
       <Tab.Navigator
@@ -85,7 +78,6 @@ function AppContent() {
     );
   }
 
-  // Root stack for logged-in user - defined inside AppContent to access theme context
   function MainStack() {
     return (
       <Stack.Navigator>
@@ -96,10 +88,7 @@ function AppContent() {
         <Stack.Screen
           name="Notifications"
           component={NotificationScreen}
-          options={{
-            presentation: 'modal',
-            title: 'Notifications'
-          }}
+          options={{ presentation: 'modal', title: 'Notifications' }}
         />
         <Stack.Screen name="DebugNotifications" component={DebugNotificationsScreen} options={{ title: 'Scheduled Notifications' }} />
       </Stack.Navigator>
@@ -109,11 +98,6 @@ function AppContent() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        console.log('User authenticated:', currentUser.uid);
-      } else {
-        console.log('User signed out');
-      }
     }, (error) => {
       console.error('Auth state change error:', error);
       Alert.alert('Authentication Error', 'There was an issue with authentication. Please try again.');
@@ -121,47 +105,28 @@ function AppContent() {
     return unsubscribeAuth;
   }, []);
 
-  // Notification tap handler -> deep link to right screen
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
       try {
         const data = (response?.notification?.request?.content?.data) || {};
         const type = data.type;
-        
         if (type === 'medicine' && data.medicineId) {
-          // Navigate to medicines tab with highlight
-          navigationRef.current?.navigate('Main', { 
+          navigationRef.current?.navigate('Main', {
             screen: 'Cabinet',
-            params: { 
-              screen: 'Medicines',
-              params: { 
-                highlightMedicine: data.medicineId,
-                searchQuery: data.medicineName || ''
-              }
-            }
+            params: { screen: 'Medicines', params: { highlightMedicine: data.medicineId, searchQuery: data.medicineName || '' } }
           });
         } else if (type === 'appointment' && data.appointmentId) {
-          // Navigate to appointments tab
-          navigationRef.current?.navigate('Main', { 
+          navigationRef.current?.navigate('Main', {
             screen: 'Cabinet',
-            params: { 
-              screen: 'Appointments',
-              params: { 
-                highlightAppointment: data.appointmentId 
-              }
-            }
+            params: { screen: 'Appointments', params: { highlightAppointment: data.appointmentId } }
           });
         } else {
-          // Default navigation to main screen
           navigationRef.current?.navigate('Main');
         }
       } catch (e) {
-        console.warn('Notification response handler error', e);
-        // Fallback navigation
         navigationRef.current?.navigate('Main');
       }
     });
-
     return () => sub.remove();
   }, []);
 
@@ -184,7 +149,6 @@ function AppContent() {
   );
 }
 
-// App root
 export default function App() {
   return (
     <ErrorBoundary>

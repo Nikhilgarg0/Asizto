@@ -20,12 +20,11 @@ const { width } = Dimensions.get('window');
 
 // ---------- LOCAL AVATAR SUPPORT ----------
 const AVATAR_KEYS = {
-  male:    ['male1','male2','male3','male4','male5','male6'],
-  female:  ['female1','female2','female3','female4','female5','female6'],
+  male: ['male1', 'male2', 'male3', 'male4', 'male5', 'male6'],
+  female: ['female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
 };
 const ALL_AVATAR_KEYS = [...AVATAR_KEYS.male, ...AVATAR_KEYS.female];
 
-const [deletePassword, setDeletePassword] = useState('');
 
 
 function getAvatarSource(key) {
@@ -68,9 +67,6 @@ const genderData = [
   { label: 'Prefer not to say', value: 'Prefer not to say' },
 ];
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export default function ProfileScreen() {
   const { theme, toggleTheme, colors } = useTheme();
@@ -83,6 +79,7 @@ export default function ProfileScreen() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [units, setUnits] = useState('metric');
   const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
   const [activeTab, setActiveTab] = useState('overview'); // overview, health, medical
 
   const scrollViewRef = useRef(null);
@@ -211,18 +208,18 @@ export default function ProfileScreen() {
         scrollViewRef.current?.scrollTo({ y: 0, animated: true });
       }, 220);
 
-      Toast.show({ 
-        type: 'success', 
-        text1: '✅ Profile Updated', 
+      Toast.show({
+        type: 'success',
+        text1: '✅ Profile Updated',
         text2: 'Your changes have been saved successfully',
         visibilityTime: 3000,
       });
       Keyboard.dismiss();
     } catch (error) {
-      Toast.show({ 
-        type: 'error', 
-        text1: '❌ Error', 
-        text2: 'Could not save profile. Please try again.' 
+      Toast.show({
+        type: 'error',
+        text1: '❌ Error',
+        text2: 'Could not save profile. Please try again.'
       });
     }
   };
@@ -240,8 +237,8 @@ export default function ProfileScreen() {
       'Are you sure you want to sign out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
+        {
+          text: 'Sign Out',
           style: 'destructive',
           onPress: () => signOut(auth).catch(err => Alert.alert('Logout Error', err.message))
         }
@@ -249,57 +246,57 @@ export default function ProfileScreen() {
     );
   };
 
- const handleDeleteAccount = async () => {
-  if (deleteConfirmText !== 'DELETE') {
-    Alert.alert('Incorrect Confirmation', "Please type 'DELETE' to confirm.");
-    return;
-  }
-
-  if (!deletePassword.trim()) {
-    Alert.alert('Password Required', 'Please enter your password to confirm.');
-    return;
-  }
-
-  try {
-    // Re-authenticate first — Firebase requires this for account deletion
-    const credential = EmailAuthProvider.credential(
-      auth.currentUser.email,
-      deletePassword
-    );
-    await reauthenticateWithCredential(auth.currentUser, credential);
-
-    // Now safe to delete
-    await deleteUser(auth.currentUser);
-
-    Toast.show({ type: 'success', text1: '✅ Account Deleted' });
-    setIsDeleteModalVisible(false);
-  } catch (error) {
-    if (error.code === 'auth/wrong-password' || 
-        error.code === 'auth/invalid-credential') {
-      Toast.show({
-        type: 'error',
-        text1: '❌ Wrong Password',
-        text2: 'The password you entered is incorrect.',
-      });
-    } else if (error.code === 'auth/too-many-requests') {
-      Toast.show({
-        type: 'error',
-        text1: '❌ Too Many Attempts',
-        text2: 'Please wait a moment and try again.',
-      });
-    } else {
-      Toast.show({
-        type: 'error',
-        text1: '❌ Error',
-        text2: error.message || 'Could not delete account. Please try again.',
-      });
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      Alert.alert('Incorrect Confirmation', "Please type 'DELETE' to confirm.");
+      return;
     }
-  }
-};
+
+    if (!deletePassword.trim()) {
+      Alert.alert('Password Required', 'Please enter your password to confirm.');
+      return;
+    }
+
+    try {
+      // Re-authenticate first — Firebase requires this for account deletion
+      const credential = EmailAuthProvider.credential(
+        auth.currentUser.email,
+        deletePassword
+      );
+      await reauthenticateWithCredential(auth.currentUser, credential);
+
+      // Now safe to delete
+      await deleteUser(auth.currentUser);
+
+      Toast.show({ type: 'success', text1: '✅ Account Deleted' });
+      setIsDeleteModalVisible(false);
+    } catch (error) {
+      if (error.code === 'auth/wrong-password' ||
+        error.code === 'auth/invalid-credential') {
+        Toast.show({
+          type: 'error',
+          text1: '❌ Wrong Password',
+          text2: 'The password you entered is incorrect.',
+        });
+      } else if (error.code === 'auth/too-many-requests') {
+        Toast.show({
+          type: 'error',
+          text1: '❌ Too Many Attempts',
+          text2: 'Please wait a moment and try again.',
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: '❌ Error',
+          text2: error.message || 'Could not delete account. Please try again.',
+        });
+      }
+    }
+  };
 
   const styles = createStyles(colors, theme);
 
-  const InfoRow = ({icon, label, value, isLast, highlight}) => (
+  const InfoRow = ({ icon, label, value, isLast, highlight }) => (
     <View style={[styles.infoRow, isLast && { borderBottomWidth: 0 }]}>
       <View style={styles.infoRowLeft}>
         <View style={[styles.iconCircle, highlight && { backgroundColor: `${highlight}20` }]}>
@@ -336,7 +333,7 @@ export default function ProfileScreen() {
   const healthScore = getHealthScore();
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom','left','right']}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.container}
@@ -347,15 +344,15 @@ export default function ProfileScreen() {
         {/* Premium Header with Gradient */}
         <Animatable.View animation="fadeInDown" duration={700} delay={100}>
           <LinearGradient
-            colors={theme === 'dark' 
-              ? [colors.card, `${colors.card}DD`] 
+            colors={theme === 'dark'
+              ? [colors.card, `${colors.card}DD`]
               : [colors.card, '#ffffff']}
-            start={{x: 0, y: 0}}
-            end={{x: 1, y: 1}}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.headerCard}
           >
             <View style={styles.headerContent}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => isEditing && setShowAvatarModal(true)}
                 style={styles.avatarContainer}
                 activeOpacity={isEditing ? 0.7 : 1}
@@ -374,7 +371,7 @@ export default function ProfileScreen() {
                   )}
                 </Animated.View>
               </TouchableOpacity>
-              
+
               <View style={styles.headerInfo}>
                 <Text style={styles.headerName}>
                   {profileData.firstName || 'User'} {profileData.lastName || ''}
@@ -400,8 +397,8 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={[styles.editToggleButton, isEditing && styles.editToggleButtonActive]} 
+            <TouchableOpacity
+              style={[styles.editToggleButton, isEditing && styles.editToggleButtonActive]}
               onPress={() => {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setIsEditing(prev => !prev);
@@ -409,10 +406,10 @@ export default function ProfileScreen() {
               }}
               activeOpacity={0.8}
             >
-              <Ionicons 
-                name={isEditing ? "checkmark-circle" : "create-outline"} 
-                size={22} 
-                color={isEditing ? '#fff' : colors.primary} 
+              <Ionicons
+                name={isEditing ? "checkmark-circle" : "create-outline"}
+                size={22}
+                color={isEditing ? '#fff' : colors.primary}
               />
               <Text style={[styles.editToggleText, isEditing && { color: '#fff' }]}>
                 {isEditing ? 'Done Editing' : 'Edit Profile'}
@@ -427,7 +424,7 @@ export default function ProfileScreen() {
                   <Text style={styles.healthScoreText}>Profile: {healthScore}%</Text>
                 </View>
                 <View style={styles.healthScoreBar}>
-                  <View style={[styles.healthScoreBarFill, { 
+                  <View style={[styles.healthScoreBarFill, {
                     width: `${healthScore}%`,
                     backgroundColor: healthScore >= 80 ? '#27ae60' : healthScore >= 60 ? '#f39c12' : '#e74c3c'
                   }]} />
@@ -452,7 +449,7 @@ export default function ProfileScreen() {
               </Text>
               <Text style={styles.quickStatLabel}>Height</Text>
             </LinearGradient>
-            
+
             <LinearGradient
               colors={theme === 'dark' ? ['#9b59b630', '#9b59b620'] : ['#9b59b615', '#9b59b608']}
               style={styles.quickStatCard}
@@ -465,7 +462,7 @@ export default function ProfileScreen() {
               </Text>
               <Text style={styles.quickStatLabel}>Weight</Text>
             </LinearGradient>
-            
+
             <LinearGradient
               colors={theme === 'dark' ? ['#e74c3c30', '#e74c3c20'] : ['#e74c3c15', '#e74c3c08']}
               style={styles.quickStatCard}
@@ -476,10 +473,10 @@ export default function ProfileScreen() {
               <Text style={styles.quickStatValue}>{profileData.bloodGroup || 'N/A'}</Text>
               <Text style={styles.quickStatLabel}>Blood</Text>
             </LinearGradient>
-            
+
             <LinearGradient
-              colors={savedBMI 
-                ? theme === 'dark' 
+              colors={savedBMI
+                ? theme === 'dark'
                   ? [`${savedBMI.color}30`, `${savedBMI.color}20`]
                   : [`${savedBMI.color}15`, `${savedBMI.color}08`]
                 : [colors.card, colors.card]
@@ -544,7 +541,7 @@ export default function ProfileScreen() {
                     <Ionicons name="calendar" size={14} color={colors.primary} /> Date of Birth
                   </Text>
                   <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}>
-                    <Text style={{color: colors.text}}>
+                    <Text style={{ color: colors.text }}>
                       {editableData.dob ? (editableData.dob instanceof Date ? editableData.dob.toLocaleDateString() : new Date(editableData.dob).toLocaleDateString()) : 'Select date'}
                     </Text>
                     <Ionicons name="calendar-outline" size={20} color={colors.primary} style={{ position: 'absolute', right: 15 }} />
@@ -604,7 +601,7 @@ export default function ProfileScreen() {
                     </View>
                     <Text style={styles.sectionTitle}>Health Metrics</Text>
                   </View>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
                     style={styles.unitToggle}
                   >
@@ -677,9 +674,9 @@ export default function ProfileScreen() {
                     </View>
                     <View style={styles.bmiBarContainer}>
                       <View style={styles.bmiBar}>
-                        <Animated.View style={[styles.bmiBarFill, { 
+                        <Animated.View style={[styles.bmiBarFill, {
                           width: `${getBMIProgress(editableBMI)}%`,
-                          backgroundColor: editableBMI.color 
+                          backgroundColor: editableBMI.color
                         }]} />
                       </View>
                     </View>
@@ -729,7 +726,7 @@ export default function ProfileScreen() {
                     <Text style={styles.sectionTitle}>Preferences</Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.settingRow}>
                   <View style={styles.settingLeft}>
                     <View style={styles.settingIconCircle}>
@@ -754,8 +751,8 @@ export default function ProfileScreen() {
                 <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
                   <LinearGradient
                     colors={[colors.primary, `${colors.primary}DD`]}
-                    start={{x: 0, y: 0}}
-                    end={{x: 1, y: 0}}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
                     style={styles.saveButtonGradient}
                   >
                     <Ionicons name="checkmark-circle" size={22} color="#fff" />
@@ -769,23 +766,23 @@ export default function ProfileScreen() {
           <Animatable.View animation="fadeIn" duration={600}>
             {/* Tab Selector */}
             <View style={styles.tabContainer}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
                 onPress={() => setActiveTab('overview')}
               >
                 <Ionicons name="person-outline" size={18} color={activeTab === 'overview' ? colors.primary : colors.subtext} />
                 <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>Overview</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.tab, activeTab === 'health' && styles.tabActive]}
                 onPress={() => setActiveTab('health')}
               >
                 <Ionicons name="fitness-outline" size={18} color={activeTab === 'health' ? colors.primary : colors.subtext} />
                 <Text style={[styles.tabText, activeTab === 'health' && styles.tabTextActive]}>Health</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.tab, activeTab === 'medical' && styles.tabActive]}
                 onPress={() => setActiveTab('medical')}
               >
@@ -826,7 +823,7 @@ export default function ProfileScreen() {
                       </View>
                       <Text style={styles.sectionTitle}>Health Metrics</Text>
                     </View>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
                       style={styles.unitToggle}
                     >
@@ -846,9 +843,9 @@ export default function ProfileScreen() {
                       </View>
                       <View style={styles.bmiBarContainer}>
                         <View style={styles.bmiBar}>
-                          <Animated.View style={[styles.bmiBarFill, { 
+                          <Animated.View style={[styles.bmiBarFill, {
                             width: `${getBMIProgress(savedBMI)}%`,
-                            backgroundColor: savedBMI.color 
+                            backgroundColor: savedBMI.color
                           }]} />
                         </View>
                       </View>
@@ -998,8 +995,8 @@ export default function ProfileScreen() {
             </View>
             <ScrollView contentContainerStyle={styles.avatarGrid} showsVerticalScrollIndicator={false}>
               {ALL_AVATAR_KEYS.map(key => (
-                <TouchableOpacity 
-                  key={key} 
+                <TouchableOpacity
+                  key={key}
                   onPress={() => {
                     handleInputChange('avatarKey', key);
                     setShowAvatarModal(false);
@@ -1067,11 +1064,11 @@ export default function ProfileScreen() {
               autoCapitalize="none"
             />
             <View style={styles.deleteModalButtons}>
-              <TouchableOpacity 
-                style={[styles.deleteModalButton, styles.deleteModalCancelButton]} 
-                onPress={() => { 
-                  setDeleteConfirmText(''); 
-                  setIsDeleteModalVisible(false); 
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.deleteModalCancelButton]}
+                onPress={() => {
+                  setDeleteConfirmText('');
+                  setIsDeleteModalVisible(false);
                 }}
                 activeOpacity={0.7}
               >
@@ -1079,7 +1076,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.deleteModalButton, 
+                  styles.deleteModalButton,
                   styles.deleteModalConfirmButton,
                   deleteConfirmText !== 'DELETE' && { opacity: 0.5 }
                 ]}
@@ -1098,15 +1095,15 @@ export default function ProfileScreen() {
 }
 
 const createStyles = (colors, theme) => StyleSheet.create({
-  safeArea: { 
-    flex: 1, 
-    backgroundColor: colors.background 
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background
   },
-  container: { 
+  container: {
     padding: 16,
     paddingTop: 8,
   },
-  
+
   // Premium Header
   headerCard: {
     borderRadius: 24,

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Asizto",
-    "slug": "Asizto",
+    "name": "Asizto-1",
+    "slug": "Asizto-1",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,7 +14,6 @@
     },
     "ios": {
       "supportsTablet": true
-  ,"buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,16 +21,14 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-  "package": "com.nikhilgarg8982.asizto",
-  "versionCode": 1
+      "package": "com.nikhilgarg8982.Asizto1"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "fe338b83-6add-426b-b646-e102bbc8e54c"
-      }
-    }
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ]
   }
 }

@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import {
     View, Text, TextInput, Pressable,
-    Animated, Easing, ActivityIndicator, StyleSheet,
+    Animated, Easing, ActivityIndicator, StyleSheet, useColorScheme
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,41 +17,47 @@ const haptic = (style = 'Light') => {
 
 // ─── Design Tokens ─────────────────────────────────────────────────────────────
 export const C = {
-    primary: '#4ECC6A',
-    p2: '#38B855',
-    p3: '#2DA048',
-    glow: 'rgba(78,204,106,0.22)',
-    mint: '#34D9A0',
+    primary: '#111111',
+    p2: '#333333',
+    p3: '#555555',
+    glow: 'rgba(0,0,0,0.1)',
+    mint: '#888888',
 
     dark: {
-        bg: '#060E0A',
-        card: '#0D1C13',
-        inputBg: 'rgba(255,255,255,0.04)',
-        inputBorder: 'rgba(78,204,106,0.16)',
-        inputFocused: 'rgba(78,204,106,0.65)',
-        text: '#E2F5E8',
-        subtext: '#6B9E7A',
-        placeholder: '#3D6B4A',
-        divider: 'rgba(78,204,106,0.10)',
-        chip: 'rgba(78,204,106,0.08)',
-        chipBorder: 'rgba(78,204,106,0.20)',
-        surface: 'rgba(20,40,28,0.90)',
-        cardBorder: 'rgba(78,204,106,0.12)',
+        bg: '#000000',
+        card: '#0A0A0A',
+        inputBg: 'rgba(255,255,255,0.03)',
+        inputBorder: 'rgba(255,255,255,0.1)',
+        inputFocused: 'rgba(255,255,255,0.4)',
+        text: '#FFFFFF',
+        subtext: '#999999',
+        placeholder: '#555555',
+        divider: 'rgba(255,255,255,0.1)',
+        chip: 'rgba(255,255,255,0.06)',
+        chipBorder: 'rgba(255,255,255,0.15)',
+        surface: 'rgba(10,10,10,0.95)',
+        cardBorder: 'rgba(255,255,255,0.1)',
+        primary: '#FFFFFF',
+        p2: '#CCCCCC',
+        glow: 'rgba(255,255,255,0.1)',
     },
     light: {
-        bg: '#EDF7F0',
-        card: '#FFFFFF',
-        inputBg: 'rgba(0,0,0,0.025)',
-        inputBorder: 'rgba(78,204,106,0.25)',
-        inputFocused: '#4ECC6A',
-        text: '#0F2016',
-        subtext: '#3E6E4C',
-        placeholder: '#7FAD8A',
-        divider: 'rgba(78,204,106,0.12)',
-        chip: 'rgba(78,204,106,0.08)',
-        chipBorder: 'rgba(78,204,106,0.28)',
-        surface: 'rgba(255,255,255,0.92)',
-        cardBorder: 'rgba(78,204,106,0.18)',
+        bg: '#FFFFFF',
+        card: '#F5F5F5',
+        inputBg: 'rgba(0,0,0,0.02)',
+        inputBorder: 'rgba(0,0,0,0.1)',
+        inputFocused: '#111111',
+        text: '#111111',
+        subtext: '#666666',
+        placeholder: '#999999',
+        divider: 'rgba(0,0,0,0.1)',
+        chip: 'rgba(0,0,0,0.04)',
+        chipBorder: 'rgba(0,0,0,0.15)',
+        surface: 'rgba(255,255,255,0.95)',
+        cardBorder: 'rgba(0,0,0,0.08)',
+        primary: '#111111',
+        p2: '#333333',
+        glow: 'rgba(0,0,0,0.1)',
     },
 };
 
@@ -106,7 +112,10 @@ export function useStagger(count, { delay = 60, duration = 320, auto = true } = 
 }
 
 // ─── Ambient floating blob ──────────────────────────────────────────────────
-export const Blob = ({ size, color = C.primary, x, y, dx = 50, dy = 40, dur = 14000, delay = 0, opacity = 0.07 }) => {
+export const Blob = ({ size, color, x, y, dx = 50, dy = 40, dur = 14000, delay = 0, opacity = 0.05 }) => {
+    const isDark = useColorScheme() === 'dark';
+    const c = isDark ? C.dark : C.light;
+    const blobColor = color || c.primary;
     const a = useRef(new Animated.Value(0)).current;
     useEffect(() => {
         const loop = Animated.loop(Animated.sequence([
@@ -121,7 +130,7 @@ export const Blob = ({ size, color = C.primary, x, y, dx = 50, dy = 40, dur = 14
     return (
         <Animated.View pointerEvents="none" style={{
             position: 'absolute', width: size, height: size, borderRadius: size / 2,
-            backgroundColor: color, opacity,
+            backgroundColor: blobColor, opacity,
             transform: [{ translateX: tx }, { translateY: ty }],
         }} />
     );
@@ -151,10 +160,7 @@ export const ProgressStepper = ({ step, total = 5, isDark }) => {
         <View style={{ marginBottom: 22 }}>
             {/* Bar */}
             <View style={{ height: 5, backgroundColor: c.divider, borderRadius: 99, overflow: 'hidden' }}>
-                <Animated.View style={{ width: barW, height: '100%', borderRadius: 99, overflow: 'hidden' }}>
-                    <LinearGradient colors={[C.mint, C.primary, C.p2]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-                    <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: C.mint, opacity: glow }]} />
-                </Animated.View>
+                <Animated.View style={{ width: barW, height: '100%', borderRadius: 99, overflow: 'hidden', backgroundColor: c.primary }} />
             </View>
             {/* Labels */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 7 }}>
@@ -165,7 +171,7 @@ export const ProgressStepper = ({ step, total = 5, isDark }) => {
                         <View key={label} style={{ alignItems: 'center' }}>
                             <Text style={{
                                 fontSize: 9, fontWeight: active ? '800' : done ? '600' : '400',
-                                color: active ? C.primary : done ? C.p2 : c.placeholder,
+                                color: active ? c.primary : done ? c.p2 : c.placeholder,
                                 letterSpacing: 0.5,
                             }}>{label}</Text>
                         </View>
@@ -190,7 +196,7 @@ export const Field = ({
     const onBlur = () => Animated.spring(focused, { toValue: 0, friction: 5, useNativeDriver: false }).start();
 
     const border = focused.interpolate({ inputRange: [0, 1], outputRange: [error ? '#E05555' : c.inputBorder, error ? '#E05555' : c.inputFocused] });
-    const bg = focused.interpolate({ inputRange: [0, 1], outputRange: [c.inputBg, isDark ? 'rgba(78,204,106,0.07)' : 'rgba(78,204,106,0.05)'] });
+    const bg = focused.interpolate({ inputRange: [0, 1], outputRange: [c.inputBg, isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'] });
     const shadow = focused.interpolate({ inputRange: [0, 1], outputRange: [0, isDark ? 8 : 4] });
 
     const wrapper = animValue ? {
@@ -210,7 +216,7 @@ export const Field = ({
                 borderRadius: 13, borderWidth: 1.5, borderColor: border,
                 backgroundColor: bg, overflow: 'hidden',
                 minHeight: multiline ? 88 : 50,
-                shadowColor: C.primary, shadowRadius: shadow,
+                shadowColor: c.primary, shadowRadius: shadow,
                 shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5,
                 elevation: 0,
             }}>
@@ -254,6 +260,8 @@ export const Field = ({
 
 // ─── Primary CTA button ───────────────────────────────────────────────────────
 export const Btn = ({ title, onPress, loading, disabled, icon, style, small }) => {
+    const isDark = useColorScheme() === 'dark';
+    const c = isDark ? C.dark : C.light;
     const scale = useRef(new Animated.Value(1)).current;
     const glow = useRef(new Animated.Value(0)).current;
     const isOff = disabled || loading;
@@ -276,23 +284,22 @@ export const Btn = ({ title, onPress, loading, disabled, icon, style, small }) =
     return (
         <Pressable onPressIn={onIn} onPressOut={onOut} onPress={isOff ? null : onPress} style={[style]}>
             <Animated.View style={{ transform: [{ scale }] }}>
-                <Animated.View style={{ borderRadius: 15, shadowColor: C.primary, shadowOpacity: isOff ? 0 : 0.55, shadowRadius: shadowR, shadowOffset: { width: 0, height: 5 }, elevation }}>
-                    <LinearGradient
-                        colors={isOff ? ['#1E3A24', '#162A1B'] : ['#5EE07A', '#4ECC6A', '#38B855']}
-                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                <Animated.View style={{ borderRadius: 15, shadowColor: c.primary, shadowOpacity: isOff ? 0 : 0.4, shadowRadius: shadowR, shadowOffset: { width: 0, height: 5 }, elevation }}>
+                    <View
                         style={{
                             height: small ? 44 : 54, borderRadius: 15,
+                            backgroundColor: isOff ? c.card : c.primary,
                             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                         }}
                     >
                         {loading
-                            ? <ActivityIndicator color="#fff" size="small" />
+                            ? <ActivityIndicator color={c.bg} size="small" />
                             : <>
-                                {icon && <Ionicons name={icon} size={small ? 16 : 18} color="#fff" />}
-                                <Text style={{ color: '#fff', fontSize: small ? 14 : 16, fontWeight: '800', letterSpacing: 0.4 }}>{title}</Text>
+                                {icon && <Ionicons name={icon} size={small ? 16 : 18} color={c.bg} />}
+                                <Text style={{ color: c.bg, fontSize: small ? 14 : 16, fontWeight: '800', letterSpacing: 0.4 }}>{title}</Text>
                             </>
                         }
-                    </LinearGradient>
+                    </View>
                 </Animated.View>
             </Animated.View>
         </Pressable>
@@ -330,9 +337,9 @@ export const Pills = ({ options, selected, onSelect, isDark }) => {
                 return (
                     <Pressable key={value} onPress={() => { haptic(); onSelect(value); }} style={{ flex: 1 }}>
                         {sel ? (
-                            <LinearGradient colors={['#5EE07A', '#38B855']} style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', shadowColor: C.primary, shadowOpacity: 0.4, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-                                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{label}</Text>
-                            </LinearGradient>
+                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: c.primary, shadowColor: c.primary, shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+                                <Text style={{ color: c.bg, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+                            </View>
                         ) : (
                             <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: c.chipBorder, backgroundColor: c.chip }}>
                                 <Text style={{ color: c.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
@@ -364,10 +371,10 @@ export const GenderPicker = ({ selected, onSelect, isDark }) => {
                     <Pressable key={value} onPressIn={onIn} onPressOut={onOut} onPress={() => { haptic(); onSelect(value); }} style={{ flex: 1 }}>
                         <Animated.View style={{ transform: [{ scale }] }}>
                             {sel ? (
-                                <LinearGradient colors={['#5EE07A', '#38B855']} style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, shadowColor: C.primary, shadowOpacity: 0.35, shadowRadius: 12, elevation: 7 }}>
-                                    <Ionicons name={icon} size={17} color="#fff" />
-                                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>{label}</Text>
-                                </LinearGradient>
+                                <View style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, backgroundColor: c.primary, shadowColor: c.primary, shadowOpacity: 0.2, shadowRadius: 12, elevation: 7 }}>
+                                    <Ionicons name={icon} size={17} color={c.bg} />
+                                    <Text style={{ color: c.bg, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+                                </View>
                             ) : (
                                 <View style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: c.chipBorder, backgroundColor: c.chip }}>
                                     <Ionicons name={icon} size={17} color={c.placeholder} />
@@ -392,14 +399,14 @@ export const Chip = ({ label, selected, onPress, isDark }) => {
         <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress}>
             <Animated.View style={{ transform: [{ scale: s }] }}>
                 {selected ? (
-                    <LinearGradient colors={['#5EE07A', '#38B855']} style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Ionicons name="checkmark" size={11} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: 12.5, fontWeight: '800' }}>{label}</Text>
-                    </LinearGradient>
+                    <View style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.primary }}>
+                        <Ionicons name="checkmark" size={11} color={c.bg} />
+                        <Text style={{ color: c.bg, fontSize: 12.5, fontWeight: '800' }}>{label}</Text>
+                    </View>
                 ) : (
                     <View style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, borderWidth: 1.5, borderColor: c.chipBorder, backgroundColor: c.chip, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Ionicons name="add" size={11} color={C.primary} />
-                        <Text style={{ color: C.primary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
+                        <Ionicons name="add" size={11} color={c.text} />
+                        <Text style={{ color: c.text, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
                     </View>
                 )}
             </Animated.View>
@@ -407,53 +414,49 @@ export const Chip = ({ label, selected, onPress, isDark }) => {
     );
 };
 
-// ─── OTP boxes ────────────────────────────────────────────────────────────────
-export const OTPRow = ({ digits, setDigits, refs, error, isDark }) => {
+// ─── OTP single input ─────────────────────────────────────────────────────────
+export const OTPRow = ({ value, onChangeText, error, isDark, inputRef }) => {
     const c = isDark ? C.dark : C.light;
-    const scales = useRef(digits.map(() => new Animated.Value(1))).current;
+    const focused = useRef(new Animated.Value(0)).current;
 
-    const pop = (i) => {
-        Animated.sequence([
-            Animated.spring(scales[i], { toValue: 1.18, friction: 3, useNativeDriver: true }),
-            Animated.spring(scales[i], { toValue: 1, friction: 3, useNativeDriver: true }),
-        ]).start();
-    };
+    const onFocus = () => Animated.spring(focused, { toValue: 1, friction: 5, useNativeDriver: false }).start();
+    const onBlur  = () => Animated.spring(focused, { toValue: 0, friction: 5, useNativeDriver: false }).start();
+
+    const borderColor = focused.interpolate({
+        inputRange: [0, 1],
+        outputRange: [error ? '#E05555' : c.inputBorder, error ? '#E05555' : c.inputFocused],
+    });
 
     return (
         <View>
-            <View style={{ flexDirection: 'row', gap: 9, marginBottom: 4 }}>
-                {digits.map((d, i) => (
-                    <Animated.View key={i} style={{ flex: 1, transform: [{ scale: scales[i] }] }}>
-                        <TextInput
-                            ref={r => (refs.current[i] = r)}
-                            style={{
-                                height: 56, borderRadius: 13, textAlign: 'center',
-                                fontSize: 24, fontWeight: '800', color: c.text,
-                                backgroundColor: d ? (isDark ? 'rgba(78,204,106,0.10)' : 'rgba(78,204,106,0.08)') : c.inputBg,
-                                borderWidth: 2,
-                                borderColor: d ? C.primary : c.inputBorder,
-                            }}
-                            keyboardType="number-pad"
-                            maxLength={1}
-                            value={d}
-                            autoComplete="off"
-                            importantForAutofill="no"
-                            textContentType="none"
-                            onChangeText={t => {
-                                const v = t.replace(/\D/g, '');
-                                const next = [...digits]; next[i] = v; setDigits(next);
-                                if (v) { pop(i); haptic(); }
-                                if (v && i < 5) setTimeout(() => refs.current[i + 1]?.focus(), 35);
-                            }}
-                            onKeyPress={({ nativeEvent: { key } }) => {
-                                if (key === 'Backspace' && !digits[i] && i > 0)
-                                    setTimeout(() => refs.current[i - 1]?.focus(), 35);
-                            }}
-                        />
-                    </Animated.View>
-                ))}
-            </View>
-            {error ? <Text style={{ color: '#E05555', fontSize: 12, fontWeight: '600', marginTop: 4, marginLeft: 2 }}>{error}</Text> : null}
+            <Animated.View style={{
+                borderRadius: 13, borderWidth: 1.5, borderColor,
+                backgroundColor: c.inputBg,
+                height: 56, flexDirection: 'row', alignItems: 'center',
+                paddingHorizontal: 18,
+            }}>
+                <TextInput
+                    ref={inputRef}
+                    style={{
+                        flex: 1, fontSize: 22, fontWeight: '700',
+                        color: c.text, letterSpacing: 10, textAlign: 'center',
+                    }}
+                    value={value}
+                    onChangeText={t => {
+                        haptic();
+                        onChangeText(t.replace(/\D/g, '').slice(0, 6));
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode"
+                    placeholder="••••••"
+                    placeholderTextColor={c.placeholder}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                />
+            </Animated.View>
+            {error ? <Text style={{ color: '#E05555', fontSize: 12, fontWeight: '600', marginTop: 6, marginLeft: 2 }}>{error}</Text> : null}
         </View>
     );
 };
@@ -470,12 +473,13 @@ export const Banner = ({ type, message, onClose, isDark }) => {
     }, []);
     if (!message) return null;
     const isE = type === 'error';
-    const bg = isE ? (isDark ? 'rgba(224,85,85,0.14)' : 'rgba(255,230,230,1)') : (isDark ? 'rgba(78,204,106,0.13)' : 'rgba(230,255,238,1)');
-    const bd = isE ? (isDark ? 'rgba(224,85,85,0.28)' : 'rgba(255,180,180,0.7)') : (isDark ? 'rgba(78,204,106,0.28)' : 'rgba(78,204,106,0.3)');
-    const tc = isE ? (isDark ? '#FFB0B0' : '#8B1A1A') : (isDark ? '#8AF3C5' : '#1A5C2D');
+    const c = isDark ? C.dark : C.light;
+    const bg = isE ? (isDark ? 'rgba(224,85,85,0.14)' : 'rgba(255,230,230,1)') : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)');
+    const bd = isE ? (isDark ? 'rgba(224,85,85,0.28)' : 'rgba(255,180,180,0.7)') : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)');
+    const tc = isE ? (isDark ? '#FFB0B0' : '#8B1A1A') : c.text;
     return (
         <Animated.View style={{ transform: [{ translateY: ty }], opacity: op, backgroundColor: bg, borderRadius: 13, padding: 13, flexDirection: 'row', alignItems: 'center', marginBottom: 14, borderWidth: 1.5, borderColor: bd }}>
-            <Ionicons name={isE ? 'alert-circle' : 'checkmark-circle'} size={17} color={isE ? '#E05555' : C.primary} style={{ marginRight: 8 }} />
+            <Ionicons name={isE ? 'alert-circle' : 'checkmark-circle'} size={17} color={isE ? '#E05555' : c.primary} style={{ marginRight: 8 }} />
             <Text style={{ color: tc, flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 18 }}>{message}</Text>
             {onClose && <Pressable onPress={onClose} style={{ padding: 4, marginLeft: 4 }}><Ionicons name="close" size={15} color={tc} /></Pressable>}
         </Animated.View>

@@ -23,7 +23,7 @@ const fmt = d => d
 // ─── LOGIN VIEW ───────────────────────────────────────────────────────────────
 export function LoginView({
     email, setEmail, password, setPassword,
-    loginStep, loginOtpDigits, setLoginOtpDigits, loginOtpRefs,
+    loginStep, loginOtp, setLoginOtp,
     otpError, resendCooldown, isSendingOtp,
     errors, isDark, onLogin, isLoading,
     onVerifyOtp, onBack, onResend, onGoSignup,
@@ -37,23 +37,23 @@ export function LoginView({
         return (
             <View>
                 <View style={{ alignItems: 'center', marginBottom: 26 }}>
-                    <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: isDark ? 'rgba(78,204,106,0.13)' : 'rgba(78,204,106,0.10)', alignItems: 'center', justifyContent: 'center', marginBottom: 14, borderWidth: 1.5, borderColor: 'rgba(78,204,106,0.28)' }}>
-                        <Ionicons name="shield-checkmark-outline" size={30} color={C.primary} />
+                    <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', alignItems: 'center', justifyContent: 'center', marginBottom: 14, borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }}>
+                        <Ionicons name="shield-checkmark-outline" size={30} color={c.primary} />
                     </View>
                     <Text style={{ fontSize: 19, fontWeight: '800', color: c.text, letterSpacing: 0.2 }}>Verify It's You</Text>
                     <Text style={{ fontSize: 13, color: c.subtext, marginTop: 5, textAlign: 'center', lineHeight: 20 }}>
                         6-digit code sent to{'\n'}
-                        <Text style={{ color: C.primary, fontWeight: '700' }}>{email?.trim()}</Text>
+                        <Text style={{ color: c.primary, fontWeight: '700' }}>{email?.trim()}</Text>
                     </Text>
                 </View>
-                <OTPRow digits={loginOtpDigits} setDigits={setLoginOtpDigits} refs={loginOtpRefs} error={otpError} isDark={isDark} />
+                <OTPRow value={loginOtp} onChangeText={setLoginOtp} error={otpError} isDark={isDark} />
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
                     <View style={{ flex: 1 }}><GhostBtn title="Back" icon="arrow-back-outline" onPress={onBack} isDark={isDark} /></View>
                     <View style={{ flex: 1.6 }}><Btn title="Verify" icon="checkmark-circle-outline" onPress={onVerifyOtp} loading={isLoading} /></View>
                 </View>
                 <Pressable onPress={onResend} disabled={isSendingOtp || resendCooldown > 0} style={{ alignItems: 'center', marginTop: 18, opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }}>
-                    {isSendingOtp ? <ActivityIndicator size="small" color={C.primary} /> : (
-                        <Text style={{ color: C.primary, fontSize: 13, fontWeight: '600' }}>
+                    {isSendingOtp ? <ActivityIndicator size="small" color={c.primary} /> : (
+                        <Text style={{ color: c.primary, fontSize: 13, fontWeight: '600' }}>
                             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
                         </Text>
                     )}
@@ -97,7 +97,7 @@ export function LoginView({
                 <Btn title="Sign In" icon="log-in-outline" onPress={onLogin} loading={isLoading} style={{ marginTop: 6 }} />
                 <Pressable onPress={onGoSignup} style={{ alignItems: 'center', marginTop: 20, padding: 4 }}>
                     <Text style={{ color: c.subtext, fontSize: 14 }}>
-                        New here? <Text style={{ color: C.primary, fontWeight: '800' }}>Create account</Text>
+                        New here? <Text style={{ color: c.primary, fontWeight: '800' }}>Create account</Text>
                     </Text>
                 </Pressable>
             </Animated.View>
@@ -126,7 +126,7 @@ export function Step1Account({
         if (/[^A-Za-z0-9]/.test(password)) s++;
         if (s <= 1) return { label: 'Weak', color: '#E05555', pct: 0.22 };
         if (s <= 3) return { label: 'Fair', color: '#F0A030', pct: 0.55 };
-        return { label: 'Strong', color: C.primary, pct: 1.0 };
+        return { label: 'Strong', color: c.primary, pct: 1.0 };
     })();
 
     return (
@@ -157,7 +157,7 @@ export function Step1Account({
                         ) : isEmailTaken ? (
                             <View style={{ paddingRight: 14 }}><Ionicons name="close-circle" size={18} color="#E05555" /></View>
                         ) : email.includes('@') ? (
-                            <View style={{ paddingRight: 14 }}><Ionicons name="checkmark-circle" size={18} color={C.primary} /></View>
+                            <View style={{ paddingRight: 14 }}><Ionicons name="checkmark-circle" size={18} color={c.primary} /></View>
                         ) : null
                     }
                 />
@@ -196,10 +196,9 @@ export function Step1Account({
 
 // ─── STEP 2 — OTP verify ─────────────────────────────────────────────────────
 export function Step2Verify({
-    email, digits, setDigits, error, isDark,
+    email, otp, setOtp, error, isDark,
     onVerify, onBack, isLoading, resendCooldown, isSendingOtp, onResend,
 }) {
-    const refs = useRef([null, null, null, null, null, null]);
     const c = isDark ? C.dark : C.light;
     const iconAnim = useRef(new Animated.Value(0)).current;
 
@@ -215,20 +214,20 @@ export function Step2Verify({
                 <Animated.View style={{
                     transform: [{ scale: iconScale }],
                     width: 74, height: 74, borderRadius: 37,
-                    backgroundColor: isDark ? 'rgba(78,204,106,0.12)' : 'rgba(78,204,106,0.10)',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                     alignItems: 'center', justifyContent: 'center', marginBottom: 14,
-                    borderWidth: 1.5, borderColor: 'rgba(78,204,106,0.28)',
+                    borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
                 }}>
-                    <Ionicons name="mail-open-outline" size={34} color={C.primary} />
+                    <Ionicons name="mail-open-outline" size={34} color={c.primary} />
                 </Animated.View>
                 <Text style={{ fontSize: 20, fontWeight: '800', color: c.text, marginBottom: 5, letterSpacing: 0.2 }}>Check your inbox</Text>
                 <Text style={{ fontSize: 13, color: c.subtext, textAlign: 'center', lineHeight: 20 }}>
                     We sent a 6-digit code to
                 </Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: C.primary, marginTop: 2 }}>{email}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: c.primary, marginTop: 2 }}>{email}</Text>
             </View>
 
-            <OTPRow digits={digits} setDigits={setDigits} refs={refs} error={error} isDark={isDark} />
+            <OTPRow value={otp} onChangeText={setOtp} error={error} isDark={isDark} />
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 22 }}>
                 <View style={{ flex: 1 }}><GhostBtn title="Back" icon="arrow-back-outline" onPress={onBack} isDark={isDark} /></View>
@@ -238,8 +237,8 @@ export function Step2Verify({
             <View style={{ alignItems: 'center', marginTop: 20 }}>
                 <Pressable disabled={isSendingOtp || resendCooldown > 0} onPress={onResend} style={{ opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }}>
                     {isSendingOtp
-                        ? <ActivityIndicator size="small" color={C.primary} />
-                        : <Text style={{ color: C.primary, fontSize: 13, fontWeight: '600' }}>
+                        ? <ActivityIndicator size="small" color={c.primary} />
+                        : <Text style={{ color: c.primary, fontSize: 13, fontWeight: '600' }}>
                             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
                         </Text>
                     }
@@ -352,7 +351,7 @@ export function Step4Health({
                     style={{ height: 50, borderRadius: 13, borderWidth: 1.5, borderColor: errors.bloodGroup ? '#E05555' : c.inputBorder, backgroundColor: c.inputBg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, justifyContent: 'space-between', marginBottom: showBlood ? 8 : (errors.bloodGroup ? 2 : 14) }}
                 >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Ionicons name="water-outline" size={17} color={bloodGroup ? C.primary : c.placeholder} />
+                        <Ionicons name="water-outline" size={17} color={bloodGroup ? c.primary : c.placeholder} />
                         <Text style={{ color: bloodGroup ? c.text : c.placeholder, fontSize: 15 }}>{bloodGroup || 'Select blood group'}</Text>
                     </View>
                     <Ionicons name={showBlood ? 'chevron-up' : 'chevron-down'} size={15} color={c.placeholder} />
@@ -365,8 +364,8 @@ export function Step4Health({
                                 const sel = bg === bloodGroup;
                                 return (
                                     <Pressable key={bg} onPress={() => { setBloodGroup(bg); setShowBlood(false); }}
-                                        style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: sel ? C.primary : c.chip, borderWidth: 1.5, borderColor: sel ? C.primary : c.chipBorder }}>
-                                        <Text style={{ color: sel ? '#fff' : c.subtext, fontWeight: '800', fontSize: 14 }}>{bg}</Text>
+                                        style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: sel ? c.primary : c.chip, borderWidth: 1.5, borderColor: sel ? c.primary : c.chipBorder }}>
+                                        <Text style={{ color: sel ? c.bg : c.subtext, fontWeight: '800', fontSize: 14 }}>{bg}</Text>
                                     </Pressable>
                                 );
                             })}
@@ -425,23 +424,29 @@ function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
 
     return (
         <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress}>
+            {/* Outer: native-driven scale transform */}
             <Animated.View style={{
                 transform: [{ scale }],
                 width: size, height: size,
-                shadowColor: C.primary, shadowRadius: shadowR,
-                shadowOpacity: shadowO, shadowOffset: { width: 0, height: 4 },
-                elevation: selected ? 8 : 0,
             }}>
+                {/* Inner: JS-driven shadow animations (can't use native driver) */}
                 <Animated.View style={{
-                    width: size, height: size, borderRadius: 18,
-                    borderWidth: selected ? 2.5 : 1.5, borderColor,
-                    backgroundColor: bgColor, overflow: 'hidden', padding: 5,
+                    width: size, height: size,
+                    shadowColor: C.primary, shadowRadius: shadowR,
+                    shadowOpacity: shadowO, shadowOffset: { width: 0, height: 4 },
+                    elevation: selected ? 8 : 0,
                 }}>
-                    <Image
-                        source={getAvatarSource(avatarKey)}
-                        style={{ flex: 1, width: '100%', height: '100%', borderRadius: 13 }}
-                        resizeMode="cover"
-                    />
+                    <Animated.View style={{
+                        width: size, height: size, borderRadius: 18,
+                        borderWidth: selected ? 2.5 : 1.5, borderColor,
+                        backgroundColor: bgColor, overflow: 'hidden', padding: 5,
+                    }}>
+                        <Image
+                            source={getAvatarSource(avatarKey)}
+                            style={{ flex: 1, width: '100%', height: '100%', borderRadius: 13 }}
+                            resizeMode="cover"
+                        />
+                    </Animated.View>
                 </Animated.View>
                 {selected && (
                     <View style={{
