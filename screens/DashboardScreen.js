@@ -1,4 +1,4 @@
-// DashboardScreen.js (Enhanced)
+import { spacing, radius } from '../theme/tokens';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   View, 
@@ -17,6 +17,8 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import IconBadge from '../components/IconBadge';
+import CardGap from '../components/CardGap';
 import { db, auth } from '../firebaseConfig';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
@@ -52,7 +54,7 @@ const healthFacts = {
 };
 
 export default function DashboardScreen({ navigation }) {
-  const { colors } = useTheme();
+  const { colors, spacing, radius, fontSize, iconSize } = useTheme();
   const [userName, setUserName] = useState('');
   const [userProfile, setUserProfile] = useState({});
   const [medicines, setMedicines] = useState([]);
@@ -73,7 +75,6 @@ export default function DashboardScreen({ navigation }) {
     appointments: true
   });
 
-  // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scoreAnim = useRef(new Animated.Value(0)).current;
@@ -707,16 +708,17 @@ export default function DashboardScreen({ navigation }) {
       </View>
     );
   }
-
   if (error) {
     return (
       <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
         <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
         <Text style={[styles.errorTitle, { color: colors.text }]}>Something went wrong</Text>
         <Text style={[styles.errorMessage, { color: colors.subtext }]}>{error}</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.retryButton, { backgroundColor: colors.primary }]}
           onPress={() => setError(null)}
+          accessibilityLabel="Retry loading dashboard"
+          accessibilityRole="button"
         >
           <Text style={styles.retryButtonText}>Try Again</Text>
         </TouchableOpacity>
@@ -789,262 +791,288 @@ export default function DashboardScreen({ navigation }) {
             />
           }
         >
-          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-            <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
-            <Text style={[styles.subGreeting, { color: colors.subtext }]}>Here's your health summary</Text>
-          </Animated.View>
-          
-          {/* Search Section */}
-          <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-            <TextInput
-              style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
-              placeholder="Search medicine info..."
-              placeholderTextColor={colors.subtext}
-              value={searchText}
-              onChangeText={setSearchText}
-              onSubmitEditing={handleSearch}
-              maxLength={100}
-            />
-            <TouchableOpacity 
-              style={[styles.searchButton, { backgroundColor: colors.primary }]} 
-              onPress={handleSearch}
-              disabled={isSearching || searchText.trim().length < 3}
-              activeOpacity={0.7}
-            >
-              {isSearching ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="search" size={22} color="#fff" />
-              )}
-            </TouchableOpacity>
-          </Animated.View>
+          {/* ── Greeting ── */}
+<Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+  <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
+  <Text style={{ fontSize: fontSize.sm, color: colors.subtext, marginBottom: spacing.md }}>
+    Here's your health summary
+  </Text>
+</Animated.View>
 
-          {/* Search Results */}
-          {searchResult && (
-            <Animated.View 
-              style={[styles.card, styles.searchResultCard, { 
-                backgroundColor: colors.card,
-                borderColor: colors.primary,
-                opacity: fadeAnim 
-              }]}
-            >
-              <View style={styles.searchResultHeader}>
-                <Ionicons name="medical" size={20} color={colors.primary} />
-                <Text style={[styles.searchResultTitle, { color: colors.primary }]}>
-                  {searchText}
-                </Text>
-              </View>
-              <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{searchResult}</Text>
-            </Animated.View>
-          )}
+<CardGap />
 
-          {/* Metrics Section */}
-          <Animated.View style={[styles.metricsContainer, { opacity: fadeAnim }]}>
-            <TouchableOpacity 
-              style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}
-              activeOpacity={0.9}
-            >
-              <View style={[styles.metricIconContainer, { backgroundColor: `${getScoreColor()}20` }]}>
-                <Ionicons name="fitness" size={28} color={getScoreColor()} />
-              </View>
-              <Text style={[styles.metricLabel, { color: colors.subtext }]}>Health Score</Text>
-              <Text style={[styles.metricValue, { color: getScoreColor() }]}>
-                {healthScore ?? 'N/A'}{healthScore && '%'}
-              </Text>
-              <View style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}>
-                <Animated.View 
-                  style={[
-                    styles.progressFill, 
-                    { 
-                      backgroundColor: getScoreColor(),
-                      width: scoreAnim.interpolate({
-                        inputRange: [0, 100],
-                        outputRange: ['0%', '100%']
-                      })
-                    }
-                  ]} 
-                />
-              </View>
-              <Text style={[styles.metricSubtext, { color: colors.subtext }]}>
-                {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
-              </Text>
-            </TouchableOpacity>
+{/* ── Health Score Hero ── */}
+<Animated.View
+  style={[styles.card, { backgroundColor: colors.card, padding: spacing.lg, opacity: fadeAnim }]}
+>
+  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+    <IconBadge icon="fitness" size="lg" color={getScoreColor()} />
+    <Text style={{ flex: 1, textAlign: 'center', fontSize: 36, fontWeight: '500', color: getScoreColor() }}>
+      {healthScore ?? 'N/A'}{healthScore !== null && '%'}
+    </Text>
+    <View style={{ width: 48, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+  <Ionicons
+    name={healthScore >= 80 ? 'checkmark-circle' : healthScore >= 60 ? 'alert-circle' : 'close-circle'}
+    size={iconSize.sm}
+    color={healthScore >= 80 ? colors.success : healthScore >= 60 ? colors.warning : colors.danger}
+  />
+  <Text style={{ color: colors.subtext, fontSize: fontSize.sm, textAlign: 'right' }}>
+    {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
+  </Text>
+</View>
+  </View>
+  <View style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}>
+    <Animated.View
+      style={[
+        styles.progressFill,
+        {
+          backgroundColor: getScoreColor(),
+          width: scoreAnim.interpolate({
+            inputRange: [0, 100],
+            outputRange: ['0%', '100%'],
+          }),
+        },
+      ]}
+    />
+  </View>
+</Animated.View>
 
-            <TouchableOpacity 
-              style={[styles.card, styles.metricCard, { backgroundColor: colors.card }]}
-              activeOpacity={0.9}
-            >
-              <View style={[styles.metricIconContainer, { backgroundColor: `${getBmiStatusColor()}20` }]}>
-                <Ionicons name="body" size={28} color={getBmiStatusColor()} />
-              </View>
-              <Text style={[styles.metricLabel, { color: colors.subtext }]}>Your BMI</Text>
-              <Text style={[styles.metricValue, { color: getBmiStatusColor() }]}>
-                {bmiData.value || 'N/A'}
-              </Text>
-              <Text style={[styles.metricSubtext, { color: colors.subtext }]}>
-                {bmiData.category}
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
+<CardGap />
 
-          {/* Next Medicine */}
-          {nextDoseStatus && (
-            <Animated.View 
-              style={[
-                styles.card, 
-                styles.medicineCard,
-                { 
-                  backgroundColor: colors.card,
-                  opacity: fadeAnim,
-                  transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }]
-                }
-              ]}
-            >
-              <View style={styles.cardHeader}>
-                <View style={[styles.iconBadge, { backgroundColor: `${colors.primary}15` }]}>
-                  <Ionicons name="medical" size={22} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>
-                    {nextDoseStatus.medicine.name}
-                  </Text>
-                  <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                    {nextDoseStatus.isDue 
-                      ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    }
-                  </Text>
-                </View>
-                {nextDoseStatus.isDue && (
-                  <View style={[styles.dueBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.dueText}>DUE</Text>
-                  </View>
-                )}
-              </View>
-              {nextDoseStatus.isDue && (
-                <TouchableOpacity 
-                  style={[styles.takeButton, { backgroundColor: colors.primary }]}
-                  onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  <Text style={styles.takeButtonText}>Take Now</Text>
-                </TouchableOpacity>
-              )}
-            </Animated.View>
-          )}
+{/* ── Next Medicine ── */}
+{nextDoseStatus && (
+  <Animated.View
+    style={[
+      styles.card,
+      styles.medicineCard,
+      {
+        backgroundColor: colors.card,
+        opacity: fadeAnim,
+        transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }],
+      },
+    ]}
+  >
+    <View style={styles.cardHeader}>
+      <IconBadge icon="medical" size="md" color={colors.primary} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>
+          {nextDoseStatus.medicine.name}
+        </Text>
+        <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+          {nextDoseStatus.isDue
+            ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+        </Text>
+      </View>
+      {nextDoseStatus.isDue && (
+        <TouchableOpacity
+          style={{
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            borderRadius: radius.pill,
+            backgroundColor: colors.primary,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+          }}
+          onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
+          activeOpacity={0.8}
+          accessibilityLabel={`Take ${nextDoseStatus?.medicine?.name ?? 'medicine'} now`}
+          accessibilityRole="button"
+        >
+          <Ionicons name="checkmark-circle" size={16} color="#fff" />
+          <Text style={{ color: '#fff', fontSize: fontSize.sm, fontWeight: '700' }}>Take Now</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  </Animated.View>
+)}
 
-          {/* Appointments */}
-          {appointments.length > 0 && (
-            <Animated.View 
-              style={[styles.card, { backgroundColor: colors.card, opacity: fadeAnim }]}
-            >
-              <View style={styles.cardHeader}>
-                <View style={[styles.iconBadge, { backgroundColor: `${colors.primary}15` }]}>
-                  <Ionicons name="calendar" size={22} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>
-                    {nextAppointment.doctorName || nextAppointment.with || 'Appointment'}
-                  </Text>
-                  <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                    {nextAppointment.date?.toDate ? 
-                      nextAppointment.date.toDate().toLocaleDateString('en-US', { 
-                        weekday: 'short', 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                      }) : 
-                      nextAppointment.date || 'Date not specified'
-                    }
-                  </Text>
-                  {nextAppointment.location && (
-                    <View style={styles.locationRow}>
-                      <Ionicons name="location" size={14} color={colors.subtext} />
-                      <Text style={[styles.locationText, { color: colors.subtext }]}>
-                        {nextAppointment.location}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-              {(() => {
-                const aptDateObj = nextAppointment?.date?.toDate ? nextAppointment.date.toDate() : (nextAppointment?.date ? new Date(nextAppointment.date) : null);
-                const canShow = aptDateObj ? (aptDateObj <= new Date()) : false;
-                if (nextAppointment.attended) {
-                  return (
-                    <View style={styles.attendedBadge}>
-                      <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-                      <Text style={[styles.attendedText, { color: colors.primary }]}>
-                        {nextAppointment.attendedAt ? (
-                          nextAppointment.attendedAt.toDate ? 
-                            `Attended on ${nextAppointment.attendedAt.toDate().toLocaleDateString()}` : 
-                            `Attended on ${new Date(nextAppointment.attendedAt).toLocaleDateString()}`
-                        ) : 'Attended'}
-                      </Text>
-                    </View>
-                  );
-                }
-                if (canShow) {
-                  return (
-                    <TouchableOpacity 
-                      style={[styles.attendButton, { backgroundColor: colors.primary }]} 
-                      onPress={() => handleMarkAttendedDashboard(nextAppointment)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="checkmark-done" size={20} color="#fff" />
-                      <Text style={styles.attendButtonText}>Mark Attended</Text>
-                    </TouchableOpacity>
-                  );
-                }
-                return null;
-              })()}
-            </Animated.View>
-          )}
+<CardGap />
 
-          {/* Health Tip */}
-          <Animated.View 
-            style={[styles.card, styles.tipCard, { backgroundColor: colors.card, opacity: fadeAnim }]}
+{/* ── Next Appointment ── */}
+{appointments.length > 0 && (
+  <Animated.View
+    style={[styles.card, { backgroundColor: colors.card, opacity: fadeAnim }]}
+  >
+    <View style={styles.cardHeader}>
+      <IconBadge icon="calendar" size="md" color={colors.primary} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>
+          {nextAppointment.doctorName || nextAppointment.with || 'Appointment'}
+        </Text>
+        <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+          {nextAppointment.date?.toDate
+            ? nextAppointment.date.toDate().toLocaleDateString('en-US', {
+                weekday: 'short',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })
+            : nextAppointment.date || 'Date not specified'}
+        </Text>
+        {nextAppointment.location && (
+          <View style={styles.locationRow}>
+            <Ionicons name="location" size={14} color={colors.subtext} />
+            <Text style={[styles.locationText, { color: colors.subtext }]}>
+              {nextAppointment.location}
+            </Text>
+          </View>
+        )}
+      </View>
+    </View>
+    {(() => {
+      const aptDateObj = nextAppointment?.date?.toDate
+        ? nextAppointment.date.toDate()
+        : nextAppointment?.date
+        ? new Date(nextAppointment.date)
+        : null;
+      const canShow = aptDateObj ? aptDateObj <= new Date() : false;
+      if (nextAppointment.attended) {
+        return (
+          <View style={styles.attendedBadge}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+            <Text style={[styles.attendedText, { color: colors.primary }]}>
+              {nextAppointment.attendedAt
+                ? nextAppointment.attendedAt.toDate
+                  ? `Attended on ${nextAppointment.attendedAt.toDate().toLocaleDateString()}`
+                  : `Attended on ${new Date(nextAppointment.attendedAt).toLocaleDateString()}`
+                : 'Attended'}
+            </Text>
+          </View>
+        );
+      }
+      if (canShow) {
+        return (
+          <TouchableOpacity
+            style={[styles.attendButton, { backgroundColor: colors.primary }]}
+            onPress={() => handleMarkAttendedDashboard(nextAppointment)}
+            activeOpacity={0.8}
+            accessibilityLabel="Mark appointment as attended"
+            accessibilityRole="button"
           >
-            <View style={styles.tipHeader}>
-              <View style={[styles.tipIcon, { backgroundColor: `${colors.primary}15` }]}>
-                <Ionicons name="bulb" size={24} color={colors.primary} />
-              </View>
-              <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
-            </View>
-            <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
-            <View style={styles.tipFooter}>
-              <TouchableOpacity
-                style={[styles.generateButton, { backgroundColor: colors.primary }]}
-                onPress={async () => {
-                  const personal = await fetchAIPersonalTip();
-                  if (personal) {
-                    setRandomFact(personal);
-                    setAIFactSource('ai');
-                    return;
-                  }
+            <Ionicons name="checkmark-done" size={20} color="#fff" />
+            <Text style={styles.attendButtonText}>Mark Attended</Text>
+          </TouchableOpacity>
+        );
+      }
+      return null;
+    })()}
+  </Animated.View>
+)}
 
-                  const ai = await fetchAIFact(Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)], 'fact');
-                  if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
-                  else { setAIFactSource('preset'); }
-                }}
-                disabled={aiFactLoading}
-                activeOpacity={0.8}
-              >
-                {aiFactLoading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="sparkles" size={16} color="#fff" />
-                    <Text style={styles.generateText}>Generate Tip</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <Text style={[styles.sourceText, { color: colors.subtext }]}>
-                {aiFactSource === 'ai' ? 'AI Generated' : 'Preset'}
-              </Text>
-            </View>
-          </Animated.View>
+<CardGap />
+
+{/* ── BMI Card (compact) ── */}
+<Animated.View
+  style={[styles.card, { backgroundColor: colors.card, padding: spacing.md, opacity: fadeAnim }]}
+>
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+    <IconBadge icon="body" size="sm" color={getBmiStatusColor()} />
+    <View>
+      <Text style={{ fontSize: fontSize.xl, fontWeight: '700', color: getBmiStatusColor() }}>
+        {bmiData.value || 'N/A'}
+      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        {bmiData.status === 'healthy' && <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.success} />}
+        {(bmiData.status === 'warning') && <Ionicons name="alert-circle" size={iconSize.sm} color={colors.warning} />}
+        {bmiData.status === 'critical' && <Ionicons name="close-circle" size={iconSize.sm} color={colors.danger} />}
+        <Text style={{ color: colors.subtext, fontSize: fontSize.sm }}>
+        {bmiData.category}
+        </Text>
+      </View>
+    </View>
+  </View>
+</Animated.View>
+
+<CardGap />
+
+{/* ── Health Tip ── */}
+<Animated.View
+  style={[styles.card, styles.tipCard, { backgroundColor: colors.card, opacity: fadeAnim }]}
+>
+  <View style={styles.tipHeader}>
+    <IconBadge icon="bulb" size="md" color={colors.primary} />
+    <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
+    <TouchableOpacity
+      onPress={async () => {
+        const personal = await fetchAIPersonalTip();
+        if (personal) {
+          setRandomFact(personal);
+          setAIFactSource('ai');
+          return;
+        }
+        const ai = await fetchAIFact(
+          Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)],
+          'fact'
+        );
+        if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
+        else { setAIFactSource('preset'); }
+      }}
+      disabled={aiFactLoading}
+      activeOpacity={0.8}
+      accessibilityLabel="Refresh health tip"
+      accessibilityRole="button"
+      style={{ marginLeft: 'auto', padding: spacing.sm }}
+    >
+      {aiFactLoading
+        ? <ActivityIndicator size="small" color={colors.primary} />
+        : <Ionicons name="refresh" size={iconSize.md} color={colors.primary} />
+      }
+    </TouchableOpacity>
+  </View>
+  <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
+</Animated.View>
+
+<CardGap />
+
+{/* ── Search (moved to bottom) ── */}
+<Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
+  <TextInput
+    style={[
+      styles.searchInput,
+      { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
+    ]}
+    placeholder="Search medicine info..."
+    accessibilityLabel="Search medicine info"
+    placeholderTextColor={colors.subtext}
+    value={searchText}
+    onChangeText={setSearchText}
+    onSubmitEditing={handleSearch}
+    maxLength={100}
+  />
+  <TouchableOpacity
+    style={[styles.searchButton, { backgroundColor: colors.primary }]}
+    onPress={handleSearch}
+    disabled={isSearching || searchText.trim().length < 3}
+    activeOpacity={0.7}
+    accessibilityLabel="Search medicine"
+    accessibilityRole="button"
+  >
+    {isSearching ? (
+      <ActivityIndicator size="small" color="#fff" />
+    ) : (
+      <Ionicons name="search" size={22} color="#fff" />
+    )}
+  </TouchableOpacity>
+</Animated.View>
+
+{/* ── Search Result ── */}
+{searchResult && (
+  <Animated.View
+    style={[
+      styles.card,
+      styles.searchResultCard,
+      { backgroundColor: colors.card, borderColor: colors.primary, opacity: fadeAnim },
+    ]}
+  >
+    <View style={styles.searchResultHeader}>
+      <Ionicons name="medical" size={20} color={colors.primary} />
+      <Text style={[styles.searchResultTitle, { color: colors.primary }]}>{searchText}</Text>
+    </View>
+    <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{searchResult}</Text>
+  </Animated.View>
+)}
         </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
@@ -1053,9 +1081,9 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 20,
+  paddingHorizontal: spacing.md,
+  paddingTop: spacing.md,
+  paddingBottom: spacing.lg,
   },
   loaderContainer: {
     flex: 1,
@@ -1131,7 +1159,6 @@ const styles = StyleSheet.create({
   },
   searchResultCard: {
     borderWidth: 1,
-    marginBottom: 16,
   },
   searchResultHeader: {
     flexDirection: 'row',
@@ -1142,11 +1169,6 @@ const styles = StyleSheet.create({
   searchResultTitle: {
     fontSize: 16,
     fontWeight: '700',
-  },
-  metricsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
   },
   metricCard: {
     flex: 1,
@@ -1190,7 +1212,6 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     padding: 18,
-    marginBottom: 14,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1311,27 +1332,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 14,
-  },
-  tipFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  generateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 6,
-  },
-  generateText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sourceText: {
-    fontSize: 12,
-    opacity: 0.7,
   },
 });

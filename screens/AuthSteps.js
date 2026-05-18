@@ -5,12 +5,15 @@ import {
     View, Text, Image, Pressable, ScrollView,
     Animated, ActivityIndicator, Platform, useWindowDimensions,
 } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
+
+import { makeAuthStyles } from './AuthUI';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import {
-    C, BLOOD_GROUPS, CONDITIONS, HABITS, HABIT_LABELS,
+    BLOOD_GROUPS, CONDITIONS, HABITS, HABIT_LABELS,
     AVATAR_KEYS, getAvatarSource,
     Field, Btn, GhostBtn, Pills, GenderPicker, Chip, OTPRow, Label,
     useStagger,
@@ -30,7 +33,7 @@ export function LoginView({
 }) {
     const [showPwd, setShowPwd] = useState(false);
     const pwdRef = useRef(null);
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
     const { anims } = useStagger(3, { delay: 55, duration: 300 });
 
     if (loginStep === 'otp') {
@@ -38,12 +41,12 @@ export function LoginView({
             <View>
                 <View style={{ alignItems: 'center', marginBottom: 26 }}>
                     <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', alignItems: 'center', justifyContent: 'center', marginBottom: 14, borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }}>
-                        <Ionicons name="shield-checkmark-outline" size={30} color={c.primary} />
+                        <Ionicons name="shield-checkmark-outline" size={30} color={colors.primary} />
                     </View>
-                    <Text style={{ fontSize: 19, fontWeight: '800', color: c.text, letterSpacing: 0.2 }}>Verify It's You</Text>
-                    <Text style={{ fontSize: 13, color: c.subtext, marginTop: 5, textAlign: 'center', lineHeight: 20 }}>
+                    <Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, letterSpacing: 0.2 }}>Verify It's You</Text>
+                    <Text style={{ fontSize: 13, color: colors.subtext, marginTop: 5, textAlign: 'center', lineHeight: 20 }}>
                         6-digit code sent to{'\n'}
-                        <Text style={{ color: c.primary, fontWeight: '700' }}>{email?.trim()}</Text>
+                        <Text style={{ color: colors.primary, fontWeight: '700' }}>{email?.trim()}</Text>
                     </Text>
                 </View>
                 <OTPRow value={loginOtp} onChangeText={setLoginOtp} error={otpError} isDark={isDark} />
@@ -51,9 +54,9 @@ export function LoginView({
                     <View style={{ flex: 1 }}><GhostBtn title="Back" icon="arrow-back-outline" onPress={onBack} isDark={isDark} /></View>
                     <View style={{ flex: 1.6 }}><Btn title="Verify" icon="checkmark-circle-outline" onPress={onVerifyOtp} loading={isLoading} /></View>
                 </View>
-                <Pressable onPress={onResend} disabled={isSendingOtp || resendCooldown > 0} style={{ alignItems: 'center', marginTop: 18, opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }}>
-                    {isSendingOtp ? <ActivityIndicator size="small" color={c.primary} /> : (
-                        <Text style={{ color: c.primary, fontSize: 13, fontWeight: '600' }}>
+                <Pressable onPress={onResend} disabled={isSendingOtp || resendCooldown > 0} style={{ alignItems: 'center', marginTop: 18, opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }} accessibilityLabel="Resend OTP" accessibilityRole="button">
+                    {isSendingOtp ? <ActivityIndicator size="small" color={colors.primary} /> : (
+                        <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
                             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
                         </Text>
                     )}
@@ -86,8 +89,8 @@ export function LoginView({
                     secureTextEntry={!showPwd} fref={pwdRef}
                     returnKeyType="done" onSubmitEditing={onLogin}
                     right={
-                        <Pressable onPress={() => setShowPwd(v => !v)} style={{ paddingRight: 14 }}>
-                            <Ionicons name={showPwd ? 'eye-off-outline' : 'eye-outline'} size={19} color={c.placeholder} />
+                        <Pressable onPress={() => setShowPwd(v => !v)} style={{ paddingRight: 14 }} accessibilityLabel="Toggle password visibility" accessibilityRole="button">
+                            <Ionicons name={showPwd ? 'eye-off-outline' : 'eye-outline'} size={19} color={colors.subtext} />
                         </Pressable>
                     }
                 />
@@ -95,9 +98,12 @@ export function LoginView({
 
             <Animated.View style={{ opacity: anims[2], transform: [{ translateY: anims[2].interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>
                 <Btn title="Sign In" icon="log-in-outline" onPress={onLogin} loading={isLoading} style={{ marginTop: 6 }} />
-                <Pressable onPress={onGoSignup} style={{ alignItems: 'center', marginTop: 20, padding: 4 }}>
-                    <Text style={{ color: c.subtext, fontSize: 14 }}>
-                        New here? <Text style={{ color: c.primary, fontWeight: '800' }}>Create account</Text>
+                <Pressable onPress={onGoSignup}
+                style={{ alignItems: 'center', marginTop: 20, padding: 4 }}
+                accessibilityLabel="Go to signup"
+                accessibilityRole="link">
+                    <Text style={{ color: colors.subtext, fontSize: 14 }}>
+                        New here? <Text style={{ color: colors.primary, fontWeight: '800' }}>Create account</Text>
                     </Text>
                 </Pressable>
             </Animated.View>
@@ -113,7 +119,7 @@ export function Step1Account({
 }) {
     const [showPwd, setShowPwd] = useState(false);
     const lastRef = useRef(null), emailRef = useRef(null), pwdRef = useRef(null);
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
     const { anims } = useStagger(5, { delay: 50, duration: 280 });
 
     const strength = (() => {
@@ -126,7 +132,7 @@ export function Step1Account({
         if (/[^A-Za-z0-9]/.test(password)) s++;
         if (s <= 1) return { label: 'Weak', color: '#E05555', pct: 0.22 };
         if (s <= 3) return { label: 'Fair', color: '#F0A030', pct: 0.55 };
-        return { label: 'Strong', color: c.primary, pct: 1.0 };
+        return { label: 'Strong', color: colors.primary, pct: 1.0 };
     })();
 
     return (
@@ -153,11 +159,11 @@ export function Step1Account({
                     returnKeyType="next" onSubmitEditing={() => pwdRef.current?.focus()}
                     right={
                         isCheckingEmail ? (
-                            <View style={{ paddingRight: 14 }}><ActivityIndicator size="small" color={c.placeholder} /></View>
+                            <View style={{ paddingRight: 14 }}><ActivityIndicator size="small" color={colors.subtext} /></View>
                         ) : isEmailTaken ? (
                             <View style={{ paddingRight: 14 }}><Ionicons name="close-circle" size={18} color="#E05555" /></View>
                         ) : email.includes('@') ? (
-                            <View style={{ paddingRight: 14 }}><Ionicons name="checkmark-circle" size={18} color={c.primary} /></View>
+                            <View style={{ paddingRight: 14 }}><Ionicons name="checkmark-circle" size={18} color={colors.primary} /></View>
                         ) : null
                     }
                 />
@@ -171,8 +177,13 @@ export function Step1Account({
                     error={errors.password} isDark={isDark}
                     secureTextEntry={!showPwd} fref={pwdRef} returnKeyType="done"
                     right={
-                        <Pressable onPress={() => setShowPwd(v => !v)} style={{ paddingRight: 14 }}>
-                            <Ionicons name={showPwd ? 'eye-off-outline' : 'eye-outline'} size={19} color={isDark ? C.dark.placeholder : C.light.placeholder} />
+                        <Pressable
+                            onPress={() => setShowPwd(v => !v)}
+                            style={{ paddingRight: 14 }}
+                            accessibilityLabel="Toggle password visibility"
+                            accessibilityRole="button"
+                        >
+                            <Ionicons name={showPwd ? 'eye-off-outline' : 'eye-outline'} size={19} color={colors.subtext} />
                         </Pressable>
                     }
                 />
@@ -180,10 +191,10 @@ export function Step1Account({
 
             {strength && (
                 <Animated.View style={{ marginBottom: 16, marginTop: -6, opacity: anims[3] }}>
-                    <View style={{ height: 3, backgroundColor: isDark ? C.dark.divider : C.light.divider, borderRadius: 99, overflow: 'hidden' }}>
+                    <View style={{ height: 3, backgroundColor: colors.border, borderRadius: 99, overflow: 'hidden' }}>
                         <View style={{ height: '100%', width: `${strength.pct * 100}%`, backgroundColor: strength.color, borderRadius: 99 }} />
                     </View>
-                    <Text style={{ color: strength.color, fontSize: 11, fontWeight: '700', marginTop: 4 }}>{strength.label} password</Text>
+                    <Text style={{ color: strength.color, fontSize: 13, fontWeight: '700', marginTop: 4 }}>{strength.label} password</Text>
                 </Animated.View>
             )}
 
@@ -199,7 +210,7 @@ export function Step2Verify({
     email, otp, setOtp, error, isDark,
     onVerify, onBack, isLoading, resendCooldown, isSendingOtp, onResend,
 }) {
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
     const iconAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -218,13 +229,13 @@ export function Step2Verify({
                     alignItems: 'center', justifyContent: 'center', marginBottom: 14,
                     borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
                 }}>
-                    <Ionicons name="mail-open-outline" size={34} color={c.primary} />
+                    <Ionicons name="mail-open-outline" size={34} color={colors.primary} />
                 </Animated.View>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: c.text, marginBottom: 5, letterSpacing: 0.2 }}>Check your inbox</Text>
-                <Text style={{ fontSize: 13, color: c.subtext, textAlign: 'center', lineHeight: 20 }}>
+                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 5, letterSpacing: 0.2 }}>Check your inbox</Text>
+                <Text style={{ fontSize: 13, color: colors.subtext, textAlign: 'center', lineHeight: 20 }}>
                     We sent a 6-digit code to
                 </Text>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: c.primary, marginTop: 2 }}>{email}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 2 }}>{email}</Text>
             </View>
 
             <OTPRow value={otp} onChangeText={setOtp} error={error} isDark={isDark} />
@@ -235,10 +246,20 @@ export function Step2Verify({
             </View>
 
             <View style={{ alignItems: 'center', marginTop: 20 }}>
-                <Pressable disabled={isSendingOtp || resendCooldown > 0} onPress={onResend} style={{ opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }}>
+                <Pressable
+                    disabled={isSendingOtp || resendCooldown > 0}
+                    onPress={onResend}
+                    style={{ opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }}
+                    accessibilityLabel="Resend code"
+                    accessibilityRole="button"
+                >
                     {isSendingOtp
-                        ? <ActivityIndicator size="small" color={c.primary} />
-                        : <Text style={{ color: c.primary, fontSize: 13, fontWeight: '600' }}>
+                        ? <ActivityIndicator size="small" color={colors.primary} />
+                        : <Text
+                            style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}
+                            accessibilityLabel="Resend code"
+                            accessibilityRole="button"
+                        >
                             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
                         </Text>
                     }
@@ -253,7 +274,7 @@ export function Step3Details({
     dob, setDob, phoneDigits, setPhoneDigits, gender, setGender,
     showDatePicker, setShowDatePicker, errors, isDark, onNext, onBack,
 }) {
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
     const { anims } = useStagger(4, { delay: 55, duration: 280 });
 
     return (
@@ -264,19 +285,21 @@ export function Step3Details({
                     onPress={() => setShowDatePicker(true)}
                     style={{
                         height: 50, borderRadius: 13, borderWidth: 1.5,
-                        borderColor: errors.dob ? '#E05555' : c.inputBorder,
-                        backgroundColor: c.inputBg, flexDirection: 'row', alignItems: 'center',
+                        borderColor: errors.dob ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                        backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', flexDirection: 'row', alignItems: 'center',
                         paddingHorizontal: 15, justifyContent: 'space-between',
                         marginBottom: errors.dob ? 2 : 14,
                     }}
+                    accessibilityLabel="Select date of birth"
+                    accessibilityRole="button"
                 >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Ionicons name="calendar-outline" size={17} color={dob ? c.text : c.placeholder} />
-                        <Text style={{ color: dob ? c.text : c.placeholder, fontSize: 15 }}>{dob ? fmt(dob) : 'Select date of birth'}</Text>
+                        <Ionicons name="calendar-outline" size={17} color={dob ? colors.text : colors.subtext} />
+                        <Text style={{ color: dob ? colors.text : colors.subtext, fontSize: 15 }}>{dob ? fmt(dob) : 'Select date of birth'}</Text>
                     </View>
-                    <Ionicons name="chevron-down" size={15} color={c.placeholder} />
+                    <Ionicons name="chevron-down" size={15} color={colors.subtext} />
                 </Pressable>
-                {errors.dob ? <Text style={{ color: '#E05555', fontSize: 11.5, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.dob}</Text> : null}
+                {errors.dob ? <Text style={{ color: '#E05555', fontSize: 13, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.dob}</Text> : null}
                 {showDatePicker && (
                     <DateTimePicker
                         value={dob || new Date(2000, 0, 1)}
@@ -304,7 +327,7 @@ export function Step3Details({
                 <View style={{ marginBottom: errors.gender ? 2 : 14 }}>
                     <GenderPicker selected={gender} onSelect={setGender} isDark={isDark} />
                 </View>
-                {errors.gender ? <Text style={{ color: '#E05555', fontSize: 11.5, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.gender}</Text> : null}
+                {errors.gender ? <Text style={{ color: '#E05555', fontSize: 13, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.gender}</Text> : null}
             </Animated.View>
 
             <Animated.View style={{ opacity: anims[3], transform: [{ translateY: anims[3].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
@@ -325,7 +348,7 @@ export function Step4Health({
     errors, isDark, onNext, onBack,
 }) {
     const [showBlood, setShowBlood] = useState(false);
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
     const pillOpts = HABITS.map(v => ({ value: v, label: HABIT_LABELS[v] }));
     const { anims } = useStagger(7, { delay: 40, duration: 260 });
 
@@ -348,24 +371,30 @@ export function Step4Health({
                 <Label isDark={isDark}>Blood Group</Label>
                 <Pressable
                     onPress={() => setShowBlood(v => !v)}
-                    style={{ height: 50, borderRadius: 13, borderWidth: 1.5, borderColor: errors.bloodGroup ? '#E05555' : c.inputBorder, backgroundColor: c.inputBg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, justifyContent: 'space-between', marginBottom: showBlood ? 8 : (errors.bloodGroup ? 2 : 14) }}
+                    style={{ height: 50, borderRadius: 13, borderWidth: 1.5, borderColor: errors.bloodGroup ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, justifyContent: 'space-between', marginBottom: showBlood ? 8 : (errors.bloodGroup ? 2 : 14) }}
+                    accessibilityLabel="Select blood group"
+                    accessibilityRole="button"
                 >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Ionicons name="water-outline" size={17} color={bloodGroup ? c.primary : c.placeholder} />
-                        <Text style={{ color: bloodGroup ? c.text : c.placeholder, fontSize: 15 }}>{bloodGroup || 'Select blood group'}</Text>
+                        <Ionicons name="water-outline" size={17} color={bloodGroup ? colors.primary : colors.subtext} />
+                        <Text style={{ color: bloodGroup ? colors.text : colors.subtext, fontSize: 15 }}>{bloodGroup || 'Select blood group'}</Text>
                     </View>
-                    <Ionicons name={showBlood ? 'chevron-up' : 'chevron-down'} size={15} color={c.placeholder} />
+                    <Ionicons name={showBlood ? 'chevron-up' : 'chevron-down'} size={15} color={colors.subtext} />
                 </Pressable>
-                {errors.bloodGroup ? <Text style={{ color: '#E05555', fontSize: 11.5, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.bloodGroup}</Text> : null}
+                {errors.bloodGroup ? <Text style={{ color: '#E05555', fontSize: 13, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.bloodGroup}</Text> : null}
                 {showBlood && (
-                    <View style={{ borderRadius: 13, borderWidth: 1.5, borderColor: c.inputBorder, backgroundColor: isDark ? C.dark.card : '#F8FDF9', marginBottom: 14, overflow: 'hidden' }}>
+                    <View style={{ borderRadius: 13, borderWidth: 1.5, borderColor: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', backgroundColor: theme === 'dark' ? colors.card : '#F8FDF9', marginBottom: 14, overflow: 'hidden' }}>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8 }}>
                             {BLOOD_GROUPS.map(bg => {
                                 const sel = bg === bloodGroup;
                                 return (
                                     <Pressable key={bg} onPress={() => { setBloodGroup(bg); setShowBlood(false); }}
-                                        style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: sel ? c.primary : c.chip, borderWidth: 1.5, borderColor: sel ? c.primary : c.chipBorder }}>
-                                        <Text style={{ color: sel ? c.bg : c.subtext, fontWeight: '800', fontSize: 14 }}>{bg}</Text>
+                                        style={{ paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: sel ? colors.primary : colors.card, borderWidth: 1.5, borderColor: sel ? colors.primary : colors.cardBorder }}
+                                        accessibilityLabel={`Select ${bg} blood group`}
+                                        accessibilityRole="button"
+                                        accessibilityState={{ selected: bg === bloodGroup }}
+                                    >
+                                        <Text style={{ color: sel ? colors.background : colors.subtext, fontWeight: '800', fontSize: 14 }}>{bg}</Text>
                                     </Pressable>
                                 );
                             })}
@@ -408,7 +437,7 @@ export function Step4Health({
 function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
     const scale = useRef(new Animated.Value(1)).current;
     const glow = useRef(new Animated.Value(selected ? 1 : 0)).current;
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
 
     useEffect(() => {
         Animated.spring(glow, { toValue: selected ? 1 : 0, friction: 5, useNativeDriver: false }).start();
@@ -417,13 +446,20 @@ function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
     const onIn = () => Animated.spring(scale, { toValue: 0.88, friction: 3, useNativeDriver: true }).start();
     const onOut = () => Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
 
-    const borderColor = glow.interpolate({ inputRange: [0, 1], outputRange: [c.chipBorder, C.primary] });
-    const bgColor = glow.interpolate({ inputRange: [0, 1], outputRange: [c.chip, 'rgba(78,204,106,0.15)'] });
+    const borderColor = glow.interpolate({ inputRange: [0, 1], outputRange: [colors.cardBorder, '#111111'] });
+    const bgColor = glow.interpolate({ inputRange: [0, 1], outputRange: [colors.card, 'rgba(78,204,106,0.15)'] });
     const shadowR = glow.interpolate({ inputRange: [0, 1], outputRange: [0, 14] });
     const shadowO = glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] });
 
     return (
-        <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress}>
+        <Pressable
+            onPressIn={onIn}
+            onPressOut={onOut}
+            onPress={onPress}
+            accessibilityLabel={`Select avatar ${avatarKey}`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: selected }}
+        >
             {/* Outer: native-driven scale transform */}
             <Animated.View style={{
                 transform: [{ scale }],
@@ -432,7 +468,7 @@ function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
                 {/* Inner: JS-driven shadow animations (can't use native driver) */}
                 <Animated.View style={{
                     width: size, height: size,
-                    shadowColor: C.primary, shadowRadius: shadowR,
+                    shadowColor: '#111111', shadowRadius: shadowR,
                     shadowOpacity: shadowO, shadowOffset: { width: 0, height: 4 },
                     elevation: selected ? 8 : 0,
                 }}>
@@ -452,7 +488,7 @@ function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
                     <View style={{
                         position: 'absolute', top: -5, right: -5,
                         width: 20, height: 20, borderRadius: 10,
-                        backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center',
                         shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, elevation: 5,
                     }}>
                         <Ionicons name="checkmark" size={12} color="#fff" />
@@ -465,7 +501,7 @@ function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
 
 export function Step5Avatar({ selectedAvatarKey, setSelectedAvatarKey, errors, isDark, onFinish, onBack, isLoading }) {
     const { width } = useWindowDimensions();
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
 
     // 3 columns, accounting for card padding (24*2) and gaps (10*2)
     const COLS = 3;
@@ -478,8 +514,8 @@ export function Step5Avatar({ selectedAvatarKey, setSelectedAvatarKey, errors, i
     return (
         <View>
             <View style={{ alignItems: 'center', marginBottom: 18 }}>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: c.text, letterSpacing: 0.2 }}>Pick your avatar</Text>
-                <Text style={{ fontSize: 13, color: c.subtext, marginTop: 4 }}>This represents you in the app</Text>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: 0.2 }}>Pick your avatar</Text>
+                <Text style={{ fontSize: 13, color: colors.subtext, marginTop: 4 }}>This represents you in the app</Text>
                 {errors.avatar ? <Text style={{ color: '#E05555', fontSize: 12, fontWeight: '600', marginTop: 8 }}>{errors.avatar}</Text> : null}
             </View>
 

@@ -490,8 +490,10 @@ export default function EmergencyScreen({ navigation }) {
                     shadowColor: colors.primary,
                   }
                 ]}
-                onPress={() => handleQuickDial(s.number)}
-                activeOpacity={0.7}
+               onPress={() => handleQuickDial(s.number)}
+               activeOpacity={0.7}
+               accessibilityLabel={`Call ${s.name} at ${s.number}`}
+               accessibilityRole="button"
               >
                 <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}15` }]}>
                   <Ionicons name={s.icon} size={28} color={colors.primary} />
@@ -524,6 +526,8 @@ export default function EmergencyScreen({ navigation }) {
               <TouchableOpacity 
                 onPress={() => navigation.navigate('EmergencyContact')}
                 style={[styles.addButton, { backgroundColor: `${colors.primary}15` }]}
+                accessibilityLabel="Add emergency contact"
+                accessibilityRole="link"
               >
                 <Ionicons name="add" size={24} color={colors.primary} />
               </TouchableOpacity>
@@ -544,6 +548,8 @@ export default function EmergencyScreen({ navigation }) {
                   style={[styles.addContactButton, { backgroundColor: colors.primary }]}
                   onPress={() => navigation.navigate('EmergencyContact')}
                   activeOpacity={0.8}
+                  accessibilityLabel="Add emergency contact"
+                  accessibilityRole="link"
                 >
                   <Ionicons name="add-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.addContactText}>Add Contact</Text>
@@ -568,6 +574,8 @@ export default function EmergencyScreen({ navigation }) {
                       onPress={() => handleDeletePersonalContact(item.id)}
                       style={styles.deleteButton}
                       activeOpacity={0.7}
+                      accessibilityLabel={`Delete contact ${item.name}`}
+                      accessibilityRole="button"
                     >
                       <Ionicons 
                         name={deleteConfirmId === item.id ? "trash" : "trash-outline"} 
@@ -584,13 +592,13 @@ export default function EmergencyScreen({ navigation }) {
 
         <View style={styles.infoCard}>
           <Ionicons name="information-circle" size={18} color={colors.primary} />
-          <Text style={[styles.infoText, { color: colors.subtext }]}>
-            Hold the SOS button for 1 second
+          <Text style={[styles.infoText, { color: colors.subtext, fontSize: 13, textAlign: 'center' }]}>
+            Your location and emergency contacts are only used when you trigger SOS. Conversations stay private to your account.
           </Text>
         </View>
       </ScrollView>
 
-      <View style={styles.sosAbsoluteWrap}>
+      <View style={[styles.sosBar, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
         <Animated.View pointerEvents="none" style={ripple1Style} />
         <Animated.View pointerEvents="none" style={ripple2Style} />
         <Animated.View pointerEvents="none" style={ripple3Style} />
@@ -601,6 +609,8 @@ export default function EmergencyScreen({ navigation }) {
           onLongPress={handleLongPressSOS}
           delayLongPress={1000}
           disabled={false}
+          accessibilityLabel="Hold to send SOS alert"
+          accessibilityRole="button"
         >
           <Animated.View pointerEvents="none" style={progressRingStyle} />
           
@@ -653,7 +663,7 @@ const styles = StyleSheet.create({
   scrollContent: { 
     paddingHorizontal: 18, 
     paddingTop: 16,
-    paddingBottom: 160, // Reduced to allow overlap
+    paddingBottom: 24, // Reduced to allow overlap
   },
 
   mainTitle: {
@@ -834,14 +844,12 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  sosAbsoluteWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'box-none',
+  sosBar: {
+  paddingHorizontal: 24,
+  paddingVertical: 16,
+  paddingBottom: 16,
+  borderTopWidth: 0.5,
+  alignItems: 'center',
   },
 
   sosButton: {

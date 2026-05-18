@@ -264,7 +264,7 @@ const TypingDots = ({ colors }) => {
 };
 
 export default function ChatbotScreen({ route, navigation }) {
-  const { colors } = useTheme();
+  const { colors, spacing, fontSize, iconSize } = useTheme();
   const insets = useSafeAreaInsets();
   const windowHeight = Dimensions.get('window').height;
 
@@ -939,6 +939,8 @@ export default function ChatbotScreen({ route, navigation }) {
         <AnimatedMessage delay={0}>
           <TouchableOpacity
             activeOpacity={0.7}
+            accessibilityLabel={item.role === 'user' ? 'Your message' : 'Assistant message'}
+            accessibilityRole="button"
             onPress={() => toggleMessageActions(item.timestamp)}
             style={[styles.messageRow, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}
           >
@@ -974,6 +976,8 @@ export default function ChatbotScreen({ route, navigation }) {
                     <TouchableOpacity 
                       onPress={() => handleCopyMessage(item.content)} 
                       style={styles.copyIconButton}
+                      accessibilityLabel="Copy message"
+                      accessibilityRole="button"
                     >
                       <Ionicons name="copy-outline" size={16} color={colors.subtext || '#888'} />
                     </TouchableOpacity>
@@ -995,6 +999,8 @@ export default function ChatbotScreen({ route, navigation }) {
             key={i} 
             style={styles.suggestionChip} 
             onPress={() => { setInput(q); }}
+            accessibilityLabel={`Suggested question: ${q}`}
+            accessibilityRole="button"
           >
             <Text style={{ color: colors.text, fontSize: 14 }}>{q}</Text>
           </TouchableOpacity>
@@ -1023,7 +1029,11 @@ export default function ChatbotScreen({ route, navigation }) {
           <View style={styles.disclaimerCard}>
             <View style={styles.disclaimerHeader}>
               <Text style={styles.disclaimerTitle}>⚕️ Health Disclaimer</Text>
-              <TouchableOpacity onPress={() => setShowDisclaimer(false)}>
+              <TouchableOpacity
+                onPress={() => setShowDisclaimer(false)}
+                accessibilityLabel="Close disclaimer"
+                accessibilityRole="button"
+              >
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -1036,6 +1046,8 @@ export default function ChatbotScreen({ route, navigation }) {
             <TouchableOpacity 
               style={styles.disclaimerButton}
               onPress={() => setShowDisclaimer(false)}
+              accessibilityLabel="Accept Health disclaimer"
+              accessibilityRole="button"
             >
               <Text style={styles.disclaimerButtonText}>I Understand</Text>
             </TouchableOpacity>
@@ -1063,7 +1075,29 @@ export default function ChatbotScreen({ route, navigation }) {
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity onPress={exportChat} style={{ marginRight: 16 }}>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  'Clear history',
+                  'This will remove all messages from this session. Your health data is not affected.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Clear', style: 'destructive', onPress: () => setMessages([]) },
+                  ]
+                );
+              }}
+              accessibilityLabel="Clear chat history"
+              accessibilityRole="button"
+              style={{ padding: spacing.sm, marginRight: 4 }}
+            >
+              <Ionicons name="trash-outline" size={iconSize.md} color={colors.subtext} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={exportChat}
+              style={{ marginRight: 16 }}
+              accessibilityLabel="Export chat"
+              accessibilityRole="button"
+            >
               <Ionicons 
                 name="share-outline" 
                 size={22} 
@@ -1071,7 +1105,11 @@ export default function ChatbotScreen({ route, navigation }) {
               />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleNewChat}>
+            <TouchableOpacity 
+              onPress={handleNewChat}
+              accessibilityLabel="Start new chat"
+              accessibilityRole="button"
+            >
               <Ionicons name="add-circle-outline" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
@@ -1137,6 +1175,7 @@ export default function ChatbotScreen({ route, navigation }) {
                 onPress={handleSend}
                 disabled={isLoading || input.trim().length === 0}
                 accessibilityLabel="Send message"
+                accessibilityRole="button"
               >
                 {isLoading ? (
                   <ActivityIndicator color="#fff" size="small" />
@@ -1147,6 +1186,15 @@ export default function ChatbotScreen({ route, navigation }) {
             </Animated.View>
           </View>
         </Animated.View>
+        <Text style={{
+          fontSize: fontSize.xs,
+          color: colors.subtext,
+          textAlign: 'center',
+          paddingVertical: spacing.xs,
+          paddingHorizontal: spacing.lg,
+        }}>
+          Conversations are private and stored to your account
+        </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

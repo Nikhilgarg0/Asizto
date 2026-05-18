@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { useColorScheme, Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { spacing, radius, fontSize, iconSize } from '../theme/tokens';
 
 export const ThemeContext = createContext();
 
@@ -31,6 +32,9 @@ export const ThemeProvider = ({ children }) => {
       text: '#1f1f1f',
       subtext: '#6e6e6e',
       border: '#e0e0e0',
+      success: '#4caf50',      // Green for success messages
+      warning: '#ffc107',      // Orange for warning messages
+      danger: '#f44336',        // Red for error messages
     },
     dark: {
       primary: '#83b271',      // Main green
@@ -40,6 +44,9 @@ export const ThemeProvider = ({ children }) => {
       text: '#ffffff',
       subtext: '#aaaaaa',
       border: '#3a3a3a',
+      success: '#4CAF50',   
+      warning: '#FFC107',  
+      danger: '#F44336',  
     },
   };
 
@@ -51,7 +58,7 @@ export const ThemeProvider = ({ children }) => {
   }, [theme]);
 
   return (
-    <ThemeContext.Provider value={{ theme: theme || 'light', toggleTheme, colors: currentTheme }}>
+    <ThemeContext.Provider value={{ theme: theme || 'light', toggleTheme, colors: currentTheme, spacing, radius, fontSize, iconSize }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -73,8 +80,15 @@ export const useTheme = () => {
         text: '#1f1f1f',
         subtext: '#6e6e6e',
         border: '#e0e0e0',
-      }
-    };
+        success: '#4CAF50',
+        warning: '#FFC107',
+        danger: '#F44336',
+      },
+      spacing,
+      radius,
+      fontSize,
+      iconSize,
+  };
   }
   return context;
 };

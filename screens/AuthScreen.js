@@ -1,10 +1,10 @@
-// AuthScreen.js — ASIZTO Smart Health · Enterprise Auth
-// screens/AuthScreen.js
+
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Animated, Easing, SafeAreaView,
   KeyboardAvoidingView, Platform, ScrollView, Pressable,
-  useColorScheme, useWindowDimensions, ActivityIndicator, UIManager,
+  useWindowDimensions, ActivityIndicator, UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +19,9 @@ import {
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { sendOTP, verifyOTP, clearOTP } from '../services/emailService';
 
-import { C, Blob, ProgressStepper, Banner } from './AuthUI';
+import { Blob, ProgressStepper, Banner } from './AuthUI';
+import { useTheme } from '../context/ThemeContext';
+
 import {
   LoginView, Step1Account, Step2Verify,
   Step3Details, Step4Health, Step5Avatar,
@@ -90,11 +92,9 @@ function StepSlide({ children, stepKey, direction }) {
 }
 
 export default function AuthScreen() {
-  const scheme = useColorScheme();
-  const isDark = scheme !== 'light';
+  const { colors, theme } = useTheme();
+  const isDark = theme === 'dark';
   const { width, height } = useWindowDimensions();
-  const c = isDark ? C.dark : C.light;
-
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogin, setIsLogin] = useState(true);
   const [signupStep, setSignupStep] = useState(1);
@@ -390,7 +390,7 @@ export default function AuthScreen() {
   const cardMaxW = Math.min(460, width * 0.94);
 
   return (
-    <View style={[s.root, { backgroundColor: c.bg }]}>
+    <View style={[s.root, { backgroundColor: colors.background }]}>
       {/* ── Ambient background ── */}
       <Blob size={300} x={-60} y={80} dx={55} dy={45} dur={17000} opacity={0.065} />
       <Blob size={220} x={width - 40} y={height - 220} dx={45} dy={35} dur={13000} delay={4000} opacity={0.055} />
@@ -410,8 +410,8 @@ export default function AuthScreen() {
                 <Animated.Image source={logo} style={s.logo} resizeMode="contain" />
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Ionicons name="medkit" size={28} color={C.primary} />
-                  <Text style={[s.logoText, { color: c.text }]}>ASIZTO</Text>
+                  <Ionicons name="medkit" size={28} color={colors.primary} />
+                  <Text style={[s.logoText, { color: colors.text }]}>ASIZTO</Text>
                 </View>
               )}
             </Animated.View>
@@ -420,17 +420,17 @@ export default function AuthScreen() {
             <Animated.View style={[
               s.card,
               {
-                backgroundColor: c.card, maxWidth: cardMaxW, width: '100%',
+                backgroundColor: colors.card, maxWidth: cardMaxW, width: '100%',
                 opacity: cardOp,
                 transform: [{ scale: cardScale }, { translateY: cardY }],
-                borderColor: c.cardBorder,
-                shadowColor: isDark ? C.primary : '#000',
+                borderColor: colors.border,
+                shadowColor: '#111111',
                 shadowOpacity: isDark ? 0.15 : 0.10,
               },
             ]}>
               {/* Top gradient accent */}
               <LinearGradient
-                colors={[C.mint, C.primary, 'transparent']}
+                colors={['#888888', colors.primary, 'transparent']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={s.accent}
               />
@@ -443,15 +443,15 @@ export default function AuthScreen() {
                     style={s.backBtn}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Ionicons name="arrow-back" size={19} color={c.subtext} />
+                    <Ionicons name="arrow-back" size={19} color={colors.subtext} />
                   </Pressable>
                 ) : <View style={{ width: 34 }} />}
 
                 <View style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={[s.title, { color: c.text }]}>
+                  <Text style={[s.title, { color: colors.text }]}>
                     {isLogin ? 'Welcome back' : 'Create account'}
                   </Text>
-                  <Text style={[s.sub, { color: c.subtext }]}>
+                  <Text style={[s.sub, { color: colors.subtext }]}>
                     {isLogin ? 'Sign in to your wellness journey' : 'Start your smart health journey'}
                   </Text>
                 </View>
@@ -497,9 +497,9 @@ export default function AuthScreen() {
                         onPress={() => { setErrors({}); setBanner(null); switchView(true); }}
                         style={{ alignItems: 'center', marginTop: 18, padding: 4 }}
                       >
-                        <Text style={{ color: c.subtext, fontSize: 14 }}>
+                        <Text style={{ color: colors.subtext, fontSize: 14 }}>
                           Already have an account?{' '}
-                          <Text style={{ color: C.primary, fontWeight: '800' }}>Sign in</Text>
+                          <Text style={{ color: colors.primary, fontWeight: '800' }}>Sign in</Text>
                         </Text>
                       </Pressable>
                     )}
@@ -517,8 +517,8 @@ export default function AuthScreen() {
       {isLoading && signupStep === 5 && (
         <View style={s.overlay} pointerEvents="none">
           <Animated.View style={[s.overlayCard, { backgroundColor: isDark ? 'rgba(10,22,16,0.97)' : 'rgba(255,255,255,0.97)' }]}>
-            <ActivityIndicator size="large" color={C.primary} />
-            <Text style={[s.overlayText, { color: c.text }]}>Creating your account…</Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[s.overlayText, { color: colors.text }]}>Creating your account…</Text>
           </Animated.View>
         </View>
       )}

@@ -1,10 +1,9 @@
-// AuthUI.js — ASIZTO · Design System + UI Primitives
-// screens/AuthUI.js
 import React, { useRef, useEffect, useCallback } from 'react';
 import {
     View, Text, TextInput, Pressable,
-    Animated, Easing, ActivityIndicator, StyleSheet, useColorScheme
+    Animated, Easing, ActivityIndicator, StyleSheet,
 } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -15,51 +14,6 @@ const haptic = (style = 'Light') => {
     try { Haptics?.impactAsync(Haptics.ImpactFeedbackStyle[style]); } catch (_) { }
 };
 
-// ─── Design Tokens ─────────────────────────────────────────────────────────────
-export const C = {
-    primary: '#111111',
-    p2: '#333333',
-    p3: '#555555',
-    glow: 'rgba(0,0,0,0.1)',
-    mint: '#888888',
-
-    dark: {
-        bg: '#000000',
-        card: '#0A0A0A',
-        inputBg: 'rgba(255,255,255,0.03)',
-        inputBorder: 'rgba(255,255,255,0.1)',
-        inputFocused: 'rgba(255,255,255,0.4)',
-        text: '#FFFFFF',
-        subtext: '#999999',
-        placeholder: '#555555',
-        divider: 'rgba(255,255,255,0.1)',
-        chip: 'rgba(255,255,255,0.06)',
-        chipBorder: 'rgba(255,255,255,0.15)',
-        surface: 'rgba(10,10,10,0.95)',
-        cardBorder: 'rgba(255,255,255,0.1)',
-        primary: '#FFFFFF',
-        p2: '#CCCCCC',
-        glow: 'rgba(255,255,255,0.1)',
-    },
-    light: {
-        bg: '#FFFFFF',
-        card: '#F5F5F5',
-        inputBg: 'rgba(0,0,0,0.02)',
-        inputBorder: 'rgba(0,0,0,0.1)',
-        inputFocused: '#111111',
-        text: '#111111',
-        subtext: '#666666',
-        placeholder: '#999999',
-        divider: 'rgba(0,0,0,0.1)',
-        chip: 'rgba(0,0,0,0.04)',
-        chipBorder: 'rgba(0,0,0,0.15)',
-        surface: 'rgba(255,255,255,0.95)',
-        cardBorder: 'rgba(0,0,0,0.08)',
-        primary: '#111111',
-        p2: '#333333',
-        glow: 'rgba(0,0,0,0.1)',
-    },
-};
 
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export const CONDITIONS = ['Diabetes', 'Hypertension', 'Asthma', 'Thyroid', 'Arthritis'];
@@ -113,9 +67,8 @@ export function useStagger(count, { delay = 60, duration = 320, auto = true } = 
 
 // ─── Ambient floating blob ──────────────────────────────────────────────────
 export const Blob = ({ size, color, x, y, dx = 50, dy = 40, dur = 14000, delay = 0, opacity = 0.05 }) => {
-    const isDark = useColorScheme() === 'dark';
-    const c = isDark ? C.dark : C.light;
-    const blobColor = color || c.primary;
+    const { colors } = useTheme();
+    const blobColor = color || colors.primary;
     const a = useRef(new Animated.Value(0)).current;
     useEffect(() => {
         const loop = Animated.loop(Animated.sequence([
@@ -140,7 +93,7 @@ export const Blob = ({ size, color, x, y, dx = 50, dy = 40, dur = 14000, delay =
 export const ProgressStepper = ({ step, total = 5, isDark }) => {
     const prog = useRef(new Animated.Value(step / total)).current;
     const pulse = useRef(new Animated.Value(0)).current;
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     const LABELS = ['Account', 'Verify', 'Details', 'Health', 'Avatar'];
 
     useEffect(() => {
@@ -160,7 +113,7 @@ export const ProgressStepper = ({ step, total = 5, isDark }) => {
         <View style={{ marginBottom: 22 }}>
             {/* Bar */}
             <View style={{ height: 5, backgroundColor: c.divider, borderRadius: 99, overflow: 'hidden' }}>
-                <Animated.View style={{ width: barW, height: '100%', borderRadius: 99, overflow: 'hidden', backgroundColor: c.primary }} />
+                <Animated.View style={{ width: barW, height: '100%', borderRadius: 99, overflow: 'hidden', backgroundColor: colors.primary }} />
             </View>
             {/* Labels */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 7 }}>
@@ -171,7 +124,7 @@ export const ProgressStepper = ({ step, total = 5, isDark }) => {
                         <View key={label} style={{ alignItems: 'center' }}>
                             <Text style={{
                                 fontSize: 9, fontWeight: active ? '800' : done ? '600' : '400',
-                                color: active ? c.primary : done ? c.p2 : c.placeholder,
+                                color: active ? colors.primary : done ? c.p2 : colors.subtext,
                                 letterSpacing: 0.5,
                             }}>{label}</Text>
                         </View>
@@ -190,13 +143,13 @@ export const Field = ({
     autoComplete = 'off', style, animValue,
 }) => {
     const focused = useRef(new Animated.Value(0)).current;
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
 
     const onFocus = () => Animated.spring(focused, { toValue: 1, friction: 5, useNativeDriver: false }).start();
     const onBlur = () => Animated.spring(focused, { toValue: 0, friction: 5, useNativeDriver: false }).start();
 
-    const border = focused.interpolate({ inputRange: [0, 1], outputRange: [error ? '#E05555' : c.inputBorder, error ? '#E05555' : c.inputFocused] });
-    const bg = focused.interpolate({ inputRange: [0, 1], outputRange: [c.inputBg, isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'] });
+    const border = focused.interpolate({ inputRange: [0, 1], outputRange: [error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.4)' : '#111111'] });
+    const bg = focused.interpolate({ inputRange: [0, 1], outputRange: [theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'] });
     const shadow = focused.interpolate({ inputRange: [0, 1], outputRange: [0, isDark ? 8 : 4] });
 
     const wrapper = animValue ? {
@@ -207,7 +160,7 @@ export const Field = ({
     return (
         <Animated.View style={[{ marginBottom: error ? 2 : 14 }, wrapper, style]}>
             {label ? (
-                <Text style={{ fontSize: 11, fontWeight: '700', color: c.subtext, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.subtext, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 7 }}>
                     {label}
                 </Text>
             ) : null}
@@ -216,13 +169,13 @@ export const Field = ({
                 borderRadius: 13, borderWidth: 1.5, borderColor: border,
                 backgroundColor: bg, overflow: 'hidden',
                 minHeight: multiline ? 88 : 50,
-                shadowColor: c.primary, shadowRadius: shadow,
+                shadowColor: colors.primary, shadowRadius: shadow,
                 shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5,
                 elevation: 0,
             }}>
                 {prefix ? (
                     <View style={{ paddingLeft: 14, paddingRight: 3 }}>
-                        <Text style={{ color: c.text, fontWeight: '800', fontSize: 15 }}>{prefix}</Text>
+                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{prefix}</Text>
                     </View>
                 ) : null}
                 <TextInput
@@ -230,14 +183,14 @@ export const Field = ({
                     style={{
                         flex: 1, paddingHorizontal: prefix ? 6 : 15,
                         paddingVertical: multiline ? 13 : 0,
-                        fontSize: 15, color: c.text,
+                        fontSize: 15, color: colors.text,
                         height: multiline ? undefined : 50,
                         textAlignVertical: multiline ? 'top' : 'center',
                     }}
                     value={value}
                     onChangeText={onChangeText}
                     placeholder={placeholder}
-                    placeholderTextColor={c.placeholder}
+                    placeholderTextColor={colors.subtext}
                     keyboardType={keyboardType}
                     secureTextEntry={secureTextEntry}
                     autoCapitalize={autoCapitalize}
@@ -260,8 +213,7 @@ export const Field = ({
 
 // ─── Primary CTA button ───────────────────────────────────────────────────────
 export const Btn = ({ title, onPress, loading, disabled, icon, style, small }) => {
-    const isDark = useColorScheme() === 'dark';
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     const scale = useRef(new Animated.Value(1)).current;
     const glow = useRef(new Animated.Value(0)).current;
     const isOff = disabled || loading;
@@ -284,19 +236,19 @@ export const Btn = ({ title, onPress, loading, disabled, icon, style, small }) =
     return (
         <Pressable onPressIn={onIn} onPressOut={onOut} onPress={isOff ? null : onPress} style={[style]}>
             <Animated.View style={{ transform: [{ scale }] }}>
-                <Animated.View style={{ borderRadius: 15, shadowColor: c.primary, shadowOpacity: isOff ? 0 : 0.4, shadowRadius: shadowR, shadowOffset: { width: 0, height: 5 }, elevation }}>
+                <Animated.View style={{ borderRadius: 15, shadowColor: colors.primary, shadowOpacity: isOff ? 0 : 0.4, shadowRadius: shadowR, shadowOffset: { width: 0, height: 5 }, elevation }}>
                     <View
                         style={{
                             height: small ? 44 : 54, borderRadius: 15,
-                            backgroundColor: isOff ? c.card : c.primary,
+                            backgroundColor: isOff ? colors.card : colors.primary,
                             flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
                         }}
                     >
                         {loading
-                            ? <ActivityIndicator color={c.bg} size="small" />
+                            ? <ActivityIndicator color={colors.background} size="small" />
                             : <>
-                                {icon && <Ionicons name={icon} size={small ? 16 : 18} color={c.bg} />}
-                                <Text style={{ color: c.bg, fontSize: small ? 14 : 16, fontWeight: '800', letterSpacing: 0.4 }}>{title}</Text>
+                                {icon && <Ionicons name={icon} size={small ? 16 : 18} color={colors.background} />}
+                                <Text style={{ color: colors.background, fontSize: small ? 14 : 16, fontWeight: '800', letterSpacing: 0.4 }}>{title}</Text>
                             </>
                         }
                     </View>
@@ -308,7 +260,7 @@ export const Btn = ({ title, onPress, loading, disabled, icon, style, small }) =
 
 // ─── Ghost outline button ─────────────────────────────────────────────────────
 export const GhostBtn = ({ title, onPress, icon, isDark, style, small }) => {
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     const scale = useRef(new Animated.Value(1)).current;
     const onIn = () => Animated.spring(scale, { toValue: 0.96, friction: 3, useNativeDriver: true }).start();
     const onOut = () => Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
@@ -317,11 +269,11 @@ export const GhostBtn = ({ title, onPress, icon, isDark, style, small }) => {
             <Animated.View style={{
                 transform: [{ scale }],
                 height: small ? 44 : 54, borderRadius: 15, borderWidth: 1.5,
-                borderColor: c.chipBorder, alignItems: 'center',
+                borderColor: colors.border, alignItems: 'center',
                 justifyContent: 'center', flexDirection: 'row', gap: 6,
             }}>
-                {icon && <Ionicons name={icon} size={small ? 14 : 16} color={c.subtext} />}
-                <Text style={{ color: c.subtext, fontSize: small ? 13 : 15, fontWeight: '600' }}>{title}</Text>
+                {icon && <Ionicons name={icon} size={small ? 14 : 16} color={colors.subtext} />}
+                <Text style={{ color: colors.subtext, fontSize: small ? 13 : 15, fontWeight: '600' }}>{title}</Text>
             </Animated.View>
         </Pressable>
     );
@@ -329,7 +281,7 @@ export const GhostBtn = ({ title, onPress, icon, isDark, style, small }) => {
 
 // ─── Pill group ───────────────────────────────────────────────────────────────
 export const Pills = ({ options, selected, onSelect, isDark }) => {
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     return (
         <View style={{ flexDirection: 'row', gap: 9 }}>
             {options.map(({ value, label }) => {
@@ -337,12 +289,12 @@ export const Pills = ({ options, selected, onSelect, isDark }) => {
                 return (
                     <Pressable key={value} onPress={() => { haptic(); onSelect(value); }} style={{ flex: 1 }}>
                         {sel ? (
-                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: c.primary, shadowColor: c.primary, shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-                                <Text style={{ color: c.bg, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+                                <Text style={{ color: colors.background, fontWeight: '800', fontSize: 13 }}>{label}</Text>
                             </View>
                         ) : (
-                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: c.chipBorder, backgroundColor: c.chip }}>
-                                <Text style={{ color: c.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
+                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}>
+                                <Text style={{ color: colors.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
                             </View>
                         )}
                     </Pressable>
@@ -354,7 +306,7 @@ export const Pills = ({ options, selected, onSelect, isDark }) => {
 
 // ─── Gender selector ──────────────────────────────────────────────────────────
 export const GenderPicker = ({ selected, onSelect, isDark }) => {
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     const opts = [
         { value: 'male', label: 'Male', icon: 'male' },
         { value: 'female', label: 'Female', icon: 'female' },
@@ -371,14 +323,14 @@ export const GenderPicker = ({ selected, onSelect, isDark }) => {
                     <Pressable key={value} onPressIn={onIn} onPressOut={onOut} onPress={() => { haptic(); onSelect(value); }} style={{ flex: 1 }}>
                         <Animated.View style={{ transform: [{ scale }] }}>
                             {sel ? (
-                                <View style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, backgroundColor: c.primary, shadowColor: c.primary, shadowOpacity: 0.2, shadowRadius: 12, elevation: 7 }}>
-                                    <Ionicons name={icon} size={17} color={c.bg} />
-                                    <Text style={{ color: c.bg, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+                                <View style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, backgroundColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.2, shadowRadius: 12, elevation: 7 }}>
+                                    <Ionicons name={icon} size={17} color={colors.background} />
+                                    <Text style={{ color: colors.background, fontWeight: '800', fontSize: 13 }}>{label}</Text>
                                 </View>
                             ) : (
-                                <View style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: c.chipBorder, backgroundColor: c.chip }}>
-                                    <Ionicons name={icon} size={17} color={c.placeholder} />
-                                    <Text style={{ color: c.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
+                                <View style={{ padding: 13, borderRadius: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}>
+                                    <Ionicons name={icon} size={17} color={colors.subtext} />
+                                    <Text style={{ color: colors.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
                                 </View>
                             )}
                         </Animated.View>
@@ -391,7 +343,7 @@ export const GenderPicker = ({ selected, onSelect, isDark }) => {
 
 // ─── Condition chip ───────────────────────────────────────────────────────────
 export const Chip = ({ label, selected, onPress, isDark }) => {
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     const s = useRef(new Animated.Value(1)).current;
     const onIn = () => Animated.spring(s, { toValue: 0.91, friction: 3, useNativeDriver: true }).start();
     const onOut = () => Animated.spring(s, { toValue: 1, friction: 3, useNativeDriver: true }).start();
@@ -399,14 +351,14 @@ export const Chip = ({ label, selected, onPress, isDark }) => {
         <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress}>
             <Animated.View style={{ transform: [{ scale: s }] }}>
                 {selected ? (
-                    <View style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.primary }}>
-                        <Ionicons name="checkmark" size={11} color={c.bg} />
-                        <Text style={{ color: c.bg, fontSize: 12.5, fontWeight: '800' }}>{label}</Text>
+                    <View style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.primary }}>
+                        <Ionicons name="checkmark" size={11} color={colors.background} />
+                        <Text style={{ color: colors.background, fontSize: 12.5, fontWeight: '800' }}>{label}</Text>
                     </View>
                 ) : (
-                    <View style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, borderWidth: 1.5, borderColor: c.chipBorder, backgroundColor: c.chip, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                        <Ionicons name="add" size={11} color={c.text} />
-                        <Text style={{ color: c.text, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
+                    <View style={{ paddingHorizontal: 13, paddingVertical: 8, borderRadius: 99, borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Ionicons name="add" size={11} color={colors.text} />
+                        <Text style={{ color: colors.text, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
                     </View>
                 )}
             </Animated.View>
@@ -416,7 +368,7 @@ export const Chip = ({ label, selected, onPress, isDark }) => {
 
 // ─── OTP single input ─────────────────────────────────────────────────────────
 export const OTPRow = ({ value, onChangeText, error, isDark, inputRef }) => {
-    const c = isDark ? C.dark : C.light;
+    const { colors, theme } = useTheme();
     const focused = useRef(new Animated.Value(0)).current;
 
     const onFocus = () => Animated.spring(focused, { toValue: 1, friction: 5, useNativeDriver: false }).start();
@@ -424,14 +376,14 @@ export const OTPRow = ({ value, onChangeText, error, isDark, inputRef }) => {
 
     const borderColor = focused.interpolate({
         inputRange: [0, 1],
-        outputRange: [error ? '#E05555' : c.inputBorder, error ? '#E05555' : c.inputFocused],
+        outputRange: [error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.4)' : '#111111'],
     });
 
     return (
         <View>
             <Animated.View style={{
                 borderRadius: 13, borderWidth: 1.5, borderColor,
-                backgroundColor: c.inputBg,
+                backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
                 height: 56, flexDirection: 'row', alignItems: 'center',
                 paddingHorizontal: 18,
             }}>
@@ -439,7 +391,7 @@ export const OTPRow = ({ value, onChangeText, error, isDark, inputRef }) => {
                     ref={inputRef}
                     style={{
                         flex: 1, fontSize: 22, fontWeight: '700',
-                        color: c.text, letterSpacing: 10, textAlign: 'center',
+                        color: colors.text, letterSpacing: 10, textAlign: 'center',
                     }}
                     value={value}
                     onChangeText={t => {
@@ -451,7 +403,7 @@ export const OTPRow = ({ value, onChangeText, error, isDark, inputRef }) => {
                     autoComplete="one-time-code"
                     textContentType="oneTimeCode"
                     placeholder="••••••"
-                    placeholderTextColor={c.placeholder}
+                    placeholderTextColor={colors.subtext}
                     onFocus={onFocus}
                     onBlur={onBlur}
                 />
@@ -473,13 +425,13 @@ export const Banner = ({ type, message, onClose, isDark }) => {
     }, []);
     if (!message) return null;
     const isE = type === 'error';
-    const c = isDark ? C.dark : C.light;
+    const { colors } = useTheme();
     const bg = isE ? (isDark ? 'rgba(224,85,85,0.14)' : 'rgba(255,230,230,1)') : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)');
     const bd = isE ? (isDark ? 'rgba(224,85,85,0.28)' : 'rgba(255,180,180,0.7)') : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)');
-    const tc = isE ? (isDark ? '#FFB0B0' : '#8B1A1A') : c.text;
+    const tc = isE ? (isDark ? '#FFB0B0' : '#8B1A1A') : colors.text;
     return (
         <Animated.View style={{ transform: [{ translateY: ty }], opacity: op, backgroundColor: bg, borderRadius: 13, padding: 13, flexDirection: 'row', alignItems: 'center', marginBottom: 14, borderWidth: 1.5, borderColor: bd }}>
-            <Ionicons name={isE ? 'alert-circle' : 'checkmark-circle'} size={17} color={isE ? '#E05555' : c.primary} style={{ marginRight: 8 }} />
+            <Ionicons name={isE ? 'alert-circle' : 'checkmark-circle'} size={17} color={isE ? '#E05555' : colors.primary} style={{ marginRight: 8 }} />
             <Text style={{ color: tc, flex: 1, fontSize: 13, fontWeight: '500', lineHeight: 18 }}>{message}</Text>
             {onClose && <Pressable onPress={onClose} style={{ padding: 4, marginLeft: 4 }}><Ionicons name="close" size={15} color={tc} /></Pressable>}
         </Animated.View>
@@ -487,8 +439,91 @@ export const Banner = ({ type, message, onClose, isDark }) => {
 };
 
 // ─── Label ────────────────────────────────────────────────────────────────────
-export const Label = ({ children, isDark, style }) => (
-    <Text style={[{ fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: isDark ? C.dark.subtext : C.light.subtext, marginBottom: 7 }, style]}>
+export const Label = ({ children, isDark, style }) => {
+    const { colors } = useTheme();
+    return (
+    <Text style={[{ fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: colors.subtext, marginBottom: 7 }, style]}>
         {children}
     </Text>
 );
+};
+
+export const makeAuthStyles = (colors, spacing, radius, fontSize) => StyleSheet.create({
+  fieldLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: '500',
+    color: colors.subtext,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  inputBase: {
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  inputText: {
+    flex: 1,
+    fontSize: fontSize.md,
+    paddingVertical: 0,
+  },
+  primaryButton: {
+    height: 54,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonText: {
+    fontSize: fontSize.md,
+    fontWeight: '500',
+    letterSpacing: 0.4,
+  },
+  secondaryButton: {
+    height: 54,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  chipSelected: {
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+  },
+  chipUnselected: {
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  chipText: {
+    fontWeight: '500',
+    fontSize: fontSize.sm,
+  },
+  errorText: {
+    color: '#E05555',
+    fontSize: fontSize.xs,
+    fontWeight: '500',
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    marginLeft: 2,
+  },
+  bannerContainer: {
+    borderRadius: radius.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    borderWidth: 1.5,
+  },
+  bannerText: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+});

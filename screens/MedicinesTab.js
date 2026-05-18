@@ -197,6 +197,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
             style={styles.deleteButton}
             onPress={() => handleDelete(medicine)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel={`Delete ${medicine.name}`}
+            accessibilityRole="button"
           >
             <Ionicons name="trash-outline" size={20} color="#e74c3c" />
           </TouchableOpacity>
@@ -215,6 +217,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
               <TouchableOpacity 
                 style={[styles.actionButton, styles.actionButtonDue]} 
                 onPress={() => handleMarkAsTaken(medicine.id)}
+                accessibilityLabel={`Take ${medicine.name} now`}
+                accessibilityRole="button"
               >
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
                 <Text style={styles.actionButtonText}>Take Now</Text>
@@ -231,6 +235,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
               <TouchableOpacity 
                 style={[styles.actionButton, styles.actionButtonAvailable]} 
                 onPress={() => handleMarkAsTaken(medicine.id)}
+                accessibilityLabel={`Take ${medicine.name} early`}
+                accessibilityRole="button"
               >
                 <Ionicons name="medical" size={20} color="#fff" />
                 <Text style={styles.actionButtonText}>Take Early</Text>
@@ -415,6 +421,8 @@ export default function MedicinesTab({ route }) {
         <TouchableOpacity 
           style={styles.retryButton}
           onPress={() => setError(null)}
+          accessibilityLabel="Retry loading medicines"
+          accessibilityRole="button"
         >
           <Text style={styles.retryButtonText}>Try Again</Text>
         </TouchableOpacity>
@@ -473,9 +481,12 @@ export default function MedicinesTab({ route }) {
             <TouchableOpacity
               onPress={() => navigation.navigate('AddMedicine')}
               style={styles.emptyActionButton}
+              accessibilityLabel="Add new medicine"
+              accessibilityRole="link"
             >
               <Ionicons name="add-circle" size={20} color="#fff" />
               <Text style={styles.emptyActionText}>Add Medicine</Text>
+              
             </TouchableOpacity>
           </Animatable.View>
         }
@@ -519,6 +530,7 @@ export default function MedicinesTab({ route }) {
                 onChangeText={setConfirmText}
                 style={styles.confirmInput}
                 autoCapitalize="characters"
+                accessibilityLabel="Type DELETE to confirm medicine deletion"
               />
             </View>
 
@@ -532,6 +544,8 @@ export default function MedicinesTab({ route }) {
                   }
                 }}
                 disabled={isDeleting}
+                accessibilityLabel="Cancel medicine deletion"
+                accessibilityRole="button"
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -543,6 +557,8 @@ export default function MedicinesTab({ route }) {
                 ]}
                 onPress={confirmDelete}
                 disabled={isDeleting || confirmText !== 'DELETE'}
+                accessibilityLabel="Confirm delete medicine"
+                accessibilityRole="button"
               >
                 <Text style={styles.modalDeleteText}>
                   {isDeleting ? 'Deleting...' : 'Delete'}
@@ -558,6 +574,8 @@ export default function MedicinesTab({ route }) {
         style={styles.fab}
         onPress={() => navigation.navigate('AddMedicine')}
         activeOpacity={0.8}
+        accessibilityLabel="Add new medicine"
+        accessibilityRole="button"
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>

@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
-import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import Toast from 'react-native-toast-message';
@@ -70,7 +70,7 @@ const genderData = [
 
 export default function ProfileScreen() {
   const { theme, toggleTheme, colors } = useTheme();
-
+  const isGoogleUser = auth.currentUser?.providerData?.some(p => p.providerId === 'google.com');
   const [profileData, setProfileData] = useState({});
   const [editableData, setEditableData] = useState({});
   const [isEditing, setIsEditing] = useState(false);
@@ -252,18 +252,22 @@ export default function ProfileScreen() {
       return;
     }
 
-    if (!deletePassword.trim()) {
+    if (!isGoogleUser && !deletePassword.trim()) {
       Alert.alert('Password Required', 'Please enter your password to confirm.');
       return;
     }
 
     try {
-      // Re-authenticate first — Firebase requires this for account deletion
-      const credential = EmailAuthProvider.credential(
-        auth.currentUser.email,
-        deletePassword
-      );
-      await reauthenticateWithCredential(auth.currentUser, credential);
+      if (isGoogleUser) {
+        // Google users — reauthenticate via Google token not needed for deletion
+        // Firebase allows deleteUser directly if session is recent enough
+      } else {
+        const credential = EmailAuthProvider.credential(
+          auth.currentUser.email,
+          deletePassword
+        );
+        await reauthenticateWithCredential(auth.currentUser, credential);
+      }
 
       // Now safe to delete
       await deleteUser(auth.currentUser);
@@ -356,6 +360,8 @@ export default function ProfileScreen() {
                 onPress={() => isEditing && setShowAvatarModal(true)}
                 style={styles.avatarContainer}
                 activeOpacity={isEditing ? 0.7 : 1}
+                accessibilityLabel={isEditing ? 'Change avatar' : 'Profile avatar'}
+                accessibilityRole="button"
               >
                 <Animated.View style={[styles.avatarGradientWrap, { transform: [{ scale: scaleAnim }] }]}>
                   <LinearGradient
@@ -402,9 +408,11 @@ export default function ProfileScreen() {
               onPress={() => {
                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                 setIsEditing(prev => !prev);
-                if (!isEditing) setTimeout(() => scrollViewRef.current?.scrollTo({ y: 200, animated: true }), 200);
+                if (!isEditing) setTimeout(() => { const ref = scrollViewRef.current; if (ref) ref.scrollTo({ y: 200, animated: true }); }, 200);
               }}
               activeOpacity={0.8}
+              accessibilityLabel={isEditing ? 'Done editing profile' : 'Edit profile'}
+              accessibilityRole="button"
             >
               <Ionicons
                 name={isEditing ? "checkmark-circle" : "create-outline"}
@@ -519,6 +527,7 @@ export default function ProfileScreen() {
                       value={editableData.firstName}
                       onChangeText={(val) => handleInputChange('firstName', val)}
                       placeholderTextColor={colors.subtext}
+                      accessibilityLabel="First name"
                     />
                   </View>
 
@@ -532,6 +541,7 @@ export default function ProfileScreen() {
                       value={editableData.lastName}
                       onChangeText={(val) => handleInputChange('lastName', val)}
                       placeholderTextColor={colors.subtext}
+                      accessibilityLabel="Last name"
                     />
                   </View>
                 </View>
@@ -540,7 +550,12 @@ export default function ProfileScreen() {
                   <Text style={styles.inputLabel}>
                     <Ionicons name="calendar" size={14} color={colors.primary} /> Date of Birth
                   </Text>
-                  <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}>
+                  <TouchableOpacity
+                    onPress={() => setShowDatePicker(true)}
+                    style={styles.input}
+                    accessibilityLabel="Select date of birth"
+                    accessibilityRole="button"
+                  >
                     <Text style={{ color: colors.text }}>
                       {editableData.dob ? (editableData.dob instanceof Date ? editableData.dob.toLocaleDateString() : new Date(editableData.dob).toLocaleDateString()) : 'Select date'}
                     </Text>
@@ -588,6 +603,7 @@ export default function ProfileScreen() {
                     onChangeText={(val) => handleInputChange('phone', val)}
                     keyboardType="phone-pad"
                     placeholderTextColor={colors.subtext}
+                    accessibilityLabel="Phone number"
                   />
                 </View>
               </View>
@@ -604,6 +620,8 @@ export default function ProfileScreen() {
                   <TouchableOpacity
                     onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
                     style={styles.unitToggle}
+                    accessibilityLabel={`Switch to ${units === 'metric' ? 'imperial' : 'metric'} units`}
+                    accessibilityRole="button"
                   >
                     <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
                     <Text style={styles.unitToggleText}>{units === 'metric' ? 'Metric' : 'Imperial'}</Text>
@@ -623,6 +641,7 @@ export default function ProfileScreen() {
                         onChangeText={(val) => handleInputChange('height', val.replace(/[^0-9.]/g, ''))}
                         keyboardType="numeric"
                         placeholderTextColor={colors.subtext}
+                        accessibilityLabel="Height"
                       />
                       <Text style={styles.unitLabel}>{units === 'metric' ? 'cm' : 'in'}</Text>
                     </View>
@@ -640,6 +659,7 @@ export default function ProfileScreen() {
                         onChangeText={(val) => handleInputChange('weight', val.replace(/[^0-9.]/g, ''))}
                         keyboardType="numeric"
                         placeholderTextColor={colors.subtext}
+                        accessibilityLabel="Weight"
                       />
                       <Text style={styles.unitLabel}>{units === 'metric' ? 'kg' : 'lb'}</Text>
                     </View>
@@ -709,6 +729,7 @@ export default function ProfileScreen() {
                     multiline
                     numberOfLines={5}
                     textAlignVertical="top"
+                    accessibilityLabel="Medical conditions and allergies"
                   />
                   <Text style={styles.inputHint}>
                     💡 Include allergies, chronic conditions, medications, and emergency contacts
@@ -743,12 +764,20 @@ export default function ProfileScreen() {
                     trackColor={{ false: "#d1d5db", true: colors.primary }}
                     thumbColor={theme === 'dark' ? '#fff' : '#f4f3f4'}
                     ios_backgroundColor="#d1d5db"
+                    accessibilityLabel="Toggle dark mode"
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: theme === 'dark' }}
                   />
                 </View>
               </View>
 
               <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSaveProfile}
+                  accessibilityLabel="Save all changes"
+                  accessibilityRole="button"
+                >
                   <LinearGradient
                     colors={[colors.primary, `${colors.primary}DD`]}
                     start={{ x: 0, y: 0 }}
@@ -769,6 +798,8 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
                 onPress={() => setActiveTab('overview')}
+                accessibilityLabel="Overview tab"
+                accessibilityRole="button"
               >
                 <Ionicons name="person-outline" size={18} color={activeTab === 'overview' ? colors.primary : colors.subtext} />
                 <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>Overview</Text>
@@ -777,6 +808,8 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.tab, activeTab === 'health' && styles.tabActive]}
                 onPress={() => setActiveTab('health')}
+                accessibilityLabel="Health tab"
+                accessibilityRole="button"
               >
                 <Ionicons name="fitness-outline" size={18} color={activeTab === 'health' ? colors.primary : colors.subtext} />
                 <Text style={[styles.tabText, activeTab === 'health' && styles.tabTextActive]}>Health</Text>
@@ -785,6 +818,8 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={[styles.tab, activeTab === 'medical' && styles.tabActive]}
                 onPress={() => setActiveTab('medical')}
+                accessibilityLabel="Medical tab"
+                accessibilityRole="button"
               >
                 <Ionicons name="medical-outline" size={18} color={activeTab === 'medical' ? '#e74c3c' : colors.subtext} />
                 <Text style={[styles.tabText, activeTab === 'medical' && styles.tabTextActive, activeTab === 'medical' && { color: '#e74c3c' }]}>Medical</Text>
@@ -826,6 +861,8 @@ export default function ProfileScreen() {
                     <TouchableOpacity
                       onPress={() => setUnits(prev => prev === 'metric' ? 'imperial' : 'metric')}
                       style={styles.unitToggle}
+                      accessibilityLabel={`Switch to ${units === 'metric' ? 'imperial' : 'metric'} units`}
+                      accessibilityRole="button"
                     >
                       <Ionicons name="swap-horizontal" size={16} color={colors.primary} />
                       <Text style={styles.unitToggleText}>{units === 'metric' ? 'Metric' : 'Imperial'}</Text>
@@ -957,6 +994,9 @@ export default function ProfileScreen() {
                   trackColor={{ false: "#d1d5db", true: colors.primary }}
                   thumbColor={theme === 'dark' ? '#fff' : '#f4f3f4'}
                   ios_backgroundColor="#d1d5db"
+                  accessibilityLabel="Toggle dark mode"
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: theme === 'dark' }}
                 />
               </View>
             </View>
@@ -965,11 +1005,11 @@ export default function ProfileScreen() {
 
         {/* Action Buttons */}
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7} accessibilityLabel="Sign out" accessibilityRole="button">
             <Ionicons name="log-out-outline" size={22} color={colors.text} />
             <Text style={styles.logoutButtonText}>Sign Out</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={() => setIsDeleteModalVisible(true)} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.deleteButton} onPress={() => setIsDeleteModalVisible(true)} activeOpacity={0.7} accessibilityLabel="Delete account" accessibilityRole="button">
             <Ionicons name="trash-outline" size={22} color="#e74c3c" />
           </TouchableOpacity>
         </View>
@@ -989,7 +1029,11 @@ export default function ProfileScreen() {
           <Animatable.View animation="slideInUp" duration={400} style={[styles.avatarModalContent, { backgroundColor: colors.card }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalHeaderText, { color: colors.text }]}>Choose Your Avatar</Text>
-              <TouchableOpacity onPress={() => setShowAvatarModal(false)}>
+              <TouchableOpacity
+                onPress={() => setShowAvatarModal(false)}
+                accessibilityLabel="Close avatar selector"
+                accessibilityRole="button"
+              >
                 <Ionicons name="close-circle" size={28} color={colors.subtext} />
               </TouchableOpacity>
             </View>
@@ -1004,6 +1048,9 @@ export default function ProfileScreen() {
                   }}
                   style={styles.avatarGridItem}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${key} avatar`}
+                  accessibilityState={{ selected: editableData.avatarKey === key }}
                 >
                   <Image
                     source={getAvatarSource(key)}
@@ -1045,24 +1092,33 @@ export default function ProfileScreen() {
               autoCapitalize="characters"
               placeholder="DELETE"
               placeholderTextColor={colors.subtext}
+              accessibilityLabel="Type DELETE to confirm account deletion"
             />
-            <TextInput
-              style={[
-                styles.deleteModalInput,
-                {
-                  borderColor: colors.border,
-                  color: colors.text,
-                  backgroundColor: colors.background,
-                  marginBottom: 28,
-                },
-              ]}
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-              placeholder="Enter your password"
-              placeholderTextColor={colors.subtext}
-              secureTextEntry
-              autoCapitalize="none"
-            />
+            {!isGoogleUser && (
+              <TextInput
+                style={[
+                  styles.deleteModalInput,
+                  {
+                    borderColor: colors.border,
+                    color: colors.text,
+                    backgroundColor: colors.background,
+                    marginBottom: 28,
+                  },
+                ]}
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+                placeholder="Enter your password"
+                placeholderTextColor={colors.subtext}
+                secureTextEntry
+                autoCapitalize="none"
+                accessibilityLabel="Enter password to confirm account deletion"
+              />
+            )}
+            {isGoogleUser && (
+              <Text style={{ color: colors.subtext, fontSize: 13, marginBottom: 28, textAlign: 'center' }}>
+                You signed in with Google. No password needed.
+              </Text>
+            )}
             <View style={styles.deleteModalButtons}>
               <TouchableOpacity
                 style={[styles.deleteModalButton, styles.deleteModalCancelButton]}
@@ -1071,6 +1127,8 @@ export default function ProfileScreen() {
                   setIsDeleteModalVisible(false);
                 }}
                 activeOpacity={0.7}
+                accessibilityLabel="Cancel account deletion"
+                accessibilityRole="button"
               >
                 <Text style={[styles.deleteModalButtonText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
@@ -1083,6 +1141,8 @@ export default function ProfileScreen() {
                 disabled={deleteConfirmText !== 'DELETE'}
                 onPress={handleDeleteAccount}
                 activeOpacity={0.7}
+                accessibilityLabel="Confirm delete account permanently"
+                accessibilityRole="button"
               >
                 <Text style={[styles.deleteModalButtonText, { color: '#fff' }]}>Delete Forever</Text>
               </TouchableOpacity>
@@ -1269,7 +1329,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     marginTop: 10,
   },
   quickStatLabel: {
-    fontSize: 11,
+    fontSize: 13,
     color: colors.subtext,
     marginTop: 4,
     fontWeight: '600',
@@ -1542,7 +1602,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     borderRadius: 5,
   },
   bmiLegendText: {
-    fontSize: 11,
+    fontSize: 13,
     color: colors.subtext,
     fontWeight: '600',
   },

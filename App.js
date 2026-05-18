@@ -29,11 +29,13 @@ import NotificationScreen from './screens/NotificationScreen';
 import AddMedicineScreen from './screens/AddMedicineScreen';
 import AddAppointmentScreen from './screens/AddAppointmentScreen';
 import EmergencyContactScreen from './screens/EmergencyContactScreen';
-import DebugNotificationsScreen from './screens/DebugNotificationsScreen';
 import Header from './components/customHeader';
 import ErrorBoundary from './components/ErrorBoundary';
-
 import { navigationRef } from './RootNavigation';
+
+const DebugNotificationsScreen = __DEV__
+  ? require('./screens/DebugNotificationsScreen').default
+  : null;
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -59,7 +61,7 @@ function AppContent() {
             let iconName;
             if (route.name === 'Dashboard') iconName = focused ? 'grid' : 'grid-outline';
             else if (route.name === 'Cabinet') iconName = focused ? 'medkit' : 'medkit-outline';
-            else if (route.name === 'Emergency') iconName = focused ? 'warning' : 'warning-outline';
+            else if (route.name === 'Emergency') iconName = focused ? 'shield' : 'shield-outline';
             else if (route.name === 'Chatbot') iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
             else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
             return <Ionicons name={iconName} size={size} color={color} />;
@@ -82,15 +84,36 @@ function AppContent() {
     return (
       <Stack.Navigator>
         <Stack.Screen name="Main" component={AppTabs} options={{ headerShown: false }} />
-        <Stack.Screen name="AddMedicine" component={AddMedicineScreen} />
-        <Stack.Screen name="AddAppointment" component={AddAppointmentScreen} />
-        <Stack.Screen name="EmergencyContact" component={EmergencyContactScreen} />
+        <Stack.Screen
+          name="AddMedicine"
+          component={AddMedicineScreen}
+          options={{ header: (props) => <Header {...props} title="Add medicine" /> }}
+        />
+        <Stack.Screen
+          name="AddAppointment"
+          component={AddAppointmentScreen}
+          options={{ header: (props) => <Header {...props} title="Add appointment" /> }}
+        />
+        <Stack.Screen
+          name="EmergencyContact"
+          component={EmergencyContactScreen}
+          options={{ header: (props) => <Header {...props} title="Emergency contacts" /> }}
+        />
         <Stack.Screen
           name="Notifications"
           component={NotificationScreen}
-          options={{ presentation: 'modal', title: 'Notifications' }}
+          options={{
+            presentation: 'modal',
+            header: (props) => <Header {...props} title="Notifications" />,
+          }}
         />
-        <Stack.Screen name="DebugNotifications" component={DebugNotificationsScreen} options={{ title: 'Scheduled Notifications' }} />
+        {__DEV__ && DebugNotificationsScreen && (
+          <Stack.Screen
+            name="DebugNotifications"
+            component={DebugNotificationsScreen}
+            options={{ header: (props) => <Header {...props} title="Debug: notifications" /> }}
+          />
+        )}
       </Stack.Navigator>
     );
   }

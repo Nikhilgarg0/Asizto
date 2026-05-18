@@ -155,8 +155,13 @@ export default function AddMedicineScreen({ navigation }) {
         notificationIds: notificationIds,
       });
 
-      Toast.show({ type: 'success', text1: 'Saved!', text2: 'Reminders set' });
-      navigation.goBack();
+      Toast.show({
+        type: 'success',
+        text1: 'Medicine saved',
+        text2: 'Added to your cabinet',
+        visibilityTime: 2000,
+        onHide: () => navigation.goBack(),
+      });
     } catch (error) {
       console.error('Save Error: ', error);
       Toast.show({ 
@@ -216,9 +221,15 @@ export default function AddMedicineScreen({ navigation }) {
                 onChangeText={setName}
                 onFocus={() => setFocusedField('name')}
                 onBlur={() => setFocusedField(null)}
+                accessibilityLabel="Medicine name"
               />
               {name.length > 0 && (
-                <TouchableOpacity onPress={() => setName('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity
+                  onPress={() => setName('')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityLabel="Clear medicine name"
+                  accessibilityRole="button"
+                >
                   <Ionicons name="close-circle" size={18} color={colors.subtext} />
                 </TouchableOpacity>
               )}
@@ -242,6 +253,7 @@ export default function AddMedicineScreen({ navigation }) {
                     onBlur={() => setFocusedField(null)}
                     keyboardType="number-pad"
                     maxLength={1}
+                    accessibilityLabel="Times per day"
                   />
                 </View>
               </View>
@@ -259,6 +271,7 @@ export default function AddMedicineScreen({ navigation }) {
                     onBlur={() => setFocusedField(null)}
                     keyboardType="number-pad"
                     maxLength={3}
+                    accessibilityLabel="Duration in days"
                   />
                 </View>
               </View>
@@ -275,6 +288,8 @@ export default function AddMedicineScreen({ navigation }) {
                   style={[styles.timeCard, time && styles.timeCardFilled]}
                   onPress={() => showTimePickerFor(index)}
                   activeOpacity={0.7}
+                  accessibilityLabel={`Set time for dose ${index + 1}`}
+                  accessibilityRole="button"
                 >
                   <View style={styles.timeLeft}>
                     <View style={[styles.timeIcon, time && styles.timeIconFilled]}>
@@ -333,6 +348,8 @@ export default function AddMedicineScreen({ navigation }) {
             onPress={handleSave}
             disabled={!allFieldsFilled || saving}
             activeOpacity={0.8}
+            accessibilityLabel="Save medicine"
+            accessibilityRole="button"
           >
             {saving ? (
               <Text style={styles.saveButtonText}>Saving...</Text>

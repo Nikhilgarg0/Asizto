@@ -26,8 +26,13 @@ export default function EmergencyContactScreen({ navigation }) {
         relationship,
         createdAt: Timestamp.now(),
       });
-      Toast.show({ type: 'success', text1: 'Contact Saved' });
-      navigation.goBack();
+      Toast.show({
+        type: 'success',
+        text1: 'Contact saved',
+        text2: 'Available during SOS',
+        visibilityTime: 2000,
+        onHide: () => navigation.goBack(),
+      });
     } catch (err) {
       console.error("Error saving contact:", err);
       Toast.show({ type: 'error', text1: 'Error', text2: 'Could not save contact.' });

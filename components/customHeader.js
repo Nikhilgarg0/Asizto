@@ -1,13 +1,13 @@
 // components/customHeader.js
 import React from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Image, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 
-export default function Header() {
-  const { colors, theme } = useTheme(); // theme expected to be 'dark' or 'light'
+export default function Header({ title }) {
+  const { colors, theme, fontSize } = useTheme(); // theme expected to be 'dark' or 'light'
   const navigation = useNavigation();
   const canGoBack = navigation.canGoBack();
 
@@ -26,6 +26,7 @@ export default function Header() {
               onPress={() => navigation.goBack()}
               style={styles.iconButton}
               accessibilityLabel="Go back"
+              accessibilityRole="button"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="arrow-back-outline" size={26} color={colors.text} />
@@ -35,15 +36,22 @@ export default function Header() {
           )}
         </View>
 
-        {/* Center: logo */}
+        
+        {/* Center: logo or title */}
         <View style={styles.center}>
-          <Image
-            source={logo}
-            style={styles.logo}
-            resizeMode="contain"
-            accessible
-            accessibilityLabel="Asizto"
-          />
+  {title ? (
+    <Text style={{ fontSize: fontSize.lg, fontWeight: '500', color: colors.text }}>
+      {title}
+    </Text>
+  ) : (
+    <Image
+      source={logo}
+      style={styles.logo}
+      resizeMode="contain"
+      accessible
+      accessibilityLabel="Asizto"
+    />
+  )}
         </View>
 
         {/* Right: notifications (fixed width) */}
@@ -52,6 +60,7 @@ export default function Header() {
             onPress={() => navigation.navigate('Notifications')}
             style={styles.iconButton}
             accessibilityLabel="Notifications"
+            accessibilityRole="button"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons name="notifications-outline" size={24} color={colors.text} />

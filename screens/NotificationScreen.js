@@ -38,12 +38,14 @@ export default function NotificationScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={{ padding: 12, alignSelf: 'flex-end', marginRight: 12 }}
-        onPress={() => navigation.navigate('DebugNotifications')}
-      >
-        <Ionicons name="bug" size={22} color={colors.primary} />
-      </TouchableOpacity>
+      {__DEV__ && (
+        <TouchableOpacity
+          style={{ padding: 12, alignSelf: 'flex-end', marginRight: 12 }}
+          onPress={() => navigation.navigate('DebugNotifications')}
+        >
+          <Ionicons name="bug" size={22} color={colors.primary} />
+        </TouchableOpacity>
+      )}
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}

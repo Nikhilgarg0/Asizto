@@ -251,6 +251,8 @@ export default function AppointmentsTab() {
             <TouchableOpacity 
               style={[styles.filterPill, filterStatus === 'all' && styles.filterPillActive]}
               onPress={() => setFilterStatus('all')}
+              accessibilityLabel="Filter all appointments"
+              accessibilityRole="button"
             >
               <Ionicons 
                 name="apps" 
@@ -265,6 +267,8 @@ export default function AppointmentsTab() {
             <TouchableOpacity 
               style={[styles.filterPill, filterStatus === 'upcoming' && styles.filterPillActive]}
               onPress={() => setFilterStatus('upcoming')}
+              accessibilityLabel="Filter upcoming appointments"
+              accessibilityRole="button"
             >
               <Ionicons 
                 name="arrow-forward-circle" 
@@ -279,6 +283,8 @@ export default function AppointmentsTab() {
             <TouchableOpacity 
               style={[styles.filterPill, filterStatus === 'past' && styles.filterPillActive]}
               onPress={() => setFilterStatus('past')}
+              accessibilityLabel="Filter past appointments"
+              accessibilityRole="button"
             >
               <Ionicons 
                 name="time" 
@@ -298,6 +304,8 @@ export default function AppointmentsTab() {
             <TouchableOpacity 
               style={[styles.filterPill, sortBy === 'date' && styles.filterPillActive]}
               onPress={() => setSortBy('date')}
+              accessibilityLabel="Sort by date"
+              accessibilityRole="button"
             >
               <Ionicons 
                 name="calendar-outline" 
@@ -312,6 +320,8 @@ export default function AppointmentsTab() {
             <TouchableOpacity 
               style={[styles.filterPill, sortBy === 'doctor' && styles.filterPillActive]}
               onPress={() => setSortBy('doctor')}
+              accessibilityLabel="Sort by doctor"
+              accessibilityRole="button"
             >
               <Ionicons 
                 name="person-outline" 
@@ -369,6 +379,8 @@ export default function AppointmentsTab() {
                 <TouchableOpacity 
                   onPress={() => handleDelete(item.id)} 
                   style={styles.deleteIconButton}
+                  accessibilityLabel={`Delete appointment with ${item.doctorName ?? 'doctor'}`}
+                  accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={20} color="#e74c3c" />
                 </TouchableOpacity>
@@ -421,6 +433,8 @@ export default function AppointmentsTab() {
                   <TouchableOpacity 
                     onPress={() => handleMarkAttended(item)} 
                     style={[styles.markAttendedButton, { backgroundColor: statusColor }]}
+                    accessibilityLabel={`Mark appointment with ${item.doctorName ?? 'doctor'} as attended`}
+                    accessibilityRole="button"
                   >
                     <Ionicons name="checkmark" size={16} color="#fff" />
                     <Text style={styles.markAttendedButtonText}>Mark Attended</Text>
@@ -448,9 +462,12 @@ export default function AppointmentsTab() {
             <TouchableOpacity
               onPress={() => navigation.navigate('AddAppointment')}
               style={styles.emptyButton}
+              accessibilityLabel="Add new appointment"
+              accessibilityRole="link"
             >
               <Ionicons name="add-circle" size={20} color="#fff" />
               <Text style={styles.emptyButtonText}>Add Appointment</Text>
+              
             </TouchableOpacity>
           </Animatable.View>
         }
@@ -460,6 +477,8 @@ export default function AppointmentsTab() {
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('AddAppointment')}
+        accessibilityLabel="Add new appointment"
+        accessibilityRole="button"
       >
         <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>

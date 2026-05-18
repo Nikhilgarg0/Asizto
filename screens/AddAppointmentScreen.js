@@ -99,8 +99,13 @@ export default function AddAppointmentScreen() {
 
       await updateDoc(doc(db, 'appointments', docRef.id), { notificationIds });
 
-      Toast.show({ type: 'success', text1: 'Saved!', text2: 'Reminders set' });
-      navigation.goBack();
+      Toast.show({
+        type: 'success',
+        text1: 'Appointment saved',
+        text2: 'Added to your schedule',
+        visibilityTime: 2000,
+        onHide: () => navigation.goBack(),
+      });
     } catch (error) {
       console.error('Error saving appointment: ', error);
       if (docRef) {
@@ -156,9 +161,10 @@ export default function AddAppointmentScreen() {
                 onChangeText={setDoctorName}
                 onFocus={() => setFocusedField('doctor')}
                 onBlur={() => setFocusedField(null)}
+                accessibilityLabel="Doctor name"
               />
               {doctorName.length > 0 && (
-                <TouchableOpacity onPress={() => setDoctorName('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity onPress={() => setDoctorName('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Clear doctor name" accessibilityRole="button">
                   <Ionicons name="close-circle" size={18} color={colors.subtext} />
                 </TouchableOpacity>
               )}
@@ -173,6 +179,8 @@ export default function AddAppointmentScreen() {
                 style={styles.dateTimeButton} 
                 onPress={() => showPicker('date')}
                 activeOpacity={0.7}
+                accessibilityLabel="Select date"
+                accessibilityRole="button"
               >
                 <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                 <View style={styles.dateTimeTextContainer}>
@@ -187,6 +195,8 @@ export default function AddAppointmentScreen() {
                 style={styles.dateTimeButton} 
                 onPress={() => showPicker('time')}
                 activeOpacity={0.7}
+                accessibilityLabel="Select time"
+                accessibilityRole="button"
               >
                 <Ionicons name="time-outline" size={20} color={colors.primary} />
                 <View style={styles.dateTimeTextContainer}>
@@ -235,6 +245,7 @@ export default function AddAppointmentScreen() {
                 numberOfLines={3}
                 textAlignVertical="top"
                 maxLength={300}
+                accessibilityLabel="Appointment notes"
               />
             </View>
             <Text style={styles.charCount}>{notes.length}/300</Text>
@@ -252,6 +263,8 @@ export default function AddAppointmentScreen() {
             onPress={handleSave}
             disabled={saving || !doctorName.trim()}
             activeOpacity={0.8}
+            accessibilityLabel="Save appointment"
+            accessibilityRole="button"
           >
             {saving ? (
               <Text style={styles.saveButtonText}>Saving...</Text>
