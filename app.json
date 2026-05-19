@@ -73,11 +73,9 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "eas": {
-        "projectId": "asizto-india"
-      }
+      "eas": {}
     },
-    "owner": "nikhilgarg0",
+    "owner": "nikhilgarg8982",
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-font",
