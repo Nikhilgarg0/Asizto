@@ -24,20 +24,27 @@ export const AVATAR_KEYS = [
     'female1', 'female2', 'female3', 'female4', 'female5', 'female6',
 ];
 
+export const AVATAR_KEYS_BY_GENDER = {
+    male:   ['male1', 'male2', 'male3', 'male4', 'male5', 'male6'],
+    female: ['female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
+    other:  ['male1', 'male2', 'male3', 'male4', 'male5', 'male6',
+             'female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
+};
+
 export function getAvatarSource(key) {
     const map = {
-        male1: require('../assets/avatars/male1.png'),
-        male2: require('../assets/avatars/male2.png'),
-        male3: require('../assets/avatars/male3.png'),
-        male4: require('../assets/avatars/male4.png'),
-        male5: require('../assets/avatars/male5.png'),
-        male6: require('../assets/avatars/male6.png'),
-        female1: require('../assets/avatars/female1.png'),
-        female2: require('../assets/avatars/female2.png'),
-        female3: require('../assets/avatars/female3.png'),
-        female4: require('../assets/avatars/female4.png'),
-        female5: require('../assets/avatars/female5.png'),
-        female6: require('../assets/avatars/female6.png'),
+        male1:   require('../assets/avatars/male1.webp'),
+        male2:   require('../assets/avatars/male2.webp'),
+        male3:   require('../assets/avatars/male3.webp'),
+        male4:   require('../assets/avatars/male4.webp'),
+        male5:   require('../assets/avatars/male5.webp'),
+        male6:   require('../assets/avatars/male6.webp'),
+        female1: require('../assets/avatars/female1.webp'),
+        female2: require('../assets/avatars/female2.webp'),
+        female3: require('../assets/avatars/female3.webp'),
+        female4: require('../assets/avatars/female4.webp'),
+        female5: require('../assets/avatars/female5.webp'),
+        female6: require('../assets/avatars/female6.webp'),
     };
     return map[key] ?? map.male1;
 }
@@ -112,7 +119,7 @@ export const ProgressStepper = ({ step, total = 5, isDark }) => {
     return (
         <View style={{ marginBottom: 22 }}>
             {/* Bar */}
-            <View style={{ height: 5, backgroundColor: c.divider, borderRadius: 99, overflow: 'hidden' }}>
+            <View style={{ height: 5, backgroundColor: colors.border, borderRadius: 99, overflow: 'hidden' }}>
                 <Animated.View style={{ width: barW, height: '100%', borderRadius: 99, overflow: 'hidden', backgroundColor: colors.primary }} />
             </View>
             {/* Labels */}
@@ -124,7 +131,7 @@ export const ProgressStepper = ({ step, total = 5, isDark }) => {
                         <View key={label} style={{ alignItems: 'center' }}>
                             <Text style={{
                                 fontSize: 9, fontWeight: active ? '800' : done ? '600' : '400',
-                                color: active ? colors.primary : done ? c.p2 : colors.subtext,
+                                color: active ? colors.primary : done ? colors.primary + '99' : colors.subtext,
                                 letterSpacing: 0.5,
                             }}>{label}</Text>
                         </View>

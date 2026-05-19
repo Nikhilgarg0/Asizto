@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, Platform, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { db, auth } from '../firebaseConfig';
-import { collection, addDoc, Timestamp, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { collection, addDoc, Timestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Toast from 'react-native-toast-message';
@@ -13,6 +14,7 @@ import { scheduleAppointmentNotification } from '../utils/NotificationManager';
 export default function AddAppointmentScreen() {
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const { userId, userProfile } = useData();
 
   const [doctorName, setDoctorName] = useState('');
   const [notes, setNotes] = useState('');
@@ -36,30 +38,12 @@ export default function AddAppointmentScreen() {
     setPickerMode(mode);
   };
 
-  const getUserName = async () => {
-    try {
-      const displayName = auth.currentUser?.displayName;
-      if (displayName && displayName.trim()) return displayName;
-      const uid = auth.currentUser?.uid;
-      if (!uid) return '';
-      const snap = await getDoc(doc(db, 'users', uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        return data.firstName || data.name || '';
-      }
-      return '';
-    } catch (e) {
-      console.warn('getUserName error', e);
-      return '';
-    }
-  };
-
   const handleSave = async () => {
     if (!doctorName.trim()) {
       Toast.show({ type: 'error', text1: 'Missing Field', text2: 'Enter doctor name' });
       return;
     }
-    if (!auth.currentUser) {
+    if (!userId) {
       Alert.alert('Not signed in', 'Please sign in to save appointments.');
       return;
     }
@@ -79,7 +63,8 @@ export default function AddAppointmentScreen() {
         notificationIds: []
       });
 
-      const userName = await getUserName();
+      // BUG-2: use DataContext profile — no extra Firestore read needed
+      const userName = userProfile.firstName || userProfile.name || '';
       const appointmentObj = { id: docRef.id, with: doctorName, time: date, location: '' };
       const notificationIds = [];
 

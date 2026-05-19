@@ -2,6 +2,40 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+// ─── Notification action identifiers ─────────────────────────────────────────
+export const NOTIF_ACTION_MARK_TAKEN = 'MARK_TAKEN';
+export const NOTIF_ACTION_IGNORE     = 'IGNORE';
+export const MEDICINE_CATEGORY_ID    = 'medicine_reminder';
+
+/**
+ * Register notification action buttons for medicine reminders.
+ * Must be called once at app startup (before any notifications fire).
+ */
+export async function registerNotificationCategories() {
+  try {
+    await Notifications.setNotificationCategoryAsync(MEDICINE_CATEGORY_ID, [
+      {
+        identifier: NOTIF_ACTION_MARK_TAKEN,
+        buttonTitle: '✅ Mark Taken',
+        options: {
+          opensAppToForeground: false, // handled silently in background
+        },
+      },
+      {
+        identifier: NOTIF_ACTION_IGNORE,
+        buttonTitle: 'Ignore',
+        options: {
+          isDestructive: true,
+          opensAppToForeground: false,
+        },
+      },
+    ]);
+    console.log('Notification categories registered');
+  } catch (e) {
+    console.warn('Failed to register notification categories:', e);
+  }
+}
+
 /**
  * Ensure notification permissions & Android channel.
  */
@@ -127,6 +161,7 @@ export async function scheduleMedicineNotifications(medicine, userName) {
               content: {
                 title,
                 body,
+                categoryIdentifier: MEDICINE_CATEGORY_ID,
                 data: {
                   type: 'medicine',
                   medicineId: medicine.id,
@@ -136,7 +171,11 @@ export async function scheduleMedicineNotifications(medicine, userName) {
                 },
                 sound: 'default',
               },
-              trigger: { date: triggerDate },
+              trigger: {
+                type: 'date',
+                date: triggerDate,
+                ...(Platform.OS === 'android' ? { channelId: 'medicines' } : {}),
+              },
             });
           scheduledIds.push(notifId);
           doseCount++;
@@ -223,7 +262,11 @@ export async function scheduleAppointmentNotification(appointment, userName, adv
         },
         sound: 'default',
       },
-      trigger: { date: triggerDate },
+      trigger: {
+        type: 'date',
+        date: triggerDate,
+        ...(Platform.OS === 'android' ? { channelId: 'appointments' } : {}),
+      },
     });
 
     console.log(`Scheduled appointment reminder for ${appointment.with} at ${when.toLocaleString()}`);

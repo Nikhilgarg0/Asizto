@@ -38,6 +38,8 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
+import { callGemini } from '../utils/gemini';
 import Toast from 'react-native-toast-message';
 
 const formatTimestamp = (ts) => {
@@ -63,18 +65,18 @@ const dayString = (ts) => {
 // Parse markdown-style bold text (*text* or **text**) and return Text components
 const parseMarkdownBold = (text, baseStyle) => {
   if (!text) return null;
-  
+
   const parts = [];
   let currentIndex = 0;
-  
+
   // Match *text* or **text** patterns (non-greedy)
   const boldPattern = /(\*\*?)([^*\n]+?)\1/g;
   let match;
   let hasMatches = false;
-  
+
   while ((match = boldPattern.exec(text)) !== null) {
     hasMatches = true;
-    
+
     // Add text before the match
     if (match.index > currentIndex) {
       const beforeText = text.substring(currentIndex, match.index);
@@ -86,17 +88,17 @@ const parseMarkdownBold = (text, baseStyle) => {
         );
       }
     }
-    
+
     // Add the bold text (without the asterisks)
     parts.push(
       <Text key={`bold-${match.index}`} style={[baseStyle, { fontWeight: '700' }]}>
         {match[2]}
       </Text>
     );
-    
+
     currentIndex = match.index + match[0].length;
   }
-  
+
   // Add remaining text after the last match
   if (currentIndex < text.length) {
     const remainingText = text.substring(currentIndex);
@@ -108,12 +110,12 @@ const parseMarkdownBold = (text, baseStyle) => {
       );
     }
   }
-  
+
   // If no matches found, return the original text
   if (!hasMatches || parts.length === 0) {
     return <Text style={baseStyle}>{text}</Text>;
   }
-  
+
   // Return nested Text components (React Native supports nested Text)
   return <Text style={baseStyle}>{parts}</Text>;
 };
@@ -193,10 +195,10 @@ const AnimatedChatMessage = ({ content, onComplete, msgId, colors, textStyle }) 
   }, [content, msgId, onComplete]);
 
   const baseStyle = textStyle || { color: colors.text };
-  
+
   // Parse the displayed text with markdown formatting
   const formattedText = parseMarkdownBold(displayedText, baseStyle);
-  
+
   return (
     <View>
       {formattedText}
@@ -264,7 +266,9 @@ const TypingDots = ({ colors }) => {
 };
 
 export default function ChatbotScreen({ route, navigation }) {
-  const { colors, spacing, fontSize, iconSize } = useTheme();
+  const { colors, spacing, fontSize, iconSize, theme } = useTheme();
+  // ERR-2: use DataContext userId instead of auth.currentUser
+  const { userId } = useData();
   const insets = useSafeAreaInsets();
   const windowHeight = Dimensions.get('window').height;
 
@@ -273,11 +277,12 @@ export default function ChatbotScreen({ route, navigation }) {
   const [inputHeight, setInputHeight] = useState(32);
   const [isLoading, setIsLoading] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [keyboardHeightRaw, setKeyboardHeightRaw] = useState(0);
   const [effectiveShift, setEffectiveShift] = useState(0);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
   const [selectedMessageId, setSelectedMessageId] = useState(null);
-  
+
   const flatListRef = useRef(null);
   const shiftAnim = useRef(new Animated.Value(0)).current;
   const scrollToEnd = useCallback(() => {
@@ -290,12 +295,12 @@ export default function ChatbotScreen({ route, navigation }) {
   const focusAnim = useRef(new Animated.Value(0)).current;
   const sendScale = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => { 
-    if (route?.params?.messages) setMessages(route.params.messages); 
+  useEffect(() => {
+    if (route?.params?.messages) setMessages(route.params.messages);
   }, [route?.params?.messages]);
-  
-  useEffect(() => { 
-    scrollToEnd(); 
+
+  useEffect(() => {
+    scrollToEnd();
   }, [messages, scrollToEnd]);
 
   // Keyboard listeners
@@ -360,15 +365,14 @@ export default function ChatbotScreen({ route, navigation }) {
       try {
         const parent = navigation?.getParent?.();
         parent?.setOptions?.({ tabBarStyle: undefined });
-      } catch (e) {}
+      } catch (e) { }
     };
   }, [keyboardVisible, navigation]);
 
-  // Fetch user context
+  // Fetch user context using DataContext userId
   const fetchUserContext = async () => {
-    if (!auth.currentUser) return '';
+    if (!userId) return '';
     try {
-      const userId = auth.currentUser.uid;
       const userDocRef = doc(db, 'users', userId);
       const userDocSnap = await getDoc(userDocRef);
       const userProfile = userDocSnap.exists() ? userDocSnap.data() : {};
@@ -405,29 +409,29 @@ export default function ChatbotScreen({ route, navigation }) {
 
       // Build comprehensive context
       let context = '--- User Health Context ---\n';
-      
+
       // Basic Information
       if (userProfile.name || userProfile.firstName) {
         const fullName = userProfile.name || `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim();
         if (fullName) context += `Name: ${fullName}\n`;
       }
-      
+
       if (age) context += `Age: ${age} years\n`;
       if (userProfile.gender) context += `Gender: ${userProfile.gender}\n`;
-      
+
       // Physical Measurements
       if (userProfile.weight) context += `Weight: ${userProfile.weight} kg\n`;
       if (userProfile.height) context += `Height: ${userProfile.height} cm\n`;
-      
+
       // Calculate BMI if both weight and height are available
       if (userProfile.weight && userProfile.height) {
         const bmi = (userProfile.weight / Math.pow(userProfile.height / 100, 2)).toFixed(1);
         context += `BMI: ${bmi}\n`;
       }
-      
+
       // Medical Information
       if (userProfile.bloodGroup) context += `Blood Group: ${userProfile.bloodGroup}\n`;
-      
+
       // Lifestyle Factors
       if (userProfile.smoking || userProfile.smokingFreq) {
         const smoking = userProfile.smokingFreq || userProfile.smoking || 'Not specified';
@@ -437,12 +441,12 @@ export default function ChatbotScreen({ route, navigation }) {
         const drinking = userProfile.drinkingFreq || userProfile.drinking || 'Not specified';
         context += `Drinking: ${drinking}\n`;
       }
-      
+
       // Medical Conditions and Allergies
       if (userProfile.conditions) {
         context += `Medical Conditions/Allergies: ${userProfile.conditions}\n`;
       }
-      
+
       // Detailed Medicine Information
       if (medicinesList.length > 0) {
         context += `\nCurrent Medicines in Cabinet (${medicinesList.length}):\n`;
@@ -469,7 +473,7 @@ export default function ChatbotScreen({ route, navigation }) {
       } else {
         context += `Current Medicines: None\n`;
       }
-      
+
       context += '--- End of Context ---\n\n';
       return context;
     } catch (err) {
@@ -494,106 +498,28 @@ export default function ChatbotScreen({ route, navigation }) {
 
     try {
       const userContext = await fetchUserContext();
-      const prompt = `${userContext}User Question: ${input}`;
+      // SCALE-1: keep last 20 messages to avoid exceeding Gemini's context window
+      const recentMessages = messages.slice(-20);
+      const historyText = recentMessages.length > 1
+        ? recentMessages.slice(0, -1).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n') + '\n\n'
+        : '';
+      const prompt = `${userContext}${historyText}User Question: ${input}`;
       const systemInstruction = 'You are Asizto, a helpful AI health assistant. Use the provided user context to give personalized and safe information. Be concise and friendly.';
 
-      // Try different models and API versions
-      // Updated to use current models (gemini-2.5 series) as older models are deprecated
-      const tryApiCall = async (model, apiVersion = 'v1beta') => {
-        const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        
-        const requestBody = {
-          system_instruction: { parts: [{ text: systemInstruction }] },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        };
-        
-        try {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-          });
-          return { response: res, error: null };
-        } catch (err) {
-          return { response: null, error: err };
-        }
-      };
-      
-      let response = null;
-      let data = null;
-      let lastError = null;
-      
-      // Try current models first, then fallback to older ones
-      // Models to try: gemini-2.5-flash, gemini-2.5-pro, gemini-1.5-pro, gemini-1.5-flash, gemini-pro
-      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
-      const apiVersions = ['v1beta', 'v1']; // Try both API versions
-      
-      let foundWorking = false;
-      
-      outerLoop: for (const apiVersion of apiVersions) {
-        for (const model of models) {
-          console.log(`Trying ${apiVersion}/${model}...`);
-          const result = await tryApiCall(model, apiVersion);
-          
-          if (result.error) {
-            console.error(`Error calling ${model}:`, result.error);
-            lastError = result.error;
-            continue;
-          }
-          
-          response = result.response;
-          
-          if (response.ok) {
-            try {
-              data = await response.json();
-              if (data.error) {
-                console.error(`API error for ${model}:`, data.error);
-                lastError = new Error(data.error.message || 'API returned an error');
-                continue;
-              }
-              console.log(`Success with ${apiVersion}/${model}`);
-              foundWorking = true;
-              break outerLoop; // Success, exit both loops
-            } catch (parseError) {
-              console.error(`Failed to parse response for ${model}:`, parseError);
-              lastError = parseError;
-              continue;
-            }
-          } else {
-            const errorText = await response.text().catch(() => 'Unable to read error response');
-            console.error(`API call failed for ${apiVersion}/${model}: ${response.status} ${response.statusText}`, errorText);
-            lastError = new Error(`API request failed: ${response.status} ${response.statusText}. ${errorText.substring(0, 200)}`);
-            
-            // If it's not a 404 or 400, we might want to stop trying other models
-            if (response.status !== 404 && response.status !== 400) {
-              break; // Stop trying other models for this API version
-            }
-          }
-        }
-      }
-      
-      if (!foundWorking || !response || !response.ok || !data) {
-        const errorMsg = lastError?.message || 'All model endpoints failed. Please check your API key and model availability.';
-        console.error('Final error:', errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      const botMessageContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that. Please try rephrasing your question.";
+      const botMessageContent = await callGemini(prompt, { systemInstruction });
       const botMessage = { role: 'model', content: botMessageContent, timestamp: Date.now() };
       setMessages(prev => [...prev, botMessage]);
 
     } catch (error) {
       console.error('API error:', error);
       let errorMessage = "Sorry, I'm having trouble connecting right now. Please try again in a moment.";
-      if (error.message?.includes && error.message.includes('API request failed: 429')) {
+      if (error.message?.includes('429')) {
         errorMessage = "I'm receiving too many requests. Please wait a moment before trying again.";
-      } else if (error.message?.includes && error.message.includes('API request failed: 403')) {
+      } else if (error.message?.includes('403')) {
         errorMessage = "I'm not authorized to process this request. Please check your API key settings.";
-      } else if (error.message?.includes && error.message.includes('404')) {
-        errorMessage = "API endpoint not found. Please check your API configuration or contact support.";
-      } else if (error.message?.includes && error.message.includes('All model endpoints failed')) {
+      } else if (error.message?.includes('404') || error.message?.includes('unavailable')) {
         errorMessage = "Unable to connect to AI service. Please verify your API key is valid and has proper permissions.";
-      } else if (error.message?.includes && error.message.includes('network')) {
+      } else if (error.message?.includes('network') || error.message?.includes('Network')) {
         errorMessage = "Network connection issue. Please check your internet connection.";
       }
       const errorMsg = { role: 'model', content: errorMessage, timestamp: Date.now() };
@@ -618,8 +544,8 @@ export default function ChatbotScreen({ route, navigation }) {
         return;
       }
       Toast.show({ type: 'success', text1: 'Copied', text2: 'Message copied to clipboard' });
-    } catch (e) { 
-      Toast.show({ type: 'error', text1: 'Copy failed' }); 
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Copy failed' });
     }
   };
 
@@ -674,9 +600,9 @@ export default function ChatbotScreen({ route, navigation }) {
   const inputReservedSpace = INPUT_BASE_HEIGHT + 8;
 
   const styles = StyleSheet.create({
-    safeArea: { 
-      flex: 1, 
-      backgroundColor: colors.background 
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.background
     },
     headerRow: {
       flexDirection: 'row',
@@ -687,156 +613,147 @@ export default function ChatbotScreen({ route, navigation }) {
       paddingBottom: 12,
       backgroundColor: colors.background,
     },
-    headerLeft: { 
-      flexDirection: 'row', 
-      alignItems: 'center' 
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center'
     },
-    logoCircle: { 
-      width: 36, 
-      height: 36, 
-      borderRadius: 18, 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      marginRight: 10, 
-      backgroundColor: colors.primary 
+    logoCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 10,
+      backgroundColor: colors.primary
     },
-    headerTitle: { 
-      fontSize: 18, 
-      fontWeight: '700', 
-      color: colors.text 
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text
     },
-    divider: { 
-      height: 1, 
-      backgroundColor: colors.border 
+    divider: {
+      height: 1,
+      backgroundColor: colors.border
     },
-    messageList: { 
-      padding: 12, 
-      flexGrow: 1 
+    messageList: {
+      padding: 12,
+      flexGrow: 1
     },
-    messageRow: { 
-      marginBottom: 12, 
-      flexDirection: 'row', 
-      alignItems: 'flex-end' 
+    messageRow: {
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'flex-end'
     },
-    messageBubble: { 
-      padding: 14, 
-      borderRadius: 18, 
-      maxWidth: '82%', 
-      shadowColor: '#000', 
-      shadowOffset: { width: 0, height: 1 }, 
-      shadowOpacity: 0.1, 
-      shadowRadius: 4, 
-      elevation: 2 
+    messageBubble: {
+      padding: 14,
+      borderRadius: 18,
+      maxWidth: '82%',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2
     },
-    userBubble: { 
-      backgroundColor: colors.primary, 
-      alignSelf: 'flex-end', 
-      borderBottomRightRadius: 4 
+    userBubble: {
+      backgroundColor: colors.primary,
+      alignSelf: 'flex-end',
+      borderBottomRightRadius: 4
     },
-    botBubble: { 
-      backgroundColor: colors.card, 
-      alignSelf: 'flex-start', 
-      borderBottomLeftRadius: 4 
+    botBubble: {
+      backgroundColor: colors.card,
+      alignSelf: 'flex-start',
+      borderBottomLeftRadius: 4
     },
-    userText: { 
-      color: '#fff', 
+    userText: {
+      color: '#fff',
       lineHeight: 22,
-      fontSize: 15 
+      fontSize: 15
     },
-    botText: { 
-      color: colors.text, 
+    botText: {
+      color: colors.text,
       lineHeight: 22,
-      fontSize: 15 
+      fontSize: 15
     },
     inputOuter: {
-      paddingHorizontal: 10,
-      paddingTop: 10,
-      paddingBottom: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      backgroundColor: colors.background,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      backgroundColor: 'transparent',
     },
     inputWrapper: {
       flexDirection: 'row',
-      alignItems: 'flex-end',
+      alignItems: 'center',
       width: '100%',
     },
     inputContainer: {
       flex: 1,
-      minHeight: 28,
-      maxHeight: 110,
-      borderRadius: 18,
-      paddingHorizontal: 14,
-      paddingVertical: 6,
+      minHeight: 50,
+      maxHeight: 130,
+      borderRadius: 25,
+      paddingHorizontal: 16,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
       justifyContent: 'center',
     },
-    input: { 
-      color: colors.text, 
-      fontSize: 15, 
-      lineHeight: 20, 
-      padding: 0, 
-      margin: 0, 
-      textAlignVertical: 'top' 
+    input: {
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 15,
+      padding: 0,
+      margin: 0,
+      textAlignVertical: 'center'
     },
-    sendButton: { 
-      width: 36, 
-      height: 36, 
-      borderRadius: 18, 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      marginLeft: 8, 
-      backgroundColor: colors.primary, 
-      elevation: 2,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 3,
+    sendButton: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: 10,
+      backgroundColor: colors.primary,
     },
-    sendButtonDisabled: { 
-      opacity: 0.5 
+    sendButtonDisabled: {
+      opacity: 0.4
     },
-    timestampText: { 
-      fontSize: 11, 
+    timestampText: {
+      fontSize: 11,
       color: colors.subtext || '#888',
       marginRight: 8,
     },
-    daySeparatorContainer: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      marginVertical: 12 
+    daySeparatorContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 12
     },
-    daySeparatorText: { 
-      marginHorizontal: 10, 
+    daySeparatorText: {
+      marginHorizontal: 10,
       fontSize: 12,
       color: colors.subtext,
       fontWeight: '500'
     },
-    daySeparatorLine: { 
-      flex: 1, 
-      height: 1 
+    daySeparatorLine: {
+      flex: 1,
+      height: 1
     },
-    suggestionChip: { 
-      paddingVertical: 8, 
-      paddingHorizontal: 14, 
-      borderRadius: 20, 
-      borderWidth: 1, 
-      borderColor: colors.border, 
-      marginRight: 8, 
-      backgroundColor: colors.card 
+    suggestionChip: {
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginRight: 8,
+      backgroundColor: colors.card
     },
-    emptyState: { 
-      flex: 1, 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      padding: 24 
+    emptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24
     },
-    emptyTitle: { 
-      fontSize: 20, 
-      fontWeight: '700', 
-      color: colors.text, 
+    emptyTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text,
       marginTop: 16,
       textAlign: 'center'
     },
@@ -901,7 +818,7 @@ export default function ChatbotScreen({ route, navigation }) {
     Animated.timing(focusAnim, { toValue: 1, duration: 220, useNativeDriver: false }).start();
     Animated.timing(sendScale, { toValue: 1.08, duration: 160, useNativeDriver: true }).start();
   };
-  
+
   const onBlurInput = () => {
     Animated.timing(focusAnim, { toValue: 0, duration: 220, useNativeDriver: false }).start();
     Animated.timing(sendScale, { toValue: 1, duration: 160, useNativeDriver: true }).start();
@@ -946,23 +863,23 @@ export default function ChatbotScreen({ route, navigation }) {
           >
             <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.botBubble]}>
               {item.role === 'model' && isLastMessage && shouldAnimate ? (
-                <AnimatedChatMessage 
-                  content={item.content} 
-                  msgId={item.timestamp} 
-                  onComplete={() => { 
-                    try { 
-                      animatedMsgIdsRef.current.add(item.timestamp); 
-                    } catch(e){} 
-                  }} 
+                <AnimatedChatMessage
+                  content={item.content}
+                  msgId={item.timestamp}
+                  onComplete={() => {
+                    try {
+                      animatedMsgIdsRef.current.add(item.timestamp);
+                    } catch (e) { }
+                  }}
                   colors={colors}
                   textStyle={styles.botText}
                 />
               ) : (
                 <View>
                   {item.image ? (
-                    <Image 
-                      source={{ uri: item.image }} 
-                      style={{ width: 180, height: 120, borderRadius: 8, marginBottom: 8 }} 
+                    <Image
+                      source={{ uri: item.image }}
+                      style={{ width: 180, height: 120, borderRadius: 8, marginBottom: 8 }}
                     />
                   ) : null}
                   {parseMarkdownBold(item.content, isUser ? styles.userText : styles.botText)}
@@ -973,8 +890,8 @@ export default function ChatbotScreen({ route, navigation }) {
                 <View style={styles.messageActionsRow}>
                   <Text style={styles.timestampText}>{formatTimestamp(item.timestamp)}</Text>
                   {!isUser && (
-                    <TouchableOpacity 
-                      onPress={() => handleCopyMessage(item.content)} 
+                    <TouchableOpacity
+                      onPress={() => handleCopyMessage(item.content)}
                       style={styles.copyIconButton}
                       accessibilityLabel="Copy message"
                       accessibilityRole="button"
@@ -995,9 +912,9 @@ export default function ChatbotScreen({ route, navigation }) {
     <View style={{ paddingHorizontal: 12, paddingBottom: 10 }}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {suggestedQuestions.map((q, i) => (
-          <TouchableOpacity 
-            key={i} 
-            style={styles.suggestionChip} 
+          <TouchableOpacity
+            key={i}
+            style={styles.suggestionChip}
             onPress={() => { setInput(q); }}
             accessibilityLabel={`Suggested question: ${q}`}
             accessibilityRole="button"
@@ -1017,7 +934,7 @@ export default function ChatbotScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Disclaimer Modal */}
       <Modal
         visible={showDisclaimer}
@@ -1037,13 +954,13 @@ export default function ChatbotScreen({ route, navigation }) {
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.disclaimerContent}>
               Hello! I am Asizto, your AI health assistant. I use your profile information to provide personalized responses.{'\n\n'}
               <Text style={{ fontWeight: '600' }}>Important:</Text> I am not a medical professional. Always consult a qualified healthcare provider for medical advice, diagnosis, or treatment.
             </Text>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.disclaimerButton}
               onPress={() => setShowDisclaimer(false)}
               accessibilityLabel="Accept Health disclaimer"
@@ -1055,18 +972,19 @@ export default function ChatbotScreen({ route, navigation }) {
         </BlurView>
       </Modal>
 
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={kbBehavior} 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={kbBehavior}
         keyboardVerticalOffset={Platform.OS === 'ios' ? HEADER_HEIGHT : 0}
       >
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <View style={styles.logoCircle}>
-              <Ionicons name="medkit" size={18} color="#fff" />
-            </View>
-            <View>
+            <Image
+              source={theme === 'dark' ? require('../assets/chatbot/dark-icon.png') : require('../assets/chatbot/light-icon.png')}
+              style={{ width: 36, height: 36, borderRadius: 25 }}
+            />
+            <View style={{ marginLeft: 10 }}>
               <Text style={styles.headerTitle}>Asizto AI</Text>
               <Text style={{ color: colors.subtext, fontSize: 12 }}>
                 Health assistant • Personalized
@@ -1076,51 +994,60 @@ export default function ChatbotScreen({ route, navigation }) {
 
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
-              onPress={() => {
-                Alert.alert(
-                  'Clear history',
-                  'This will remove all messages from this session. Your health data is not affected.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Clear', style: 'destructive', onPress: () => setMessages([]) },
-                  ]
-                );
-              }}
-              accessibilityLabel="Clear chat history"
+              onPress={() => setMenuVisible(true)}
+              accessibilityLabel="Chat options"
               accessibilityRole="button"
-              style={{ padding: spacing.sm, marginRight: 4 }}
+              style={{ padding: spacing.sm }}
             >
-              <Ionicons name="trash-outline" size={iconSize.md} color={colors.subtext} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={exportChat}
-              style={{ marginRight: 16 }}
-              accessibilityLabel="Export chat"
-              accessibilityRole="button"
-            >
-              <Ionicons 
-                name="share-outline" 
-                size={22} 
-                color={colors.text} 
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              onPress={handleNewChat}
-              accessibilityLabel="Start new chat"
-              accessibilityRole="button"
-            >
-              <Ionicons name="add-circle-outline" size={24} color={colors.text} />
+              <Ionicons name="ellipsis-vertical" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Dropdown Menu Modal */}
+        <Modal visible={menuVisible} transparent={true} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setMenuVisible(false)} activeOpacity={1}>
+            <View style={{
+              position: 'absolute',
+              top: insets.top + 76,
+              right: 32,
+              backgroundColor: colors.card,
+              borderRadius: 13,
+              paddingVertical: 4,
+              shadowColor: '#000000ff',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.5,
+              shadowRadius: 12,
+              elevation: 8,
+              borderWidth: 1,
+              borderColor: colors.border,
+              minWidth: 150,
+            }}>
+              <TouchableOpacity
+                style={{ paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                onPress={() => { setMenuVisible(false); exportChat(); }}
+              >
+                <Text style={{ color: colors.text, fontSize: 16 }}>Export Chat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ paddingVertical: 12, paddingHorizontal: 16 }}
+                onPress={() => { setMenuVisible(false); setMessages([]); }}
+              >
+                <Text style={{ color: colors.danger, fontSize: 16 }}>Clear History</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         <View style={styles.divider} />
 
         {/* Messages */}
         {isEmpty ? (
           <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={64} color={colors.primary} />
+            <Image
+              source={theme === 'dark' ? require('../assets/chatbot/dark-icon.png') : require('../assets/chatbot/light-icon.png')}
+              style={{ width: 64, height: 64, marginBottom: 16 }}
+            />
             <Text style={styles.emptyTitle}>Ask me anything about your health</Text>
             <Text style={{ color: colors.subtext, marginTop: 12, textAlign: 'center', fontSize: 14 }}>
               I'll use your profile to give personalized advice
@@ -1133,6 +1060,7 @@ export default function ChatbotScreen({ route, navigation }) {
             keyExtractor={(item, index) => (item.timestamp ? String(item.timestamp) : index.toString())}
             renderItem={renderMessage}
             style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={[styles.messageList, { paddingBottom: inputReservedSpace + effectiveShift }]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
@@ -1151,7 +1079,7 @@ export default function ChatbotScreen({ route, navigation }) {
           <View style={styles.inputWrapper}>
             <Animated.View style={[styles.inputContainer, inputAnimatedStyle]}>
               <TextInput
-                style={[styles.input, { height: Math.max(28, inputHeight) }]}
+                style={[styles.input, { height: Math.max(50, inputHeight) }]}
                 value={input}
                 onChangeText={setInput}
                 placeholder="Ask a health question..."
@@ -1162,8 +1090,8 @@ export default function ChatbotScreen({ route, navigation }) {
                 onContentSizeChange={(e) => setInputHeight(Math.min(110, e.nativeEvent.contentSize.height))}
                 accessibilityLabel="Chat input"
                 returnKeyType="send"
-                onSubmitEditing={() => { 
-                  if (!isLoading && input.trim()) handleSend(); 
+                onSubmitEditing={() => {
+                  if (!isLoading && input.trim()) handleSend();
                 }}
                 showSoftInputOnFocus={true}
               />
@@ -1186,15 +1114,6 @@ export default function ChatbotScreen({ route, navigation }) {
             </Animated.View>
           </View>
         </Animated.View>
-        <Text style={{
-          fontSize: fontSize.xs,
-          color: colors.subtext,
-          textAlign: 'center',
-          paddingVertical: spacing.xs,
-          paddingHorizontal: spacing.lg,
-        }}>
-          Conversations are private and stored to your account
-        </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

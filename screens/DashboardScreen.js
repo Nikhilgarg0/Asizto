@@ -1,12 +1,12 @@
 import { spacing, radius } from '../theme/tokens';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ActivityIndicator, 
-  ScrollView, 
-  TextInput, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -18,16 +18,20 @@ import {
   Easing,
 } from 'react-native';
 import IconBadge from '../components/IconBadge';
-import CardGap from '../components/CardGap';
-import { db, auth } from '../firebaseConfig';
-import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
+import { callGemini } from '../utils/gemini';
 import * as Notifications from 'expo-notifications';
 import { GEMINI_API_KEY } from '@env';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import logger from '../utils/Logger';
 import performanceMonitor from '../utils/PerformanceMonitor';
+import OnboardingModal from '../components/OnboardingModal'; // UX-3
+import DashboardSkeleton from '../components/DashboardSkeleton'; // POLISH-2
 
 const healthFacts = {
   nutrition: [
@@ -54,11 +58,18 @@ const healthFacts = {
 };
 
 export default function DashboardScreen({ navigation }) {
-  const { colors, spacing, radius, fontSize, iconSize } = useTheme();
-  const [userName, setUserName] = useState('');
-  const [userProfile, setUserProfile] = useState({});
-  const [medicines, setMedicines] = useState([]);
-  const [appointments, setAppointments] = useState([]);
+  const { colors, spacing, radius, fontSize, iconSize, theme } = useTheme();
+  const {
+    medicines,
+    appointments,
+    userProfile,
+    loading: dataLoading,
+    error: dataError,
+    refetch,
+  } = useData();
+
+  const userName = userProfile.firstName || userProfile.name || 'User';
+
   const [healthScore, setHealthScore] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,17 +80,66 @@ export default function DashboardScreen({ navigation }) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState('');
   const [error, setError] = useState(null);
-  const [sectionLoading, setSectionLoading] = useState({
-    profile: true,
-    medicines: true,
-    appointments: true
-  });
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(300);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const bmiAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Panel that slides up from the bottom to replace the keyboard
+  const resultPanelAnim = useRef(new Animated.Value(400)).current;
+  // Search bar bottom — animates up in sync with the panel so it sits on top of it
+  const searchBarBottomAnim = useRef(new Animated.Value(10)).current;
+  // Prevents onBlur from collapsing the UI right after a result arrives
+  const keepFocusedRef = useRef(false);
+
+  // Track keyboard height so the result panel matches it exactly
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      resultPanelAnim.setValue(e.endCoordinates.height + 40);
+    });
+    return () => show.remove();
+  }, []);
+
+  // Slide result panel up + move search bar to sit just above it
+  const showResultPanel = useCallback((height) => {
+    Animated.parallel([
+      Animated.spring(resultPanelAnim, {
+        toValue: 0,
+        tension: 68,
+        friction: 12,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchBarBottomAnim, {
+        toValue: height + 8,
+        duration: 280,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [resultPanelAnim, searchBarBottomAnim]);
+
+  // Dismiss: slide panel + search bar back to resting positions, then clear state
+  const dismissSearch = useCallback(() => {
+    Keyboard.dismiss();
+    Animated.parallel([
+      Animated.timing(resultPanelAnim, {
+        toValue: keyboardHeight + 40,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchBarBottomAnim, {
+        toValue: 10,
+        duration: 260,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      setSearchResult('');
+      setIsSearchFocused(false);
+    });
+  }, [resultPanelAnim, searchBarBottomAnim, keyboardHeight]);
 
   const screenTimer = useMemo(() => performanceMonitor.startScreenLoad('Dashboard'), []);
 
@@ -127,8 +187,9 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [userProfile.weight, userProfile.height]);
 
-  // Pulse animation for due medicines
+  // Pulse animation for due medicines — PERF-2: only run when a dose is actually due
   useEffect(() => {
+    if (!nextDoseStatus?.isDue) return;
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -147,7 +208,7 @@ export default function DashboardScreen({ navigation }) {
     );
     pulse.start();
     return () => pulse.stop();
-  }, []);
+  }, [nextDoseStatus]);
 
   const calculateHealthScore = useCallback((userMedicines = [], profile = {}, appts = []) => {
     try {
@@ -273,9 +334,9 @@ export default function DashboardScreen({ navigation }) {
       let age = null;
       if (userProfile.age) age = Number(userProfile.age);
       else if (userProfile.dob) {
-        try { 
-          const dob = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); 
-          age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)); 
+        try {
+          const dob = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob);
+          age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
         } catch (e) { age = null; }
       }
 
@@ -346,11 +407,11 @@ export default function DashboardScreen({ navigation }) {
         for (const time of scheduleTimes) {
           const doseTimeToday = new Date(now);
           doseTimeToday.setHours(time.getHours(), time.getMinutes(), 0, 0);
-          
+
           const oneHourBefore = new Date(doseTimeToday.getTime() - 60 * 60 * 1000);
           const oneHourAfter = new Date(doseTimeToday.getTime() + 60 * 60 * 1000);
-          
-          const alreadyTaken = takenTimes.some(takenTime => 
+
+          const alreadyTaken = takenTimes.some(takenTime =>
             takenTime >= oneHourBefore && takenTime <= oneHourAfter
           );
 
@@ -386,71 +447,47 @@ export default function DashboardScreen({ navigation }) {
 
     setIsSearching(true);
     setSearchResult('');
-    
+
     try {
       const apiTimer = performanceMonitor.startApiCall('gemini', 'POST');
-      
       const prompt = `Provide a brief, one-paragraph summary for the medicine: "${searchText}". Include its primary use and one or two common side effects. Format it as a simple paragraph.`;
-      
-      // Try current models first, then fallback to older ones
-      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
-      const apiVersions = ['v1beta', 'v1'];
-      let response = null;
-      
-      outerLoop: for (const apiVersion of apiVersions) {
-        for (const model of models) {
-          response = await fetch(
-            `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ "contents": [{ "parts": [{ "text": prompt }] }] })
-            }
-          );
-          
-          if (response.ok) {
-            break outerLoop; // Success, exit both loops
-          } else if (response.status === 404) {
-            continue; // Try next model
-          } else if (response.status !== 400) {
-            break; // Stop trying other models for this API version
-          }
-        }
-      }
-      
-      if (!response || !response.ok) {
-        throw new Error(`API request failed: All models unavailable`);
-      }
 
-      const data = await response.json();
-      const summary = data.candidates?.[0]?.content?.parts?.[0]?.text || "No data found.";
-      
-      setSearchResult(summary.trim());
-      
-      logger.info('Medicine search completed', { 
-        query: searchText, 
-        resultLength: summary.length 
+      const summary = await callGemini(prompt);
+
+      // Keep the UI in "focused" mode even after the keyboard closes
+      keepFocusedRef.current = true;
+      setIsSearchFocused(true);
+      setSearchResult(summary);
+
+      // Dismiss keyboard → result panel slides up into the vacated space
+      Keyboard.dismiss();
+      showResultPanel(keyboardHeight);
+
+      logger.info('Medicine search completed', {
+        query: searchText,
+        resultLength: summary.length,
       });
-      
-      if (apiTimer) {
-        performanceMonitor.endApiCall(apiTimer, response.status, true);
-      }
-      
+      if (apiTimer) performanceMonitor.endApiCall(apiTimer, 200, true);
     } catch (error) {
       logger.error('Medicine search failed', error);
+      // Also show error in the panel
+      keepFocusedRef.current = true;
+      setIsSearchFocused(true);
       setSearchResult("Sorry, we couldn't fetch medicine information at this time. Please try again later.");
+      Keyboard.dismiss();
+      showResultPanel(keyboardHeight);
     } finally {
       setIsSearching(false);
     }
-  }, [searchText, isSearching]);
+  }, [searchText, isSearching, keyboardHeight, showResultPanel]);
 
   const handleMarkAsTaken = useCallback(async (medicineId) => {
     try {
       const medicineRef = doc(db, "medicines", medicineId);
-      await updateDoc(medicineRef, { 
-        takenTimestamps: arrayUnion(new Date()) 
+      await updateDoc(medicineRef, {
+        takenTimestamps: arrayUnion(new Date())
       });
-      
+
       logger.info('Medicine marked as taken', { medicineId });
       Alert.alert('Success', 'Medicine marked as taken!');
     } catch (error) {
@@ -460,111 +497,52 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   const onRefresh = useCallback(async () => {
+    // PERF-3: real refresh — re-subscribes all Firestore listeners
     setRefreshing(true);
     try {
-      setSectionLoading({ profile: true, medicines: true, appointments: true });
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      refetch();
+      // Give listeners a moment to emit the first snapshot
+      await new Promise(resolve => setTimeout(resolve, 800));
     } catch (error) {
       logger.error('Refresh failed', error);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [refetch]);
 
+  // Sync loading state with DataContext
   useEffect(() => {
-    if (!auth.currentUser) return;
-
-    const userId = auth.currentUser.uid;
-    const userDocRef = doc(db, "users", userId);
-
-    const unsubscribeProfile = onSnapshot(userDocRef, 
-      (docSnap) => {
-        try {
-          const userData = docSnap.exists() ? docSnap.data() : {};
-          setUserProfile(userData);
-          setUserName(userData.firstName || userData.name || 'User');
-          setSectionLoading(prev => ({ ...prev, profile: false }));
-        } catch (error) {
-          logger.error('Error processing profile data', error);
-          setError('Failed to load profile');
-          setSectionLoading(prev => ({ ...prev, profile: false }));
-        }
-      },
-      (error) => {
-        logger.error('Profile listener error', error);
-        setError('Failed to load profile');
-        setSectionLoading(prev => ({ ...prev, profile: false }));
-      }
-    );
-
-    const medQuery = query(collection(db, 'medicines'), where('userId', '==', userId));
-    const unsubscribeMeds = onSnapshot(medQuery, 
-      (snapshot) => {
-        try {
-          const medsData = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-          setMedicines(medsData);
-          setSectionLoading(prev => ({ ...prev, medicines: false }));
-        } catch (error) {
-          logger.error('Error processing medicines data', error);
-          setError('Failed to load medicines');
-          setSectionLoading(prev => ({ ...prev, medicines: false }));
-        }
-      },
-      (error) => {
-        logger.error('Medicines listener error', error);
-        setError('Failed to load medicines');
-        setSectionLoading(prev => ({ ...prev, medicines: false }));
-      }
-    );
-
-    const apptQuery = query(collection(db, 'appointments'), where('userId', '==', userId));
-    const unsubscribeAppts = onSnapshot(apptQuery, 
-      (snapshot) => {
-        try {
-          const apptsData = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-          setAppointments(apptsData);
-          setSectionLoading(prev => ({ ...prev, appointments: false }));
-        } catch (error) {
-          logger.error('Error processing appointments data', error);
-          setError('Failed to load appointments');
-          setSectionLoading(prev => ({ ...prev, appointments: false }));
-        }
-      },
-      (error) => {
-        logger.error('Appointments listener error', error);
-        setError('Failed to load appointments');
-        setSectionLoading(prev => ({ ...prev, appointments: false }));
-      }
-    );
-
-    return () => {
-      unsubscribeProfile();
-      unsubscribeMeds();
-      unsubscribeAppts();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!sectionLoading.profile && !sectionLoading.medicines && !sectionLoading.appointments) {
+    if (!dataLoading) {
       calculateHealthScore(medicines, userProfile, appointments);
       setLoading(false);
     }
-  }, [sectionLoading, medicines, userProfile, calculateHealthScore]);
+  }, [dataLoading, medicines, userProfile, appointments, calculateHealthScore]);
 
+  // Propagate context-level errors to local error state
   useEffect(() => {
+    if (dataError) setError(dataError);
+  }, [dataError]);
+
+  // PERF-1: cancellation-safe AI fact fetch — guards setState with mounted ref
+  useEffect(() => {
+    let mounted = true;
     const categories = Object.keys(healthFacts);
     const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+    const fallback = healthFacts[randomCategory][Math.floor(Math.random() * healthFacts[randomCategory].length)];
+
     (async () => {
-      const ai = await fetchAIFact(randomCategory, 'fact');
+      const ai = await fetchAIFact(randomCategory, 'fact').catch(() => null);
+      if (!mounted) return;
       if (ai) {
         setRandomFact(ai);
         setAIFactSource('ai');
       } else {
-        const categoryFacts = healthFacts[randomCategory];
-        setRandomFact(categoryFacts[Math.floor(Math.random() * categoryFacts.length)]);
+        setRandomFact(fallback);
         setAIFactSource('preset');
       }
     })();
+
+    return () => { mounted = false; };
   }, []);
 
   const fetchAIFact = async (category = 'wellness', kind = 'fact') => {
@@ -576,44 +554,9 @@ export default function DashboardScreen({ navigation }) {
         ? `Provide a short, uplifting one-sentence quote about ${category} and wellbeing suitable for an app banner.`
         : `Give one concise, evidence-backed health tip about ${category}. Keep it under 30 words and friendly.`;
 
-      // Try current models first, then fallback to older ones
-      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
-      const apiVersions = ['v1beta', 'v1'];
-      let res = null;
-      
-      outerLoop: for (const apiVersion of apiVersions) {
-        for (const model of models) {
-          res = await fetch(
-            `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            }
-          );
-          
-          if (res.ok) {
-            break outerLoop; // Success, exit both loops
-          } else if (res.status === 404) {
-            continue; // Try next model
-          } else if (res.status !== 400) {
-            logger.warn('AI fact request failed', { status: res.status });
-            if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
-            return null;
-          }
-        }
-      }
-      
-      if (!res || !res.ok) {
-        logger.warn('AI fact request failed: All models unavailable', { status: res?.status });
-        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res?.status || 404, false);
-        return null;
-      }
-
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, true);
-      return text ? String(text).trim() : null;
+      const text = await callGemini(prompt);
+      if (apiTimer) performanceMonitor.endApiCall(apiTimer, 200, true);
+      return text || null;
     } catch (err) {
       logger.error('AI fact generation error', err);
       return null;
@@ -628,11 +571,11 @@ export default function DashboardScreen({ navigation }) {
     try {
       const apiTimer = performanceMonitor.startApiCall('gemini', 'POST');
 
-      const age = userProfile.age || (userProfile.dob ? (() => { 
-        try { 
-          const d = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob); 
-          return Math.floor((Date.now() - d.getTime()) / (365.25*24*60*60*1000)); 
-        } catch (e) { return 'unknown'; } 
+      const age = userProfile.age || (userProfile.dob ? (() => {
+        try {
+          const d = userProfile.dob.toDate ? userProfile.dob.toDate() : new Date(userProfile.dob);
+          return Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        } catch (e) { return 'unknown'; }
       })() : 'unknown');
       const conditions = (userProfile.conditions && userProfile.conditions.length > 0) ? userProfile.conditions.join(', ') : 'none';
       const smoking = userProfile.smoking || userProfile.smokingFreq || 'No';
@@ -648,44 +591,9 @@ export default function DashboardScreen({ navigation }) {
 
       const prompt = `You are a friendly, evidence-based health assistant. Provide one concise (max 30 words) personalized health tip for a user with the following profile: Age: ${age}; Conditions: ${conditions}; BMI: ${bmiVal}; Smoking: ${smoking}; Drinking: ${drinking}; Medication adherence: ${adherenceSummary}. The tip should be actionable, prioritize safety, and include one specific recommendation.`;
 
-      // Try current models first, then fallback to older ones
-      const models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'];
-      const apiVersions = ['v1beta', 'v1'];
-      let res = null;
-      
-      outerLoop: for (const apiVersion of apiVersions) {
-        for (const model of models) {
-          res = await fetch(
-            `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            }
-          );
-          
-          if (res.ok) {
-            break outerLoop; // Success, exit both loops
-          } else if (res.status === 404) {
-            continue; // Try next model
-          } else if (res.status !== 400) {
-            logger.warn('AI personal tip request failed', { status: res.status });
-            if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, false);
-            return null;
-          }
-        }
-      }
-      
-      if (!res || !res.ok) {
-        logger.warn('AI personal tip request failed: All models unavailable', { status: res?.status });
-        if (apiTimer) performanceMonitor.endApiCall(apiTimer, res?.status || 404, false);
-        return null;
-      }
-
-      const data = await res.json();
-      const tip = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (apiTimer) performanceMonitor.endApiCall(apiTimer, res.status, true);
-      return tip ? String(tip).trim() : null;
+      const tip = await callGemini(prompt);
+      if (apiTimer) performanceMonitor.endApiCall(apiTimer, 200, true);
+      return tip || null;
     } catch (err) {
       logger.error('AI personal tip error', err);
       return null;
@@ -701,12 +609,7 @@ export default function DashboardScreen({ navigation }) {
   }, [loading, screenTimer]);
 
   if (loading) {
-    return (
-      <View style={[styles.loaderContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading your health dashboard...</Text>
-      </View>
-    );
+    return <DashboardSkeleton />;
   }
   if (error) {
     return (
@@ -727,23 +630,29 @@ export default function DashboardScreen({ navigation }) {
   }
 
   const getScoreColor = () => {
+    // UI-1: use theme tokens instead of hardcoded hex
     if (healthScore === null || isNaN(healthScore)) return colors.subtext;
-    if (healthScore >= 80) return '#4CAF50';
-    if (healthScore >= 60) return '#FFC107';
-    return '#F44336';
+    if (healthScore >= 80) return colors.success;
+    if (healthScore >= 60) return colors.warning;
+    return colors.danger;
   };
 
   const getBmiStatusColor = () => {
     switch (bmiData.status) {
-      case 'healthy': return '#4CAF50';
-      case 'warning': return '#FFC107';
-      case 'critical': return '#F44336';
-      case 'error': return '#FF6B6B';
+      case 'healthy': return colors.success;
+      case 'warning': return colors.warning;
+      case 'critical': return colors.danger;
+      case 'error': return colors.danger;
       default: return colors.subtext;
     }
   };
 
-  const nextAppointment = appointments.length > 0 ? appointments[0] : null;
+  // ERR-1: derive next appointment as first future appointment (list is already sorted asc by DataContext)
+  const now = new Date();
+  const nextAppointment = appointments.find(apt => {
+    const aptDate = apt.date?.toDate ? apt.date.toDate() : new Date(apt.date);
+    return aptDate >= now;
+  }) ?? null;
 
   const handleMarkAttendedDashboard = async (appointment) => {
     try {
@@ -771,319 +680,374 @@ export default function DashboardScreen({ navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          {/* ── Greeting ── */}
-<Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-  <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
-  <Text style={{ fontSize: fontSize.sm, color: colors.subtext, marginBottom: spacing.md }}>
-    Here's your health summary
-  </Text>
-</Animated.View>
+    <>
+      {/* UX-3: first-run onboarding — shown once, stored in AsyncStorage */}
+      <OnboardingModal />
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: colors.background }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={styles.container}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={[colors.primary]}
+                  tintColor={colors.primary}
+                />
+              }
+            >
+              {/* ── Greeting ── */}
+              <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+                <Text style={[styles.greeting, { color: colors.text }]}>Hello, {userName}</Text>
+                <Text style={{ fontSize: fontSize.sm, color: colors.subtext, marginBottom: spacing.md }}>
+                  Here's your health summary
+                </Text>
+              </Animated.View>
 
-<CardGap />
+              <View style={{ marginBottom: spacing.md }} />
 
-{/* ── Health Score Hero ── */}
-<Animated.View
-  style={[styles.card, { backgroundColor: colors.card, padding: spacing.lg, opacity: fadeAnim }]}
->
-  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-    <IconBadge icon="fitness" size="lg" color={getScoreColor()} />
-    <Text style={{ flex: 1, textAlign: 'center', fontSize: 36, fontWeight: '500', color: getScoreColor() }}>
-      {healthScore ?? 'N/A'}{healthScore !== null && '%'}
-    </Text>
-    <View style={{ width: 48, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-  <Ionicons
-    name={healthScore >= 80 ? 'checkmark-circle' : healthScore >= 60 ? 'alert-circle' : 'close-circle'}
-    size={iconSize.sm}
-    color={healthScore >= 80 ? colors.success : healthScore >= 60 ? colors.warning : colors.danger}
-  />
-  <Text style={{ color: colors.subtext, fontSize: fontSize.sm, textAlign: 'right' }}>
-    {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
-  </Text>
-</View>
-  </View>
-  <View style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}>
-    <Animated.View
-      style={[
-        styles.progressFill,
-        {
-          backgroundColor: getScoreColor(),
-          width: scoreAnim.interpolate({
-            inputRange: [0, 100],
-            outputRange: ['0%', '100%'],
-          }),
-        },
-      ]}
-    />
-  </View>
-</Animated.View>
+              {/* ── Health Score Hero ── */}
+              <Animated.View
+                style={[styles.card, { backgroundColor: colors.card, padding: spacing.lg, opacity: fadeAnim }]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+                  <IconBadge icon="fitness" size="lg" color={getScoreColor()} />
+                  <Text style={{ flex: 1, textAlign: 'center', fontSize: 36, fontWeight: '500', color: getScoreColor() }}>
+                    {healthScore ?? 'N/A'}{healthScore !== null && '%'}
+                  </Text>
+                  <View style={{ width: 48, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+                    <Ionicons
+                      name={healthScore >= 80 ? 'checkmark-circle' : healthScore >= 60 ? 'alert-circle' : 'close-circle'}
+                      size={iconSize.sm}
+                      color={healthScore >= 80 ? colors.success : healthScore >= 60 ? colors.warning : colors.danger}
+                    />
+                    <Text style={{ color: colors.subtext, fontSize: fontSize.sm, textAlign: 'right' }}>
+                      {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
+                    </Text>
+                  </View>
+                </View>
+                <View
+                  style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}
+                  // UX-1: accessibility for screen readers
+                  accessibilityRole="progressbar"
+                  accessibilityValue={{ min: 0, max: 100, now: healthScore ?? 0 }}
+                  accessibilityLabel={`Health score ${healthScore ?? 0} out of 100`}
+                >
+                  <Animated.View
+                    style={[
+                      styles.progressFill,
+                      {
+                        backgroundColor: getScoreColor(),
+                        width: scoreAnim.interpolate({
+                          inputRange: [0, 100],
+                          outputRange: ['0%', '100%'],
+                        }),
+                      },
+                    ]}
+                  />
+                </View>
+              </Animated.View>
 
-<CardGap />
+              <View style={{ marginBottom: spacing.md }} />
 
-{/* ── Next Medicine ── */}
-{nextDoseStatus && (
-  <Animated.View
-    style={[
-      styles.card,
-      styles.medicineCard,
-      {
-        backgroundColor: colors.card,
-        opacity: fadeAnim,
-        transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }],
-      },
-    ]}
-  >
-    <View style={styles.cardHeader}>
-      <IconBadge icon="medical" size="md" color={colors.primary} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.cardTitle, { color: colors.text }]}>
-          {nextDoseStatus.medicine.name}
-        </Text>
-        <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-          {nextDoseStatus.isDue
-            ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-            : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-        </Text>
-      </View>
-      {nextDoseStatus.isDue && (
-        <TouchableOpacity
-          style={{
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm,
-            borderRadius: radius.pill,
-            backgroundColor: colors.primary,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-          }}
-          onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
-          activeOpacity={0.8}
-          accessibilityLabel={`Take ${nextDoseStatus?.medicine?.name ?? 'medicine'} now`}
-          accessibilityRole="button"
-        >
-          <Ionicons name="checkmark-circle" size={16} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: fontSize.sm, fontWeight: '700' }}>Take Now</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  </Animated.View>
-)}
+              {/* ── Next Medicine ── */}
+              {nextDoseStatus && (
+                <Animated.View
+                  style={[
+                    styles.card,
+                    styles.medicineCard,
+                    {
+                      backgroundColor: colors.card,
+                      opacity: fadeAnim,
+                      transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }],
+                    },
+                  ]}
+                >
+                  <View style={styles.cardHeader}>
+                    <IconBadge icon="medical" size="md" color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.cardTitle, { color: colors.text }]}>
+                        {nextDoseStatus.medicine.name}
+                      </Text>
+                      <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+                        {nextDoseStatus.isDue
+                          ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                      </Text>
+                    </View>
+                    {nextDoseStatus.isDue && (
+                      <TouchableOpacity
+                        style={{
+                          paddingHorizontal: spacing.md,
+                          paddingVertical: spacing.sm,
+                          borderRadius: radius.pill,
+                          backgroundColor: colors.primary,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
+                        onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
+                        activeOpacity={0.8}
+                        accessibilityLabel={`Take ${nextDoseStatus?.medicine?.name ?? 'medicine'} now`}
+                        accessibilityRole="button"
+                      >
+                        <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                        <Text style={{ color: '#fff', fontSize: fontSize.sm, fontWeight: '700' }}>Take Now</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </Animated.View>
+              )}
 
-<CardGap />
+              <View style={{ marginBottom: spacing.md }} />
 
-{/* ── Next Appointment ── */}
-{appointments.length > 0 && (
-  <Animated.View
-    style={[styles.card, { backgroundColor: colors.card, opacity: fadeAnim }]}
-  >
-    <View style={styles.cardHeader}>
-      <IconBadge icon="calendar" size="md" color={colors.primary} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.cardTitle, { color: colors.text }]}>
-          {nextAppointment.doctorName || nextAppointment.with || 'Appointment'}
-        </Text>
-        <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-          {nextAppointment.date?.toDate
-            ? nextAppointment.date.toDate().toLocaleDateString('en-US', {
-                weekday: 'short',
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-              })
-            : nextAppointment.date || 'Date not specified'}
-        </Text>
-        {nextAppointment.location && (
-          <View style={styles.locationRow}>
-            <Ionicons name="location" size={14} color={colors.subtext} />
-            <Text style={[styles.locationText, { color: colors.subtext }]}>
-              {nextAppointment.location}
-            </Text>
+              {/* ── Next Appointment ── */}
+              {appointments.length > 0 && (
+                <Animated.View
+                  style={[styles.card, { backgroundColor: colors.card, opacity: fadeAnim }]}
+                >
+                  <View style={styles.cardHeader}>
+                    <IconBadge icon="calendar" size="md" color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.cardTitle, { color: colors.text }]}>
+                        {nextAppointment.doctorName || nextAppointment.with || 'Appointment'}
+                      </Text>
+                      <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+                        {nextAppointment.date?.toDate
+                          ? nextAppointment.date.toDate().toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                          : nextAppointment.date || 'Date not specified'}
+                      </Text>
+                      {nextAppointment.location && (
+                        <View style={styles.locationRow}>
+                          <Ionicons name="location" size={14} color={colors.subtext} />
+                          <Text style={[styles.locationText, { color: colors.subtext }]}>
+                            {nextAppointment.location}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  {(() => {
+                    const aptDateObj = nextAppointment?.date?.toDate
+                      ? nextAppointment.date.toDate()
+                      : nextAppointment?.date
+                        ? new Date(nextAppointment.date)
+                        : null;
+                    const canShow = aptDateObj ? aptDateObj <= new Date() : false;
+                    if (nextAppointment.attended) {
+                      return (
+                        <View style={styles.attendedBadge}>
+                          <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                          <Text style={[styles.attendedText, { color: colors.primary }]}>
+                            {nextAppointment.attendedAt
+                              ? nextAppointment.attendedAt.toDate
+                                ? `Attended on ${nextAppointment.attendedAt.toDate().toLocaleDateString()}`
+                                : `Attended on ${new Date(nextAppointment.attendedAt).toLocaleDateString()}`
+                              : 'Attended'}
+                          </Text>
+                        </View>
+                      );
+                    }
+                    if (canShow) {
+                      return (
+                        <TouchableOpacity
+                          style={[styles.attendButton, { backgroundColor: colors.primary }]}
+                          onPress={() => handleMarkAttendedDashboard(nextAppointment)}
+                          activeOpacity={0.8}
+                          accessibilityLabel="Mark appointment as attended"
+                          accessibilityRole="button"
+                        >
+                          <Ionicons name="checkmark-done" size={20} color="#fff" />
+                          <Text style={styles.attendButtonText}>Mark Attended</Text>
+                        </TouchableOpacity>
+                      );
+                    }
+                    return null;
+                  })()}
+                </Animated.View>
+              )}
+
+              <View style={{ marginBottom: spacing.md }} />
+
+              {/* ── BMI Card (compact) ── */}
+              <Animated.View
+                style={[styles.card, { backgroundColor: colors.card, padding: spacing.md, opacity: fadeAnim }]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                  <IconBadge icon="body" size="sm" color={getBmiStatusColor()} />
+                  <View>
+                    <Text style={{ fontSize: fontSize.xl, fontWeight: '700', color: getBmiStatusColor() }}>
+                      {bmiData.value || 'N/A'}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      {bmiData.status === 'healthy' && <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.success} />}
+                      {(bmiData.status === 'warning') && <Ionicons name="alert-circle" size={iconSize.sm} color={colors.warning} />}
+                      {bmiData.status === 'critical' && <Ionicons name="close-circle" size={iconSize.sm} color={colors.danger} />}
+                      <Text style={{ color: colors.subtext, fontSize: fontSize.sm }}>
+                        {bmiData.category}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </Animated.View>
+
+              <View style={{ marginBottom: spacing.md }} />
+
+              {/* ── Health Tip ── */}
+              <Animated.View
+                style={[styles.card, styles.tipCard, { backgroundColor: colors.card, opacity: fadeAnim }]}
+              >
+                <View style={styles.tipHeader}>
+                  <IconBadge icon="bulb" size="md" color={colors.primary} />
+                  <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const personal = await fetchAIPersonalTip();
+                      if (personal) {
+                        setRandomFact(personal);
+                        setAIFactSource('ai');
+                        return;
+                      }
+                      const ai = await fetchAIFact(
+                        Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)],
+                        'fact'
+                      );
+                      if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
+                      else { setAIFactSource('preset'); }
+                    }}
+                    disabled={aiFactLoading}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Refresh health tip"
+                    accessibilityRole="button"
+                    style={{ marginLeft: 'auto', padding: spacing.sm }}
+                  >
+                    {aiFactLoading
+                      ? <ActivityIndicator size="small" color={colors.primary} />
+                      : <Ionicons name="refresh" size={iconSize.md} color={colors.primary} />
+                    }
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
+              </Animated.View>
+
+            </ScrollView>
+
+            {isSearchFocused && (
+              <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 5 }]}>
+                <TouchableWithoutFeedback onPress={dismissSearch}>
+                  <BlurView
+                    intensity={60}
+                    tint={theme === 'dark' ? 'dark' : 'light'}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </TouchableWithoutFeedback>
+                <TouchableWithoutFeedback onPress={dismissSearch}>
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.1)' }]} />
+                </TouchableWithoutFeedback>
+              </Animated.View>
+            )}
+
+            {/* ── Search bar — bottom animates up to sit just above the result panel ── */}
+            <Animated.View style={{ position: 'absolute', bottom: searchBarBottomAnim, left: 0, right: 0, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.sm, backgroundColor: 'transparent', zIndex: 10 }}>
+              <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
+                <TextInput
+                  style={[
+                    styles.searchInput,
+                    { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
+                  ]}
+                  placeholder="Search medicine info..."
+                  accessibilityLabel="Search medicine info"
+                  placeholderTextColor={colors.subtext}
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  onSubmitEditing={handleSearch}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => {
+                    // Only collapse if a result is about to be shown
+                    setTimeout(() => {
+                      if (!keepFocusedRef.current) {
+                        setIsSearchFocused(false);
+                      }
+                      keepFocusedRef.current = false;
+                    }, 200);
+                  }}
+                  maxLength={100}
+                />
+                <TouchableOpacity
+                  style={[styles.searchButton, { backgroundColor: colors.primary }]}
+                  onPress={handleSearch}
+                  disabled={isSearching || searchText.trim().length < 3}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Search medicine"
+                  accessibilityRole="button"
+                >
+                  {isSearching ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="search" size={22} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </Animated.View>
+            </Animated.View>
+
+            {/* ── Result panel — slides up from bottom to replace the keyboard ── */}
+            {searchResult && isSearchFocused && (
+              <Animated.View
+                style={[
+                  styles.resultPanel,
+                  {
+                    backgroundColor: colors.card,
+                    minHeight: keyboardHeight,
+                    transform: [{ translateY: resultPanelAnim }],
+                    zIndex: 9,
+                  },
+                ]}
+              >
+                {/* Drag handle */}
+                <View style={styles.resultPanelHandle} />
+
+                {/* Header row */}
+                <View style={styles.searchResultHeader}>
+                  <Ionicons name="medical" size={20} color={colors.primary} />
+                  <Text style={[styles.searchResultTitle, { color: colors.primary, flex: 1 }]}>{searchText}</Text>
+                  <TouchableOpacity
+                    onPress={dismissSearch}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityLabel="Close result"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="close-circle" size={22} color={colors.subtext} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={[styles.cardSubContent, { color: colors.subtext, marginTop: 8 }]}>{searchResult}</Text>
+              </Animated.View>
+            )}
           </View>
-        )}
-      </View>
-    </View>
-    {(() => {
-      const aptDateObj = nextAppointment?.date?.toDate
-        ? nextAppointment.date.toDate()
-        : nextAppointment?.date
-        ? new Date(nextAppointment.date)
-        : null;
-      const canShow = aptDateObj ? aptDateObj <= new Date() : false;
-      if (nextAppointment.attended) {
-        return (
-          <View style={styles.attendedBadge}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-            <Text style={[styles.attendedText, { color: colors.primary }]}>
-              {nextAppointment.attendedAt
-                ? nextAppointment.attendedAt.toDate
-                  ? `Attended on ${nextAppointment.attendedAt.toDate().toLocaleDateString()}`
-                  : `Attended on ${new Date(nextAppointment.attendedAt).toLocaleDateString()}`
-                : 'Attended'}
-            </Text>
-          </View>
-        );
-      }
-      if (canShow) {
-        return (
-          <TouchableOpacity
-            style={[styles.attendButton, { backgroundColor: colors.primary }]}
-            onPress={() => handleMarkAttendedDashboard(nextAppointment)}
-            activeOpacity={0.8}
-            accessibilityLabel="Mark appointment as attended"
-            accessibilityRole="button"
-          >
-            <Ionicons name="checkmark-done" size={20} color="#fff" />
-            <Text style={styles.attendButtonText}>Mark Attended</Text>
-          </TouchableOpacity>
-        );
-      }
-      return null;
-    })()}
-  </Animated.View>
-)}
-
-<CardGap />
-
-{/* ── BMI Card (compact) ── */}
-<Animated.View
-  style={[styles.card, { backgroundColor: colors.card, padding: spacing.md, opacity: fadeAnim }]}
->
-  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-    <IconBadge icon="body" size="sm" color={getBmiStatusColor()} />
-    <View>
-      <Text style={{ fontSize: fontSize.xl, fontWeight: '700', color: getBmiStatusColor() }}>
-        {bmiData.value || 'N/A'}
-      </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        {bmiData.status === 'healthy' && <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.success} />}
-        {(bmiData.status === 'warning') && <Ionicons name="alert-circle" size={iconSize.sm} color={colors.warning} />}
-        {bmiData.status === 'critical' && <Ionicons name="close-circle" size={iconSize.sm} color={colors.danger} />}
-        <Text style={{ color: colors.subtext, fontSize: fontSize.sm }}>
-        {bmiData.category}
-        </Text>
-      </View>
-    </View>
-  </View>
-</Animated.View>
-
-<CardGap />
-
-{/* ── Health Tip ── */}
-<Animated.View
-  style={[styles.card, styles.tipCard, { backgroundColor: colors.card, opacity: fadeAnim }]}
->
-  <View style={styles.tipHeader}>
-    <IconBadge icon="bulb" size="md" color={colors.primary} />
-    <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
-    <TouchableOpacity
-      onPress={async () => {
-        const personal = await fetchAIPersonalTip();
-        if (personal) {
-          setRandomFact(personal);
-          setAIFactSource('ai');
-          return;
-        }
-        const ai = await fetchAIFact(
-          Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)],
-          'fact'
-        );
-        if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
-        else { setAIFactSource('preset'); }
-      }}
-      disabled={aiFactLoading}
-      activeOpacity={0.8}
-      accessibilityLabel="Refresh health tip"
-      accessibilityRole="button"
-      style={{ marginLeft: 'auto', padding: spacing.sm }}
-    >
-      {aiFactLoading
-        ? <ActivityIndicator size="small" color={colors.primary} />
-        : <Ionicons name="refresh" size={iconSize.md} color={colors.primary} />
-      }
-    </TouchableOpacity>
-  </View>
-  <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
-</Animated.View>
-
-<CardGap />
-
-{/* ── Search (moved to bottom) ── */}
-<Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-  <TextInput
-    style={[
-      styles.searchInput,
-      { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
-    ]}
-    placeholder="Search medicine info..."
-    accessibilityLabel="Search medicine info"
-    placeholderTextColor={colors.subtext}
-    value={searchText}
-    onChangeText={setSearchText}
-    onSubmitEditing={handleSearch}
-    maxLength={100}
-  />
-  <TouchableOpacity
-    style={[styles.searchButton, { backgroundColor: colors.primary }]}
-    onPress={handleSearch}
-    disabled={isSearching || searchText.trim().length < 3}
-    activeOpacity={0.7}
-    accessibilityLabel="Search medicine"
-    accessibilityRole="button"
-  >
-    {isSearching ? (
-      <ActivityIndicator size="small" color="#fff" />
-    ) : (
-      <Ionicons name="search" size={22} color="#fff" />
-    )}
-  </TouchableOpacity>
-</Animated.View>
-
-{/* ── Search Result ── */}
-{searchResult && (
-  <Animated.View
-    style={[
-      styles.card,
-      styles.searchResultCard,
-      { backgroundColor: colors.card, borderColor: colors.primary, opacity: fadeAnim },
-    ]}
-  >
-    <View style={styles.searchResultHeader}>
-      <Ionicons name="medical" size={20} color={colors.primary} />
-      <Text style={[styles.searchResultTitle, { color: colors.primary }]}>{searchText}</Text>
-    </View>
-    <Text style={[styles.cardSubContent, { color: colors.subtext }]}>{searchResult}</Text>
-  </Animated.View>
-)}
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-  paddingHorizontal: spacing.md,
-  paddingTop: spacing.md,
-  paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: 120, // Extra padding to scroll past floating search bar
   },
   loaderContainer: {
     flex: 1,
@@ -1145,7 +1109,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: 50,
-    borderRadius: 14,
+    borderRadius: 25,
     paddingHorizontal: 16,
     fontSize: 15,
     borderWidth: 1,
@@ -1153,12 +1117,34 @@ const styles = StyleSheet.create({
   searchButton: {
     height: 50,
     width: 50,
-    borderRadius: 14,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  searchResultCard: {
-    borderWidth: 1,
+  // Bottom panel that slides up to replace the keyboard
+  resultPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    elevation: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+  },
+  resultPanelHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(128,128,128,0.35)',
+    alignSelf: 'center',
+    marginBottom: 14,
   },
   searchResultHeader: {
     flexDirection: 'row',

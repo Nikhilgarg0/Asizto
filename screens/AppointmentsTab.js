@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { db, auth } from '../firebaseConfig';
-import { collection, query, where, onSnapshot, doc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { doc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import * as Notifications from 'expo-notifications';
 import * as Animatable from 'react-native-animatable';
 
@@ -14,31 +15,12 @@ const { width } = Dimensions.get('window');
 export default function AppointmentsTab() {
   const { colors, theme } = useTheme();
   const navigation = useNavigation();
-  const [appointments, setAppointments] = useState([]);
+  // ── Shared data from DataContext (single listener) ──
+  const { appointments, loadingAppts: loading } = useData();
+
   const [filteredAppointments, setFilteredAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState('date');
   const [filterStatus, setFilterStatus] = useState('all');
-
-  useEffect(() => {
-    if (!auth.currentUser) {
-      setLoading(false);
-      return;
-    }
-    const userId = auth.currentUser.uid;
-    const q = query(collection(db, 'appointments'), where('userId', '==', userId));
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const appointmentsData = [];
-      querySnapshot.forEach((document) => {
-        appointmentsData.push({ ...document.data(), id: document.id });
-      });
-      setAppointments(appointmentsData);
-      setLoading(false);
-    });
-    
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     let filtered = [...appointments];

@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
-import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider } from 'firebase/auth';
+import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import Toast from 'react-native-toast-message';
@@ -15,35 +15,12 @@ import * as Animatable from 'react-native-animatable';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Dropdown } from 'react-native-element-dropdown';
 import { LinearGradient } from 'expo-linear-gradient';
+// CODE-1: extracted modal components
+import AvatarPickerModal, { getAvatarSource } from '../components/profile/AvatarPickerModal';
+import DeleteAccountModal from '../components/profile/DeleteAccountModal';
+import { useData } from '../context/DataContext';
 
 const { width } = Dimensions.get('window');
-
-// ---------- LOCAL AVATAR SUPPORT ----------
-const AVATAR_KEYS = {
-  male: ['male1', 'male2', 'male3', 'male4', 'male5', 'male6'],
-  female: ['female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
-};
-const ALL_AVATAR_KEYS = [...AVATAR_KEYS.male, ...AVATAR_KEYS.female];
-
-
-
-function getAvatarSource(key) {
-  switch (key) {
-    case 'male1': return require('../assets/avatars/male1.png');
-    case 'male2': return require('../assets/avatars/male2.png');
-    case 'male3': return require('../assets/avatars/male3.png');
-    case 'male4': return require('../assets/avatars/male4.png');
-    case 'male5': return require('../assets/avatars/male5.png');
-    case 'male6': return require('../assets/avatars/male6.png');
-    case 'female1': return require('../assets/avatars/female1.png');
-    case 'female2': return require('../assets/avatars/female2.png');
-    case 'female3': return require('../assets/avatars/female3.png');
-    case 'female4': return require('../assets/avatars/female4.png');
-    case 'female5': return require('../assets/avatars/female5.png');
-    case 'female6': return require('../assets/avatars/female6.png');
-    default: return require('../assets/avatars/male1.png');
-  }
-}
 
 function getImageSourceFromProfile(profile) {
   if (profile?.avatarKey) return getAvatarSource(profile.avatarKey);
@@ -70,7 +47,9 @@ const genderData = [
 
 export default function ProfileScreen() {
   const { theme, toggleTheme, colors } = useTheme();
-  const isGoogleUser = auth.currentUser?.providerData?.some(p => p.providerId === 'google.com');
+  const { userId } = useData();
+  // isGoogleUser derived from live auth object (safe — only read on render, not in async callbacks)
+  const isGoogleUser = auth.currentUser?.providerData?.some(p => p.providerId === 'google.com') ?? false;
   const [profileData, setProfileData] = useState({});
   const [editableData, setEditableData] = useState({});
   const [isEditing, setIsEditing] = useState(false);
@@ -87,8 +66,8 @@ export default function ProfileScreen() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const docRef = doc(db, "users", auth.currentUser.uid);
+    if (!userId) return;
+    const docRef = doc(db, "users", userId);
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const raw = docSnap.data();
@@ -122,7 +101,7 @@ export default function ProfileScreen() {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [userId]);
 
   const computeAge = (dob) => {
     if (!dob) return null;
@@ -200,7 +179,7 @@ export default function ProfileScreen() {
 
       delete dataToSave.__temp;
 
-      await setDoc(doc(db, "users", auth.currentUser.uid), dataToSave, { merge: true });
+      await setDoc(doc(db, "users", userId), dataToSave, { merge: true });
 
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setIsEditing(false);
@@ -263,7 +242,7 @@ export default function ProfileScreen() {
         // Firebase allows deleteUser directly if session is recent enough
       } else {
         const credential = EmailAuthProvider.credential(
-          auth.currentUser.email,
+          auth.currentUser?.email ?? '',
           deletePassword
         );
         await reauthenticateWithCredential(auth.currentUser, credential);
@@ -1023,133 +1002,29 @@ export default function ProfileScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Avatar Selector Modal */}
-      <Modal visible={showAvatarModal} transparent animationType="slide" onRequestClose={() => setShowAvatarModal(false)}>
-        <View style={styles.modalOverlay}>
-          <Animatable.View animation="slideInUp" duration={400} style={[styles.avatarModalContent, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalHeaderText, { color: colors.text }]}>Choose Your Avatar</Text>
-              <TouchableOpacity
-                onPress={() => setShowAvatarModal(false)}
-                accessibilityLabel="Close avatar selector"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close-circle" size={28} color={colors.subtext} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView contentContainerStyle={styles.avatarGrid} showsVerticalScrollIndicator={false}>
-              {ALL_AVATAR_KEYS.map(key => (
-                <TouchableOpacity
-                  key={key}
-                  onPress={() => {
-                    handleInputChange('avatarKey', key);
-                    setShowAvatarModal(false);
-                    Toast.show({ type: 'success', text1: '✅ Avatar Updated' });
-                  }}
-                  style={styles.avatarGridItem}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${key} avatar`}
-                  accessibilityState={{ selected: editableData.avatarKey === key }}
-                >
-                  <Image
-                    source={getAvatarSource(key)}
-                    style={[
-                      styles.avatarGridImage,
-                      editableData.avatarKey === key && styles.avatarGridImageSelected
-                    ]}
-                  />
-                  {editableData.avatarKey === key && (
-                    <Animatable.View animation="bounceIn" style={styles.avatarCheckmark}>
-                      <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                    </Animatable.View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </Animatable.View>
-        </View>
-      </Modal>
+      {/* Avatar Selector Modal — CODE-1: extracted */}
+      <AvatarPickerModal
+        visible={showAvatarModal}
+        onClose={() => setShowAvatarModal(false)}
+        selectedKey={editableData.avatarKey}
+        onSelect={(key) => handleInputChange('avatarKey', key)}
+      />
 
-      {/* Delete Account Modal */}
-      <Modal visible={isDeleteModalVisible} transparent animationType="fade" onRequestClose={() => setIsDeleteModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <Animatable.View animation="zoomIn" duration={300} style={[styles.deleteModalContent, { backgroundColor: colors.card }]}>
-            <Animatable.View animation="shake" iterationCount={2} style={styles.deleteModalIcon}>
-              <Ionicons name="warning" size={56} color="#e74c3c" />
-            </Animatable.View>
-            <Text style={[styles.deleteModalTitle, { color: colors.text }]}>Delete Account?</Text>
-            <Text style={[styles.deleteModalText, { color: colors.subtext }]}>
-              This action is <Text style={{ fontWeight: '700', color: '#e74c3c' }}>permanent</Text> and cannot be undone. All your data will be permanently deleted from our servers.
-            </Text>
-            <Text style={[styles.deleteModalInstruction, { color: colors.text }]}>
-              Type <Text style={{ fontWeight: '700', color: '#e74c3c' }}>DELETE</Text> to confirm
-            </Text>
-            <TextInput
-              style={[styles.deleteModalInput, { borderColor: deleteConfirmText === 'DELETE' ? '#e74c3c' : colors.border, color: colors.text, backgroundColor: colors.background }]}
-              value={deleteConfirmText}
-              onChangeText={(val) => setDeleteConfirmText(val.toUpperCase())}
-              autoCapitalize="characters"
-              placeholder="DELETE"
-              placeholderTextColor={colors.subtext}
-              accessibilityLabel="Type DELETE to confirm account deletion"
-            />
-            {!isGoogleUser && (
-              <TextInput
-                style={[
-                  styles.deleteModalInput,
-                  {
-                    borderColor: colors.border,
-                    color: colors.text,
-                    backgroundColor: colors.background,
-                    marginBottom: 28,
-                  },
-                ]}
-                value={deletePassword}
-                onChangeText={setDeletePassword}
-                placeholder="Enter your password"
-                placeholderTextColor={colors.subtext}
-                secureTextEntry
-                autoCapitalize="none"
-                accessibilityLabel="Enter password to confirm account deletion"
-              />
-            )}
-            {isGoogleUser && (
-              <Text style={{ color: colors.subtext, fontSize: 13, marginBottom: 28, textAlign: 'center' }}>
-                You signed in with Google. No password needed.
-              </Text>
-            )}
-            <View style={styles.deleteModalButtons}>
-              <TouchableOpacity
-                style={[styles.deleteModalButton, styles.deleteModalCancelButton]}
-                onPress={() => {
-                  setDeleteConfirmText('');
-                  setIsDeleteModalVisible(false);
-                }}
-                activeOpacity={0.7}
-                accessibilityLabel="Cancel account deletion"
-                accessibilityRole="button"
-              >
-                <Text style={[styles.deleteModalButtonText, { color: colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.deleteModalButton,
-                  styles.deleteModalConfirmButton,
-                  deleteConfirmText !== 'DELETE' && { opacity: 0.5 }
-                ]}
-                disabled={deleteConfirmText !== 'DELETE'}
-                onPress={handleDeleteAccount}
-                activeOpacity={0.7}
-                accessibilityLabel="Confirm delete account permanently"
-                accessibilityRole="button"
-              >
-                <Text style={[styles.deleteModalButtonText, { color: '#fff' }]}>Delete Forever</Text>
-              </TouchableOpacity>
-            </View>
-          </Animatable.View>
-        </View>
-      </Modal>
+      {/* Delete Account Modal — CODE-1: extracted */}
+      <DeleteAccountModal
+        visible={isDeleteModalVisible}
+        onClose={() => {
+          setDeleteConfirmText('');
+          setDeletePassword('');
+          setIsDeleteModalVisible(false);
+        }}
+        isGoogleUser={isGoogleUser}
+        confirmText={deleteConfirmText}
+        onConfirmTextChange={setDeleteConfirmText}
+        password={deletePassword}
+        onPasswordChange={setDeletePassword}
+        onConfirm={handleDeleteAccount}
+      />
     </SafeAreaView>
   );
 }

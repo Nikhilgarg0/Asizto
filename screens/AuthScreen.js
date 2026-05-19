@@ -127,6 +127,8 @@ export default function AuthScreen() {
   const [sendingLoginOtp, setSendingLoginOtp] = useState(false);
   const signupTimer = useRef(null);
   const loginTimer = useRef(null);
+  // Ref always holds the latest OTP — bypasses stale-closure in fromStep2
+  const signupOtpRef = useRef('');
 
   // ── Status ──────────────────────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(false);
@@ -261,12 +263,15 @@ export default function AuthScreen() {
   };
 
   const fromStep2 = async () => {
-    if (signupOtp.length < 6) { setErrors(p => ({ ...p, otp: 'Enter the 6-digit code.' })); return; }
+    // Read from ref so we always get the current value regardless of render cycle
+    const currentOtp = signupOtpRef.current;
+    if (currentOtp.length < 6) { setErrors(p => ({ ...p, otp: 'Enter the 6-digit code.' })); return; }
     setIsLoading(true);
     try {
-      const res = await verifyOTP(email.trim().toLowerCase(), signupOtp);
+      const res = await verifyOTP(email.trim().toLowerCase(), currentOtp);
       if (res.success) {
         Toast.show({ type: 'success', text1: 'Email verified ✓', position: 'top', visibilityTime: 1800, topOffset: 55 });
+        signupOtpRef.current = '';
         setSignupOtp('');
         goTo(3, 'forward');
       } else {
@@ -275,6 +280,15 @@ export default function AuthScreen() {
     } catch (_) { setErrors(p => ({ ...p, otp: 'Verification failed.' })); }
     finally { setIsLoading(false); }
   };
+
+  // Auto-submit as soon as all 6 digits are entered — no button tap needed
+  const fromStep2Ref = useRef(fromStep2);
+  fromStep2Ref.current = fromStep2;
+  useEffect(() => {
+    if (!isLogin && signupStep === 2 && signupOtp.length === 6 && !isLoading) {
+      fromStep2Ref.current();
+    }
+  }, [signupOtp, signupStep, isLogin]);
 
   const fromStep3 = () => { if (!v3()) return; goTo(4, 'forward'); };
   const fromStep4 = () => goTo(5, 'forward');
@@ -347,9 +361,19 @@ export default function AuthScreen() {
       case 2: return (
         <Step2Verify
           email={email.trim().toLowerCase()}
-          otp={signupOtp} setOtp={v => { setSignupOtp(v); setErrors(p => ({ ...p, otp: undefined })); }}
+          otp={signupOtp} setOtp={v => {
+            signupOtpRef.current = v;   // keep ref in sync — fixes stale closure
+            setSignupOtp(v);
+            setErrors(p => ({ ...p, otp: undefined }));
+          }}
           error={errors.otp} onVerify={fromStep2}
-          onBack={() => goTo(1, 'back')}
+          onBack={() => {
+            // UX-6: clear OTP state + ref so field is fresh on re-entry
+            signupOtpRef.current = '';
+            setSignupOtp('');
+            setErrors(p => ({ ...p, otp: undefined }));
+            goTo(1, 'back');
+          }}
           isLoading={isLoading} resendCooldown={signupCooldown}
           isSendingOtp={sendingSignupOtp} onResend={sendSignupOtp} {...base}
         />
@@ -378,6 +402,7 @@ export default function AuthScreen() {
         <Step5Avatar
           selectedAvatarKey={selectedAvatarKey}
           setSelectedAvatarKey={v => { setSelectedAvatarKey(v); setErrors(p => ({ ...p, avatar: undefined })); }}
+          gender={gender}
           onFinish={handleSignup} onBack={() => goTo(4, 'back')}
           isLoading={isLoading} {...base}
         />

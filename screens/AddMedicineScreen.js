@@ -2,15 +2,17 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, Platform, ScrollView, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { db, auth } from '../firebaseConfig';
-import { collection, addDoc, Timestamp, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { collection, addDoc, Timestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { Ionicons } from '@expo/vector-icons';
 import { scheduleMedicineNotifications } from '../utils/NotificationManager';
 import Toast from 'react-native-toast-message';
 
 export default function AddMedicineScreen({ navigation }) {
   const { colors } = useTheme();
+  const { userId, userProfile } = useData();
 
   const [name, setName] = useState('');
   const [timesPerDay, setTimesPerDay] = useState('');
@@ -57,28 +59,8 @@ export default function AddMedicineScreen({ navigation }) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getUserName = async () => {
-    try {
-      const displayName = auth.currentUser?.displayName;
-      if (displayName && displayName.trim().length > 0) {
-        return displayName;
-      }
-      const uid = auth.currentUser?.uid;
-      if (!uid) return '';
-      const userSnap = await getDoc(doc(db, 'users', uid));
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        return data.firstName || data.name || '';
-      }
-      return '';
-    } catch (e) {
-      console.warn('getUserName error', e);
-      return '';
-    }
-  };
-
   const handleSave = async () => {
-    if (!auth.currentUser) {
+    if (!userId) {
       Alert.alert('Not signed in', 'Please sign in to save medicines.');
       return;
     }
@@ -117,7 +99,7 @@ export default function AddMedicineScreen({ navigation }) {
       };
 
       const docRef = await addDoc(collection(db, 'medicines'), {
-        userId: auth.currentUser.uid,
+        userId,
         name: medicineData.name,
         duration: medicineData.duration,
         quantity: medicineData.quantity,
@@ -127,7 +109,8 @@ export default function AddMedicineScreen({ navigation }) {
         takenTimestamps: []
       });
 
-      const userName = await getUserName();
+      // BUG-2: use DataContext profile — no extra Firestore read needed
+      const userName = userProfile.firstName || userProfile.name || '';
 
       let notificationIds = [];
       try {

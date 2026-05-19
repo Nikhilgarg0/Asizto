@@ -14,10 +14,13 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Keyboard,
+  Dimensions,
 } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
-import { db, auth } from '../firebaseConfig';
+import { useData } from '../context/DataContext';
+import { db } from '../firebaseConfig';
 import {
   collection,
   query,
@@ -30,6 +33,7 @@ import {
 import * as SMS from 'expo-sms';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
+import * as Haptics from 'expo-haptics'; // UX-5
 import { useIsFocused } from '@react-navigation/native';
 
 const emergencyServices = [
@@ -39,31 +43,24 @@ const emergencyServices = [
 
 export default function EmergencyScreen({ navigation }) {
   const { colors } = useTheme();
+  // ERR-2: use DataContext userId — safe during sign-out
+  const { userId, medicines, appointments } = useData();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState({ visible: false, text: '', type: 'info', action: null });
   const bannerTimeout = useRef(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-  const [isLongPressing, setIsLongPressing] = useState(false);
-
-  // Animation references
-  const ripple1 = useRef(new Animated.Value(0)).current;
-  const ripple2 = useRef(new Animated.Value(0)).current;
-  const ripple3 = useRef(new Animated.Value(0)).current;
-  const pressScale = useRef(new Animated.Value(1)).current;
-  const sosPulse = useRef(new Animated.Value(0)).current;
-  const longPressProgress = useRef(new Animated.Value(0)).current;
+  // Entrance animations
   const headerFade = useRef(new Animated.Value(0)).current;
   const cardSlide1 = useRef(new Animated.Value(50)).current;
   const cardSlide2 = useRef(new Animated.Value(50)).current;
-  const sosGlow = useRef(new Animated.Value(0)).current;
 
+  // ERR-2: guarded with DataContext userId
   useEffect(() => {
-    if (!auth.currentUser) {
+    if (!userId) {
       setLoading(false);
       return;
     }
-    const userId = auth.currentUser.uid;
     const q = query(
       collection(db, 'emergencyContacts'),
       where('userId', '==', userId)
@@ -74,7 +71,7 @@ export default function EmergencyScreen({ navigation }) {
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [userId]);
 
   const isFocused = useIsFocused();
 
@@ -104,104 +101,7 @@ export default function EmergencyScreen({ navigation }) {
     ]).start();
   }, [isFocused]);
 
-  // Ripple animations
-  useEffect(() => {
-    if (!isFocused) {
-      ripple1.setValue(0);
-      ripple2.setValue(0);
-      ripple3.setValue(0);
-      return;
-    }
 
-    const loop1 = Animated.loop(
-      Animated.sequence([
-        Animated.timing(ripple1, {
-          toValue: 1,
-          duration: 2000,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(ripple1, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    );
-
-    const loop2 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(600),
-        Animated.timing(ripple2, {
-          toValue: 1,
-          duration: 2000,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(ripple2, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    );
-
-    const loop3 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(1200),
-        Animated.timing(ripple3, {
-          toValue: 1,
-          duration: 2000,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(ripple3, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    );
-
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sosPulse, { 
-          toValue: 1, 
-          duration: 1200, 
-          easing: Easing.bezier(0.4, 0, 0.6, 1), 
-          useNativeDriver: true 
-        }),
-        Animated.timing(sosPulse, { 
-          toValue: 0, 
-          duration: 1200, 
-          easing: Easing.bezier(0.4, 0, 0.6, 1), 
-          useNativeDriver: true 
-        }),
-      ])
-    );
-
-    const glowLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(sosGlow, {
-          toValue: 1,
-          duration: 2000,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(sosGlow, {
-          toValue: 0,
-          duration: 2000,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    loop1.start();
-    loop2.start();
-    loop3.start();
-    pulseLoop.start();
-    glowLoop.start();
-
-    return () => {
-      loop1.stop();
-      loop2.stop();
-      loop3.stop();
-      pulseLoop.stop();
-      glowLoop.stop();
-      ripple1.setValue(0);
-      ripple2.setValue(0);
-      ripple3.setValue(0);
-    };
-  }, [isFocused, ripple1, ripple2, ripple3, sosPulse, sosGlow]);
 
   const handleDeletePersonalContact = (contactId) => {
     if (deleteConfirmId !== contactId) {
@@ -212,7 +112,11 @@ export default function EmergencyScreen({ navigation }) {
     }
 
     deleteDoc(doc(db, 'emergencyContacts', contactId))
-      .then(() => showBanner('Contact deleted', 'success'))
+      .then(() => {
+        // UX-5: haptic on successful delete
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        showBanner('Contact deleted', 'success');
+      })
       .catch((e) => {
         console.error('Delete error', e);
         showBanner('Could not delete contact', 'error');
@@ -290,13 +194,13 @@ export default function EmergencyScreen({ navigation }) {
         return null;
       });
 
-      const userId = auth.currentUser?.uid;
+      // ERR-2: use DataContext userId, fall back to contact name only
       const userSnap = userId ? await getDoc(doc(db, 'users', userId)) : null;
       const user = userSnap?.exists() ? userSnap.data() : {};
       const name =
         user.firstName ||
         user.name ||
-        (auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'User');
+        'User';
 
       const lat = position?.coords?.latitude;
       const lon = position?.coords?.longitude;
@@ -317,13 +221,41 @@ export default function EmergencyScreen({ navigation }) {
 
       const age = computeAgeFromDOB(user?.dob);
 
+      // ── Current medicines (from DataContext live list) ──────────────────
+      const medicineList = medicines
+        .slice(0, 8)
+        .map((m) => {
+          const parts = [m.name];
+          if (m.dosage) parts.push(m.dosage);
+          return parts.join(' ');
+        })
+        .join(', ');
+
+      // ── Next upcoming appointment ────────────────────────────────────────
+      const now = Date.now();
+      const nextAppt = appointments
+        .filter((a) => {
+          const ms = a.date?.seconds ? a.date.seconds * 1000 : (a.date instanceof Date ? a.date.getTime() : 0);
+          return ms > now && !a.attended;
+        })
+        .slice(0, 3)
+        .map((a) => {
+          const ms = a.date?.seconds ? a.date.seconds * 1000 : new Date(a.date).getTime();
+          const dateStr = new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+          const timeStr = new Date(ms).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+          return `${a.doctorName || 'Doctor'} on ${dateStr} at ${timeStr}`;
+        })
+        .join('; ');
+
       const msgLines = [
         `🚨 EMERGENCY SOS from ${name}${age ? ` (${age} yrs)` : ''}`,
         mapsUrl ? `📍 Location: ${mapsUrl}` : null,
-        user?.bloodGroup ? `🩸 Blood: ${user.bloodGroup}` : null,
-        user?.conditions ? `⚠️ Conditions: ${user.conditions}` : null,
-        user?.medications ? `💊 Meds: ${user.medications}` : null,
+        user?.bloodGroup ? `🩸 Blood Group: ${user.bloodGroup}` : null,
+        user?.conditions ? `⚠️ Medical Conditions: ${user.conditions}` : null,
+        user?.medications ? `💊 Medications (profile): ${user.medications}` : null,
         user?.allergies ? `🤧 Allergies: ${user.allergies}` : null,
+        medicineList ? `💊 Current Medicines: ${medicineList}` : null,
+        nextAppt ? `📅 Upcoming Appointments: ${nextAppt}` : null,
         user?.phone ? `📞 Phone: ${user.phone}` : null,
         emergencyContactList ? `👥 Emergency contacts: ${emergencyContactList}` : null,
         battery != null ? `🔋 Battery: ${Math.round(battery * 100)}%` : null,
@@ -354,6 +286,8 @@ export default function EmergencyScreen({ navigation }) {
       }
 
       await SMS.sendSMSAsync(recipients, message);
+      // UX-5: haptic feedback on SOS sent
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       showBanner('Message prepared in Messages app.', 'success');
       Keyboard.dismiss();
     } catch (e) {
@@ -374,82 +308,7 @@ export default function EmergencyScreen({ navigation }) {
     };
   }, []);
 
-  const onPressIn = () => {
-    setIsLongPressing(true);
-    Animated.parallel([
-      Animated.spring(pressScale, {
-        toValue: 0.92,
-        useNativeDriver: true,
-      }),
-      Animated.timing(longPressProgress, {
-        toValue: 1,
-        duration: 1000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
 
-  const onPressOut = () => {
-    setIsLongPressing(false);
-    Animated.parallel([
-      Animated.spring(pressScale, {
-        toValue: 1,
-        friction: 5,
-        useNativeDriver: true,
-      }),
-      Animated.timing(longPressProgress, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const rippleCommon = {
-    position: 'absolute',
-    borderRadius: 120,
-    backgroundColor: colors.primary,
-  };
-
-  const ripple1Style = {
-    ...rippleCommon,
-    width: 240,
-    height: 240,
-    opacity: ripple1.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0] }),
-    transform: [{ scale: ripple1.interpolate({ inputRange: [0, 1], outputRange: [1, 2.2] }) }],
-  };
-
-  const ripple2Style = {
-    ...rippleCommon,
-    width: 240,
-    height: 240,
-    opacity: ripple2.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0] }),
-    transform: [{ scale: ripple2.interpolate({ inputRange: [0, 1], outputRange: [1, 2.5] }) }],
-  };
-
-  const ripple3Style = {
-    ...rippleCommon,
-    width: 240,
-    height: 240,
-    opacity: ripple3.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0] }),
-    transform: [{ scale: ripple3.interpolate({ inputRange: [0, 1], outputRange: [1, 2.8] }) }],
-  };
-
-  const progressRingStyle = {
-    position: 'absolute',
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    borderWidth: 4,
-    borderColor: '#ffffff',
-    opacity: longPressProgress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
-    transform: [
-      { 
-        scale: longPressProgress.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.05] }) 
-      },
-    ],
-  };
 
   if (loading) {
     return (
@@ -598,54 +457,8 @@ export default function EmergencyScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      <View style={[styles.sosBar, { borderTopColor: colors.border, backgroundColor: colors.background }]}>
-        <Animated.View pointerEvents="none" style={ripple1Style} />
-        <Animated.View pointerEvents="none" style={ripple2Style} />
-        <Animated.View pointerEvents="none" style={ripple3Style} />
-
-        <Pressable
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
-          onLongPress={handleLongPressSOS}
-          delayLongPress={1000}
-          disabled={false}
-          accessibilityLabel="Hold to send SOS alert"
-          accessibilityRole="button"
-        >
-          <Animated.View pointerEvents="none" style={progressRingStyle} />
-          
-          <Animated.View
-            style={[
-              styles.sosButton,
-              {
-                backgroundColor: colors.primary,
-                shadowColor: colors.primary,
-                transform: [{ scale: pressScale }],
-              },
-            ]}
-          >
-            <Animated.View
-              style={{
-                opacity: sosGlow.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] }),
-              }}
-            >
-              <Ionicons name="warning" size={52} color="#fff" />
-            </Animated.View>
-            <Animated.Text 
-              style={[
-                styles.sosText, 
-                { 
-                  opacity: sosPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.5] }),
-                  transform: [{
-                    scale: sosPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] })
-                  }]
-                }
-              ]}
-            >
-              {isLongPressing ? 'SENDING...' : 'HOLD FOR SOS'}
-            </Animated.Text>
-          </Animated.View>
-        </Pressable>
+      <View style={[styles.sosBar, { backgroundColor: 'transparent' }]}>
+        <SwipeSOSButton onSOS={handleLongPressSOS} />
       </View>
 
       {banner.visible && (
@@ -663,7 +476,7 @@ const styles = StyleSheet.create({
   scrollContent: { 
     paddingHorizontal: 18, 
     paddingTop: 16,
-    paddingBottom: 24, // Reduced to allow overlap
+    paddingBottom: 120, // Increased to allow overlap with the floating SOS slider
   },
 
   mainTitle: {
@@ -845,31 +658,15 @@ const styles = StyleSheet.create({
   },
 
   sosBar: {
-  paddingHorizontal: 24,
-  paddingVertical: 16,
-  paddingBottom: 16,
-  borderTopWidth: 0.5,
-  alignItems: 'center',
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    zIndex: 100,
   },
 
-  sosButton: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 16,
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  sosText: { 
-    color: '#fff', 
-    marginTop: 10, 
-    fontSize: 13, 
-    fontWeight: '900', 
-    letterSpacing: 1.2,
-  },
 
   banner: {
     position: 'absolute',
@@ -889,3 +686,128 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+function SwipeSOSButton({ onSOS }) {
+  const { colors } = useTheme();
+  const panX = useRef(new Animated.Value(0)).current;
+  const [sosSent, setSosSent] = useState(false);
+  const BUTTON_WIDTH = Dimensions.get('window').width - 48; // full width minus padding
+  const KNOB_SIZE = 64;
+  const SLIDE_DISTANCE = BUTTON_WIDTH - KNOB_SIZE - 8; // 8 for padding
+
+  const handleGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: panX } }],
+    { useNativeDriver: false }
+  );
+
+  const handleStateChange = (event) => {
+    if (event.nativeEvent.state === State.END) {
+      if (event.nativeEvent.translationX > SLIDE_DISTANCE * 0.7) {
+        // Trigger SOS
+        Animated.timing(panX, {
+          toValue: SLIDE_DISTANCE,
+          duration: 200,
+          useNativeDriver: false,
+        }).start(() => {
+          if (!sosSent) {
+            setSosSent(true);
+            onSOS();
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            
+            // Reset after 3 seconds
+            setTimeout(() => {
+              Animated.spring(panX, {
+                toValue: 0,
+                friction: 6,
+                useNativeDriver: false,
+              }).start(() => setSosSent(false));
+            }, 3000);
+          }
+        });
+      } else {
+        // Snap back
+        Animated.spring(panX, {
+          toValue: 0,
+          friction: 6,
+          useNativeDriver: false,
+        }).start();
+      }
+    }
+  };
+
+  const interpolatedX = panX.interpolate({
+    inputRange: [0, SLIDE_DISTANCE],
+    outputRange: [0, SLIDE_DISTANCE],
+    extrapolate: 'clamp',
+  });
+
+  const textOpacity = panX.interpolate({
+    inputRange: [0, SLIDE_DISTANCE * 0.5],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  
+  const bgOpacity = panX.interpolate({
+      inputRange: [0, SLIDE_DISTANCE],
+      outputRange: [1, 0.4],
+      extrapolate: 'clamp',
+  });
+
+  // Use explicit warning color instead of theme danger if it's missing
+  const activeColor = colors.danger || '#F44336';
+
+  return (
+    <View style={{
+      width: BUTTON_WIDTH,
+      height: KNOB_SIZE + 8,
+      backgroundColor: activeColor + '25',
+      borderRadius: (KNOB_SIZE + 8) / 2,
+      justifyContent: 'center',
+      padding: 4,
+      overflow: 'hidden',
+    }}>
+      <Animated.View style={{
+          position: 'absolute',
+          top: 0, bottom: 0, left: 0, right: 0,
+          backgroundColor: activeColor,
+          opacity: bgOpacity,
+          borderRadius: (KNOB_SIZE + 8) / 2,
+      }} />
+
+      <Animated.Text style={{
+        position: 'absolute',
+        alignSelf: 'center',
+        color: '#fff',
+        fontWeight: '800',
+        fontSize: 16,
+        letterSpacing: 1.5,
+        opacity: textOpacity,
+        paddingLeft: 20,
+      }}>
+        {sosSent ? 'SOS SENT' : 'SWIPE TO SOS'}
+      </Animated.Text>
+
+      <PanGestureHandler
+        onGestureEvent={handleGestureEvent}
+        onHandlerStateChange={handleStateChange}
+      >
+        <Animated.View style={{
+          width: KNOB_SIZE,
+          height: KNOB_SIZE,
+          backgroundColor: '#fff',
+          borderRadius: KNOB_SIZE / 2,
+          justifyContent: 'center',
+          alignItems: 'center',
+          transform: [{ translateX: interpolatedX }],
+          elevation: 5,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+        }}>
+          <Ionicons name={sosSent ? 'checkmark' : 'warning'} size={32} color={activeColor} />
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
+  );
+}

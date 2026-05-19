@@ -1,24 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { db, auth } from '../firebaseConfig';
-import { collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { useNavigation } from '@react-navigation/native';
+import { db } from '../firebaseConfig';
+import { doc, deleteDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import * as Notifications from 'expo-notifications';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import { cancelMedicineNotifications } from '../utils/NotificationManager';
 import * as Animatable from 'react-native-animatable';
+import { useNow } from '../utils/useNow'; // PERF-4: single shared clock
+import * as Haptics from 'expo-haptics'; // UX-5
 
 const { width } = Dimensions.get('window');
 
-const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
+// PERF-4: `now` is passed as a prop from the parent so only ONE interval runs
+const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
   const { colors, theme } = useTheme();
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 300000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleMarkAsTaken = async (medicineId) => {
     try {
@@ -26,6 +24,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
       await updateDoc(medicineRef, {
         takenTimestamps: arrayUnion(new Date())
       });
+      // UX-5: haptic feedback on successful dose mark
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (error) {
       console.error('Error marking medicine as taken:', error);
       Alert.alert('Error', 'Failed to mark medicine as taken. Please try again.');
@@ -284,21 +284,19 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index }) => {
   );
 };
 
-export default function MedicinesTab({ route }) {
+export default function MedicinesTab({ route } = {}) {
   const { colors, theme } = useTheme();
   const navigation = useNavigation();
+  const { medicines: allMedicines, loadingMeds: loading, errorMeds: error } = useData();
+
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [medicineToDelete, setMedicineToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState('');
-  const [allMedicines, setAllMedicines] = useState([]);
   const [filteredMedicines, setFilteredMedicines] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   const styles = createStyles(colors, theme);
-  const searchQuery = route.params?.searchQuery || '';
-  const isFocused = useIsFocused();
+  const searchQuery = route?.params?.searchQuery || '';
 
   const memoizedFilteredMedicines = useMemo(() => {
     if (searchQuery) {
@@ -308,41 +306,6 @@ export default function MedicinesTab({ route }) {
     }
     return allMedicines;
   }, [allMedicines, searchQuery]);
-
-  useEffect(() => {
-    if (!isFocused || !auth.currentUser) {
-      setAllMedicines([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    const userId = auth.currentUser.uid;
-    const q = query(collection(db, 'medicines'), where('userId', '==', userId));
-    
-    const unsubscribe = onSnapshot(q, 
-      (querySnapshot) => {
-        try {
-          const medicines = querySnapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-          setAllMedicines(medicines);
-          setLoading(false);
-        } catch (error) {
-          console.error('Error processing medicines data:', error);
-          setError('Failed to load medicines');
-          setLoading(false);
-        }
-      },
-      (error) => {
-        console.error('Error fetching medicines:', error);
-        setError('Failed to load medicines');
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [isFocused]);
 
   useEffect(() => {
     setFilteredMedicines(memoizedFilteredMedicines);
@@ -430,6 +393,9 @@ export default function MedicinesTab({ route }) {
     );
   }
 
+  // PERF-4: single shared clock tick for all cards
+  const now = useNow(60000);
+
   return (
     <View style={styles.container}>
       {/* Stats Header */}
@@ -465,7 +431,8 @@ export default function MedicinesTab({ route }) {
         data={filteredMedicines}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
-          <MedicineDoseStatus medicine={item} handleDelete={handleDelete} index={index} />
+          // Pass shared `now` down so each card doesn't need its own interval
+          <MedicineDoseStatus medicine={item} handleDelete={handleDelete} index={index} now={now} />
         )}
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={600} style={styles.emptyContainer}>

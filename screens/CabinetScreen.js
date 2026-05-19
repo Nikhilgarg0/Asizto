@@ -1,143 +1,132 @@
-import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+// screens/CabinetScreen.js
+import React, { useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import PagerView from 'react-native-pager-view';
 import { createStackNavigator } from '@react-navigation/stack';
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 
-// Import our screens
 import MedicinesTab from './MedicinesTab';
 import AppointmentsTab from './AppointmentsTab';
 import AddMedicineScreen from './AddMedicineScreen';
 import AddAppointmentScreen from './AddAppointmentScreen';
 
-const TopTab = createMaterialTopTabNavigator();
 const Stack = createStackNavigator();
 
-function CabinetTabs() {
-  const { colors, theme } = useTheme();
-  
+const TABS = [
+  { key: 'medicines',    label: 'Medicines',    icon: 'medical'  },
+  { key: 'appointments', label: 'Appointments', icon: 'calendar' },
+];
+
+// ─── Custom pill tab switcher + swipeable pager ───────────────────────────────
+function CabinetHome() {
+  const { colors } = useTheme();
+  const [activeTab, setActiveTab] = useState(0);
+  const pagerRef = useRef(null);
+
+  const switchTab = (index) => {
+    setActiveTab(index);
+    pagerRef.current?.setPage(index);
+  };
+
   return (
-    <TopTab.Navigator
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.subtext,
-        tabBarStyle: { 
-          backgroundColor: colors.card,
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        },
-        tabBarIndicatorStyle: { 
-          backgroundColor: colors.primary,
-          height: 3,
-          borderRadius: 3,
-        },
-        tabBarLabelStyle: { 
-          fontWeight: '700',
-          fontSize: 14,
-          textTransform: 'none',
-          letterSpacing: 0.3,
-        },
-        tabBarItemStyle: {
-          paddingVertical: 4,
-        },
-        tabBarPressColor: `${colors.primary}15`,
-        tabBarIcon: ({ focused, color }) => null, // We'll add icons inline
-      }}
-    >
-      <TopTab.Screen 
-        name="Medicines" 
-        component={MedicinesTab}
-        options={{
-          tabBarLabel: 'Medicines',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons 
-              name={focused ? "medical" : "medical-outline"} 
-              size={20} 
-              color={color}
-              style={{ marginRight: 6 }}
-            />
-          ),
-        }}
-      />
-      <TopTab.Screen 
-        name="Appointments" 
-        component={AppointmentsTab}
-        options={{
-          tabBarLabel: 'Appointments',
-          tabBarIcon: ({ focused, color }) => (
-            <Ionicons 
-              name={focused ? "calendar" : "calendar-outline"} 
-              size={20} 
-              color={color}
-              style={{ marginRight: 6 }}
-            />
-          ),
-        }}
-      />
-    </TopTab.Navigator>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* ── Segmented pill control ── */}
+      <View style={[styles.segContainer, {
+        backgroundColor: colors.card,
+        borderColor: colors.border,
+      }]}>
+        {TABS.map((tab, i) => {
+          const active = activeTab === i;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[
+                styles.segment,
+                active && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => switchTab(i)}
+              activeOpacity={0.85}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={tab.label}
+            >
+              <Ionicons
+                name={active ? tab.icon : `${tab.icon}-outline`}
+                size={active ? 19 : 16}
+                color={active ? '#fff' : colors.subtext}
+              />
+              <Text style={[
+                styles.segLabel,
+                {
+                  color: active ? '#fff' : colors.subtext,
+                  fontWeight: active ? '700' : '500',
+                },
+              ]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Swipeable pager (native, no JS animation = no stuck indicator) ── */}
+      <PagerView
+        ref={pagerRef}
+        style={{ flex: 1 }}
+        initialPage={0}
+        onPageSelected={(e) => setActiveTab(e.nativeEvent.position)}
+      >
+        <View key="0" style={{ flex: 1 }}>
+          <MedicinesTab />
+        </View>
+        <View key="1" style={{ flex: 1 }}>
+          <AppointmentsTab />
+        </View>
+      </PagerView>
+    </View>
   );
 }
 
+// ─── Stack navigator (keeps AddMedicine / AddAppointment reachable) ───────────
 export default function CabinetScreen() {
-  const { colors, theme } = useTheme();
-  
+  const { colors } = useTheme();
+
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { 
+        headerStyle: {
           backgroundColor: colors.card,
           elevation: 0,
           shadowOpacity: 0,
           borderBottomWidth: 0,
         },
         headerTintColor: colors.primary,
-        headerTitleStyle: { 
-          color: colors.text,
-          fontWeight: '700',
-          fontSize: 18,
-        },
+        headerTitleStyle: { color: colors.text, fontWeight: '700', fontSize: 18 },
         headerBackTitleVisible: false,
-        headerLeftContainerStyle: {
-          paddingLeft: 8,
-        },
-        cardStyle: { 
-          backgroundColor: colors.background 
-        },
-        // Modern card animation
-        cardStyleInterpolator: ({ current, layouts }) => {
-          return {
-            cardStyle: {
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width, 0],
-                  }),
-                },
-              ],
-            },
-            overlayStyle: {
-              opacity: current.progress.interpolate({
+        headerLeftContainerStyle: { paddingLeft: 8 },
+        cardStyle: { backgroundColor: colors.background },
+        cardStyleInterpolator: ({ current, layouts }) => ({
+          cardStyle: {
+            transform: [{
+              translateX: current.progress.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0, 0.5],
+                outputRange: [layouts.screen.width, 0],
               }),
-            },
-          };
-        },
+            }],
+          },
+        }),
       }}
     >
       <Stack.Screen
-        name="CabinetTabs"
-        component={CabinetTabs}
+        name="CabinetHome"
+        component={CabinetHome}
         options={{ headerShown: false }}
       />
       <Stack.Screen
         name="AddMedicine"
         component={AddMedicineScreen}
-        options={{ 
+        options={{
           title: 'Add Medicine',
           headerStyle: {
             backgroundColor: colors.card,
@@ -152,7 +141,7 @@ export default function CabinetScreen() {
       <Stack.Screen
         name="AddAppointment"
         component={AddAppointmentScreen}
-        options={{ 
+        options={{
           title: 'Add Appointment',
           headerStyle: {
             backgroundColor: colors.card,
@@ -167,3 +156,29 @@ export default function CabinetScreen() {
     </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  segContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 4,
+    gap: 4,
+  },
+  segment: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  segLabel: {
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+});
