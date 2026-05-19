@@ -25,7 +25,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
         takenTimestamps: arrayUnion(new Date())
       });
       // UX-5: haptic feedback on successful dose mark
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
     } catch (error) {
       console.error('Error marking medicine as taken:', error);
       Alert.alert('Error', 'Failed to mark medicine as taken. Please try again.');
@@ -36,7 +36,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
     let text = '';
     let color = colors.subtext;
     let icon = 'medical-outline';
-    
+
     if (!medicine.quantity || medicine.quantity <= 0) {
       return { text: 'Quantity not specified', color: colors.subtext, icon: 'help-circle-outline' };
     }
@@ -44,7 +44,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
     const totalDosesTaken = medicine.takenTimestamps?.length || 0;
     const totalDosesPrescribed = medicine.quantity;
     const remainingDoses = totalDosesPrescribed - totalDosesTaken;
-    
+
     if (remainingDoses <= 0) {
       text = 'Medicine finished';
       color = '#95a5a6';
@@ -62,7 +62,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
       color = '#27ae60';
       icon = 'checkmark-circle';
     }
-    
+
     return { text, color, icon };
   }, [medicine.quantity, medicine.takenTimestamps, colors]);
 
@@ -108,11 +108,11 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
     for (const time of scheduleTimes) {
       const doseTimeToday = new Date(now);
       doseTimeToday.setHours(time.getHours(), time.getMinutes(), 0, 0);
-      
+
       const oneHourBefore = new Date(doseTimeToday.getTime() - 60 * 60 * 1000);
       const oneHourAfter = new Date(doseTimeToday.getTime() + 60 * 60 * 1000);
-      
-      const alreadyTaken = takenTimes.some(takenTime => 
+
+      const alreadyTaken = takenTimes.some(takenTime =>
         takenTime >= oneHourBefore && takenTime <= oneHourAfter
       );
 
@@ -137,14 +137,14 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
     const allDosesDone = !nextDoseTime && !isDoseDue && !isDoseAvailable;
 
     if (isDoseDue) {
-      return { 
-        type: 'due', 
+      return {
+        type: 'due',
         doseTime: doseToTake,
         message: `Due at ${doseToTake.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       };
     } else if (isDoseAvailable) {
-      return { 
-        type: 'available', 
+      return {
+        type: 'available',
         doseTime: doseToTake,
         timeUntil: timeUntilDose,
         message: `Available in ${timeUntilDose} min`
@@ -152,8 +152,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
     } else if (allDosesDone) {
       return { type: 'completed', message: 'All doses taken today' };
     } else if (nextDoseTime) {
-      return { 
-        type: 'next', 
+      return {
+        type: 'next',
         doseTime: nextDoseTime,
         message: `Next: ${nextDoseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       };
@@ -179,7 +179,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
       <View style={styles.medicineCard}>
         {/* Status Bar Indicator */}
         <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]} />
-        
+
         {/* Header */}
         <View style={styles.cardHeader}>
           <View style={styles.medicineHeaderLeft}>
@@ -193,7 +193,7 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
               )}
             </View>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.deleteButton}
             onPress={() => handleDelete(medicine)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -214,8 +214,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
                   {doseStatus.message}
                 </Text>
               </View>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.actionButtonDue]} 
+              <TouchableOpacity
+                style={[styles.actionButton, styles.actionButtonDue]}
                 onPress={() => handleMarkAsTaken(medicine.id)}
                 accessibilityLabel={`Take ${medicine.name} now`}
                 accessibilityRole="button"
@@ -232,8 +232,8 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
                   {doseStatus.message}
                 </Text>
               </View>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.actionButtonAvailable]} 
+              <TouchableOpacity
+                style={[styles.actionButton, styles.actionButtonAvailable]}
                 onPress={() => handleMarkAsTaken(medicine.id)}
                 accessibilityLabel={`Take ${medicine.name} early`}
                 accessibilityRole="button"
@@ -381,7 +381,7 @@ export default function MedicinesTab({ route } = {}) {
         <Ionicons name="alert-circle-outline" size={64} color="#e74c3c" />
         <Text style={styles.errorTitle}>Something went wrong</Text>
         <Text style={styles.errorMessage}>{error}</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.retryButton}
           onPress={() => setError(null)}
           accessibilityLabel="Retry loading medicines"
@@ -408,7 +408,7 @@ export default function MedicinesTab({ route } = {}) {
             <Text style={styles.statValue}>{stats.total}</Text>
             <Text style={styles.statLabel}>Active</Text>
           </View>
-          
+
           <View style={styles.statCard}>
             <View style={[styles.statIconCircle, { backgroundColor: '#fef3e2' }]}>
               <Ionicons name="alarm" size={20} color="#f39c12" />
@@ -416,7 +416,7 @@ export default function MedicinesTab({ route } = {}) {
             <Text style={styles.statValue}>{stats.dueNow}</Text>
             <Text style={styles.statLabel}>Scheduled</Text>
           </View>
-          
+
           <View style={styles.statCard}>
             <View style={[styles.statIconCircle, { backgroundColor: '#e8f5e9' }]}>
               <Ionicons name="checkmark-done" size={20} color="#27ae60" />
@@ -453,7 +453,7 @@ export default function MedicinesTab({ route } = {}) {
             >
               <Ionicons name="add-circle" size={20} color="#fff" />
               <Text style={styles.emptyActionText}>Add Medicine</Text>
-              
+
             </TouchableOpacity>
           </Animatable.View>
         }
@@ -518,7 +518,7 @@ export default function MedicinesTab({ route } = {}) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.modalButton, 
+                  styles.modalButton,
                   styles.modalDeleteButton,
                   (isDeleting || confirmText !== 'DELETE') && styles.modalButtonDisabled
                 ]}
@@ -551,9 +551,9 @@ export default function MedicinesTab({ route } = {}) {
 }
 
 const createStyles = (colors, theme) => StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: colors.background 
+  container: {
+    flex: 1,
+    backgroundColor: colors.background
   },
   loadingContainer: {
     flex: 1,
@@ -604,44 +604,45 @@ const createStyles = (colors, theme) => StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingTop: 2,
+    paddingBottom: 2,
     gap: 10,
   },
   statCard: {
+    flexDirection: 'row',
     flex: 1,
     backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 25,
+    padding: 5,
     alignItems: 'center',
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: theme === 'dark' ? 0.3 : 0.06,
     shadowRadius: 6,
     elevation: 3,
+    gap: 10,
   },
   statIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 22,
+    height: 22,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 6,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 2,
   },
   statLabel: {
     fontSize: 11,
     color: colors.subtext,
-    fontWeight: '600',
+    fontWeight: '500',
   },
 
   // List
-  listContainer: { 
+  listContainer: {
     padding: 16,
     paddingBottom: 100,
   },
@@ -662,10 +663,10 @@ const createStyles = (colors, theme) => StyleSheet.create({
     height: 3,
     width: '100%',
   },
-  cardHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 14,
     paddingBottom: 10,
   },
@@ -686,9 +687,9 @@ const createStyles = (colors, theme) => StyleSheet.create({
   medicineInfo: {
     flex: 1,
   },
-  medicineName: { 
-    fontSize: 17, 
-    fontWeight: '800', 
+  medicineName: {
+    fontSize: 17,
+    fontWeight: '800',
     color: colors.text,
     marginBottom: 3,
   },
@@ -704,8 +705,8 @@ const createStyles = (colors, theme) => StyleSheet.create({
   },
 
   // Status Section
-  statusSection: { 
-    paddingHorizontal: 14, 
+  statusSection: {
+    paddingHorizontal: 14,
     paddingBottom: 14,
     alignItems: 'center',
   },
@@ -722,11 +723,11 @@ const createStyles = (colors, theme) => StyleSheet.create({
     gap: 6,
     paddingVertical: 8,
   },
-  statusText: { 
-    fontSize: 15, 
+  statusText: {
+    fontSize: 15,
     fontWeight: '600',
   },
-  actionButton: { 
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
@@ -747,15 +748,15 @@ const createStyles = (colors, theme) => StyleSheet.create({
   actionButtonAvailable: {
     backgroundColor: colors.primary,
   },
-  actionButtonText: { 
-    color: '#fff', 
-    fontSize: 15, 
-    fontWeight: '700' 
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700'
   },
 
   // Footer
-  cardFooter: { 
-    flexDirection: 'row', 
+  cardFooter: {
+    flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -782,8 +783,8 @@ const createStyles = (colors, theme) => StyleSheet.create({
     backgroundColor: colors.border,
     marginHorizontal: 8,
   },
-  footerText: { 
-    fontSize: 12, 
+  footerText: {
+    fontSize: 12,
     color: colors.text,
     fontWeight: '600',
   },

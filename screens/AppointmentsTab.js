@@ -1,6 +1,17 @@
 // screens/AppointmentsTab.js - Enhanced Version
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  FlatList,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Modal,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../firebaseConfig';
@@ -22,9 +33,13 @@ export default function AppointmentsTab() {
   const [sortBy, setSortBy] = useState('date');
   const [filterStatus, setFilterStatus] = useState('all');
 
+  // Dropdown visibility state
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+
   useEffect(() => {
     let filtered = [...appointments];
-    
+
     if (filterStatus === 'upcoming') {
       filtered = filtered.filter(apt => {
         const aptDate = apt.date?.toDate ? apt.date.toDate() : new Date(apt.date);
@@ -36,11 +51,11 @@ export default function AppointmentsTab() {
         return aptDate <= new Date();
       });
     }
-    
+
     filtered.sort((a, b) => {
       const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
       const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-      
+
       switch (sortBy) {
         case 'date':
           return dateA - dateB;
@@ -50,7 +65,7 @@ export default function AppointmentsTab() {
           return dateA - dateB;
       }
     });
-    
+
     setFilteredAppointments(filtered);
   }, [appointments, sortBy, filterStatus]);
 
@@ -112,12 +127,12 @@ export default function AppointmentsTab() {
   const getTimeUntil = (date) => {
     const now = new Date();
     const diff = date - now;
-    
+
     if (diff < 0) return null;
-    
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
+
     if (days > 0) return `in ${days}d ${hours}h`;
     if (hours > 0) return `in ${hours}h`;
     return 'Soon';
@@ -127,14 +142,14 @@ export default function AppointmentsTab() {
 
   const getStatusColor = (item) => {
     if (item.attended) return '#27ae60';
-    
+
     const aptDateObj = item.date && item.date.toDate ? item.date.toDate() : (item.date ? new Date(item.date) : null);
     if (!aptDateObj) return colors.primary;
-    
+
     const now = new Date();
     const diff = aptDateObj - now;
     const hours = diff / (1000 * 60 * 60);
-    
+
     if (diff < 0) return '#95a5a6';
     if (hours <= 24) return '#e74c3c';
     if (hours <= 72) return '#f39c12';
@@ -143,14 +158,14 @@ export default function AppointmentsTab() {
 
   const getStatusIcon = (item) => {
     if (item.attended) return 'checkmark-circle';
-    
+
     const aptDateObj = item.date && item.date.toDate ? item.date.toDate() : (item.date ? new Date(item.date) : null);
     if (!aptDateObj) return 'calendar';
-    
+
     const now = new Date();
     const diff = aptDateObj - now;
     const hours = diff / (1000 * 60 * 60);
-    
+
     if (diff < 0) return 'time-outline';
     if (hours <= 24) return 'alert-circle';
     return 'calendar';
@@ -162,17 +177,17 @@ export default function AppointmentsTab() {
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
+
     const isToday = aptDate.toDateString() === now.toDateString();
     const isTomorrow = aptDate.toDateString() === tomorrow.toDateString();
-    
+
     const timeStr = aptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    
+
     if (isToday) return `Today at ${timeStr}`;
     if (isTomorrow) return `Tomorrow at ${timeStr}`;
-    
-    return aptDate.toLocaleDateString('en-US', { 
-      month: 'short', 
+
+    return aptDate.toLocaleDateString('en-US', {
+      month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit'
@@ -187,6 +202,15 @@ export default function AppointmentsTab() {
 
   const attendedCount = appointments.filter(apt => apt.attended).length;
 
+  // Dropdown option labels
+  const filterLabels = { all: 'All', upcoming: 'Upcoming', past: 'Past' };
+  const sortLabels = { date: 'By Date', doctor: 'By Doctor' };
+
+  const closeDropdowns = () => {
+    setShowSortDropdown(false);
+    setShowFilterDropdown(false);
+  };
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
@@ -198,132 +222,194 @@ export default function AppointmentsTab() {
 
   return (
     <View style={styles.container}>
-      {/* Header Stats */}
-      <Animatable.View animation="fadeInDown" duration={600} style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <View style={[styles.statIconCircle, { backgroundColor: `${colors.primary}20` }]}>
-            <Ionicons name="calendar" size={24} color={colors.primary} />
+
+      {/* ── Compact Stats Strip ── */}
+      <Animatable.View animation="fadeInDown" duration={500} style={styles.statsStrip}>
+        <View style={styles.statChip}>
+          <View style={[styles.statDot, { backgroundColor: `${colors.primary}25` }]}>
+            <Ionicons name="calendar" size={13} color={colors.primary} />
           </View>
-          <Text style={styles.statValue}>{appointments.length}</Text>
-          <Text style={styles.statLabel}>Total</Text>
+          <Text style={styles.statChipValue}>{appointments.length}</Text>
+          <Text style={styles.statChipLabel}>Total</Text>
         </View>
-        
-        <View style={styles.statCard}>
-          <View style={[styles.statIconCircle, { backgroundColor: '#fef3e2' }]}>
-            <Ionicons name="time" size={24} color="#f39c12" />
+
+        <View style={styles.statDivider} />
+
+        <View style={styles.statChip}>
+          <View style={[styles.statDot, { backgroundColor: '#fef3e2' }]}>
+            <Ionicons name="time" size={13} color="#f39c12" />
           </View>
-          <Text style={styles.statValue}>{upcomingCount}</Text>
-          <Text style={styles.statLabel}>Upcoming</Text>
+          <Text style={styles.statChipValue}>{upcomingCount}</Text>
+          <Text style={styles.statChipLabel}>Upcoming</Text>
         </View>
-        
-        <View style={styles.statCard}>
-          <View style={[styles.statIconCircle, { backgroundColor: '#e8f5e9' }]}>
-            <Ionicons name="checkmark-done" size={24} color="#27ae60" />
+
+        <View style={styles.statDivider} />
+
+        <View style={styles.statChip}>
+          <View style={[styles.statDot, { backgroundColor: '#e8f5e9' }]}>
+            <Ionicons name="checkmark-done" size={13} color="#27ae60" />
           </View>
-          <Text style={styles.statValue}>{attendedCount}</Text>
-          <Text style={styles.statLabel}>Attended</Text>
+          <Text style={styles.statChipValue}>{attendedCount}</Text>
+          <Text style={styles.statChipLabel}>Attended</Text>
         </View>
       </Animatable.View>
 
-      {/* Filter Pills */}
-      <Animatable.View animation="fadeIn" duration={600} delay={100}>
-        <View style={styles.filterSection}>
-          <Text style={styles.filterSectionLabel}>Filter</Text>
-          <View style={styles.filterPills}>
-            <TouchableOpacity 
-              style={[styles.filterPill, filterStatus === 'all' && styles.filterPillActive]}
-              onPress={() => setFilterStatus('all')}
-              accessibilityLabel="Filter all appointments"
-              accessibilityRole="button"
-            >
-              <Ionicons 
-                name="apps" 
-                size={16} 
-                color={filterStatus === 'all' ? '#fff' : colors.text} 
-              />
-              <Text style={[styles.filterPillText, filterStatus === 'all' && styles.filterPillTextActive]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.filterPill, filterStatus === 'upcoming' && styles.filterPillActive]}
-              onPress={() => setFilterStatus('upcoming')}
-              accessibilityLabel="Filter upcoming appointments"
-              accessibilityRole="button"
-            >
-              <Ionicons 
-                name="arrow-forward-circle" 
-                size={16} 
-                color={filterStatus === 'upcoming' ? '#fff' : colors.text} 
-              />
-              <Text style={[styles.filterPillText, filterStatus === 'upcoming' && styles.filterPillTextActive]}>
-                Upcoming
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.filterPill, filterStatus === 'past' && styles.filterPillActive]}
-              onPress={() => setFilterStatus('past')}
-              accessibilityLabel="Filter past appointments"
-              accessibilityRole="button"
-            >
-              <Ionicons 
-                name="time" 
-                size={16} 
-                color={filterStatus === 'past' ? '#fff' : colors.text} 
-              />
-              <Text style={[styles.filterPillText, filterStatus === 'past' && styles.filterPillTextActive]}>
-                Past
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* ── Toolbar: Sort & Filter Dropdowns ── */}
+      <Animatable.View animation="fadeIn" duration={500} delay={80} style={styles.toolbar}>
+        <Text style={styles.toolbarCount}>
+          {filteredAppointments.length} appointment{filteredAppointments.length !== 1 ? 's' : ''}
+        </Text>
 
-        <View style={styles.filterSection}>
-          <Text style={styles.filterSectionLabel}>Sort by</Text>
-          <View style={styles.filterPills}>
-            <TouchableOpacity 
-              style={[styles.filterPill, sortBy === 'date' && styles.filterPillActive]}
-              onPress={() => setSortBy('date')}
-              accessibilityLabel="Sort by date"
+        <View style={styles.toolbarActions}>
+          {/* Filter Button */}
+          <View>
+            <TouchableOpacity
+              style={[
+                styles.toolbarBtn,
+                showFilterDropdown && styles.toolbarBtnActive,
+                filterStatus !== 'all' && styles.toolbarBtnSelected,
+              ]}
+              onPress={() => {
+                setShowFilterDropdown(v => !v);
+                setShowSortDropdown(false);
+              }}
+              accessibilityLabel="Filter appointments"
               accessibilityRole="button"
             >
-              <Ionicons 
-                name="calendar-outline" 
-                size={16} 
-                color={sortBy === 'date' ? '#fff' : colors.text} 
+              <Ionicons
+                name="funnel-outline"
+                size={14}
+                color={filterStatus !== 'all' ? '#fff' : showFilterDropdown ? colors.primary : colors.subtext}
               />
-              <Text style={[styles.filterPillText, sortBy === 'date' && styles.filterPillTextActive]}>
-                Date
+              <Text style={[
+                styles.toolbarBtnText,
+                (filterStatus !== 'all') && { color: '#fff' },
+                showFilterDropdown && filterStatus === 'all' && { color: colors.primary },
+              ]}>
+                {filterLabels[filterStatus]}
               </Text>
+              <Ionicons
+                name={showFilterDropdown ? 'chevron-up' : 'chevron-down'}
+                size={12}
+                color={filterStatus !== 'all' ? '#fff' : showFilterDropdown ? colors.primary : colors.subtext}
+              />
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.filterPill, sortBy === 'doctor' && styles.filterPillActive]}
-              onPress={() => setSortBy('doctor')}
-              accessibilityLabel="Sort by doctor"
+
+            {showFilterDropdown && (
+              <View style={[styles.dropdown, { right: 0 }]}>
+                {[
+                  { key: 'all', icon: 'apps-outline', label: 'All' },
+                  { key: 'upcoming', icon: 'arrow-forward-circle-outline', label: 'Upcoming' },
+                  { key: 'past', icon: 'time-outline', label: 'Past' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.dropdownItem, filterStatus === opt.key && styles.dropdownItemActive]}
+                    onPress={() => { setFilterStatus(opt.key); setShowFilterDropdown(false); }}
+                    accessibilityLabel={`Filter: ${opt.label}`}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={opt.icon}
+                      size={15}
+                      color={filterStatus === opt.key ? colors.primary : colors.subtext}
+                    />
+                    <Text style={[
+                      styles.dropdownItemText,
+                      filterStatus === opt.key && { color: colors.primary, fontWeight: '700' },
+                    ]}>
+                      {opt.label}
+                    </Text>
+                    {filterStatus === opt.key && (
+                      <Ionicons name="checkmark" size={14} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Sort Button */}
+          <View>
+            <TouchableOpacity
+              style={[
+                styles.toolbarBtn,
+                showSortDropdown && styles.toolbarBtnActive,
+              ]}
+              onPress={() => {
+                setShowSortDropdown(v => !v);
+                setShowFilterDropdown(false);
+              }}
+              accessibilityLabel="Sort appointments"
               accessibilityRole="button"
             >
-              <Ionicons 
-                name="person-outline" 
-                size={16} 
-                color={sortBy === 'doctor' ? '#fff' : colors.text} 
+              <Ionicons
+                name="swap-vertical-outline"
+                size={14}
+                color={showSortDropdown ? colors.primary : colors.subtext}
               />
-              <Text style={[styles.filterPillText, sortBy === 'doctor' && styles.filterPillTextActive]}>
-                Doctor
+              <Text style={[
+                styles.toolbarBtnText,
+                showSortDropdown && { color: colors.primary },
+              ]}>
+                {sortLabels[sortBy]}
               </Text>
+              <Ionicons
+                name={showSortDropdown ? 'chevron-up' : 'chevron-down'}
+                size={12}
+                color={showSortDropdown ? colors.primary : colors.subtext}
+              />
             </TouchableOpacity>
+
+            {showSortDropdown && (
+              <View style={[styles.dropdown, { right: 0 }]}>
+                {[
+                  { key: 'date', icon: 'calendar-outline', label: 'By Date' },
+                  { key: 'doctor', icon: 'person-outline', label: 'By Doctor' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.dropdownItem, sortBy === opt.key && styles.dropdownItemActive]}
+                    onPress={() => { setSortBy(opt.key); setShowSortDropdown(false); }}
+                    accessibilityLabel={`Sort: ${opt.label}`}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={opt.icon}
+                      size={15}
+                      color={sortBy === opt.key ? colors.primary : colors.subtext}
+                    />
+                    <Text style={[
+                      styles.dropdownItemText,
+                      sortBy === opt.key && { color: colors.primary, fontWeight: '700' },
+                    ]}>
+                      {opt.label}
+                    </Text>
+                    {sortBy === opt.key && (
+                      <Ionicons name="checkmark" size={14} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
         </View>
       </Animatable.View>
 
-      {/* Appointments List */}
+      {/* Dismiss dropdowns when tapping list area */}
+      {(showFilterDropdown || showSortDropdown) && (
+        <TouchableWithoutFeedback onPress={closeDropdowns}>
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
+        </TouchableWithoutFeedback>
+      )}
+
+      {/* ── Appointments List ── */}
       <FlatList
         data={filteredAppointments}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onScrollBeginDrag={closeDropdowns}
         renderItem={({ item, index }) => {
           const aptDateObj = item.date && item.date.toDate ? item.date.toDate() : (item.date ? new Date(item.date) : null);
           const isPast = aptDateObj ? (aptDateObj <= new Date()) : false;
@@ -341,7 +427,7 @@ export default function AppointmentsTab() {
             >
               {/* Status Indicator Bar */}
               <View style={[styles.statusBar, { backgroundColor: statusColor }]} />
-              
+
               {/* Card Header */}
               <View style={styles.appointmentHeader}>
                 <View style={styles.appointmentHeaderLeft}>
@@ -357,9 +443,9 @@ export default function AppointmentsTab() {
                     </Text>
                   </View>
                 </View>
-                
-                <TouchableOpacity 
-                  onPress={() => handleDelete(item.id)} 
+
+                <TouchableOpacity
+                  onPress={() => handleDelete(item.id)}
                   style={styles.deleteIconButton}
                   accessibilityLabel={`Delete appointment with ${item.doctorName ?? 'doctor'}`}
                   accessibilityRole="button"
@@ -394,7 +480,7 @@ export default function AppointmentsTab() {
                   <Ionicons name="checkmark-circle" size={18} color="#27ae60" />
                   <Text style={styles.attendedBannerText}>
                     Attended {item.attendedAt ? (
-                      item.attendedAt.toDate 
+                      item.attendedAt.toDate
                         ? `on ${item.attendedAt.toDate().toLocaleDateString()}`
                         : `on ${new Date(item.attendedAt).toLocaleDateString()}`
                     ) : ''}
@@ -412,8 +498,8 @@ export default function AppointmentsTab() {
                 </View>
 
                 {!item.attended && canShowMark && (
-                  <TouchableOpacity 
-                    onPress={() => handleMarkAttended(item)} 
+                  <TouchableOpacity
+                    onPress={() => handleMarkAttended(item)}
                     style={[styles.markAttendedButton, { backgroundColor: statusColor }]}
                     accessibilityLabel={`Mark appointment with ${item.doctorName ?? 'doctor'} as attended`}
                     accessibilityRole="button"
@@ -431,15 +517,15 @@ export default function AppointmentsTab() {
             <View style={styles.emptyIconCircle}>
               <Ionicons name="calendar-outline" size={56} color={colors.primary} />
             </View>
-            <Text style={styles.emptyTitle}> 
-              {filterStatus === 'all' ? 'No Appointments Yet' : 
-               filterStatus === 'upcoming' ? 'No Upcoming Appointments' : 
-               'No Past Appointments'}
+            <Text style={styles.emptyTitle}>
+              {filterStatus === 'all' ? 'No Appointments Yet' :
+                filterStatus === 'upcoming' ? 'No Upcoming Appointments' :
+                  'No Past Appointments'}
             </Text>
-            <Text style={styles.emptySubtitle}> 
-              {filterStatus === 'all' ? 'Start tracking your medical appointments by adding your first one.' : 
-               filterStatus === 'upcoming' ? 'All your appointments are in the past or completed.' : 
-               'You have no past appointment records.'}
+            <Text style={styles.emptySubtitle}>
+              {filterStatus === 'all' ? 'Start tracking your medical appointments by adding your first one.' :
+                filterStatus === 'upcoming' ? 'All your appointments are in the past or completed.' :
+                  'You have no past appointment records.'}
             </Text>
             <TouchableOpacity
               onPress={() => navigation.navigate('AddAppointment')}
@@ -449,7 +535,6 @@ export default function AppointmentsTab() {
             >
               <Ionicons name="add-circle" size={20} color="#fff" />
               <Text style={styles.emptyButtonText}>Add Appointment</Text>
-              
             </TouchableOpacity>
           </Animatable.View>
         }
@@ -473,96 +558,142 @@ const createStyles = (colors, theme) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  
-  // Stats Cards
-  statsContainer: {
+
+  // ── Compact Stats Strip ──
+  statsStrip: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 10,
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 12,
     alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: theme === 'dark' ? 0.3 : 0.06,
-    shadowRadius: 6,
-    elevation: 3,
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginTop: 2,
+    marginBottom: 10,
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: theme === 'dark' ? 0.25 : 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  statIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  statChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  statDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
   },
-  statValue: {
-    fontSize: 20,
+  statChipValue: {
+    fontSize: 17,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 2,
   },
-  statLabel: {
+  statChipLabel: {
     fontSize: 11,
     color: colors.subtext,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  statDivider: {
+    width: 1.5,
+    height: 22,
+    backgroundColor: colors.border,
+    marginHorizontal: 10,
   },
 
-  // Filter Section
-  filterSection: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  filterSectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.subtext,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  filterPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  filterPill: {
+  // ── Toolbar ──
+  toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    zIndex: 100,
+  },
+  toolbarCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.subtext,
+  },
+  toolbarActions: {
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 100,
+  },
+  toolbarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 5,
-    borderWidth: 1.5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: colors.card,
+    borderWidth: 1,
     borderColor: colors.border,
   },
-  filterPillActive: {
+  toolbarBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}10`,
+  },
+  toolbarBtnSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  filterPillText: {
+  toolbarBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.text,
-  },
-  filterPillTextActive: {
-    color: '#fff',
+    color: colors.subtext,
   },
 
-  // List
+  // ── Dropdown ──
+  dropdown: {
+    position: 'absolute',
+    top: 38,
+    minWidth: 150,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme === 'dark' ? 0.4 : 0.12,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 999,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dropdownItemActive: {
+    backgroundColor: `${colors.primary}0D`,
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text,
+  },
+
+  // ── List ──
   listContent: {
     padding: 16,
+    paddingTop: 4,
     paddingBottom: 100,
   },
 
-  // Appointment Card
+  // ── Appointment Card ──
   appointmentCard: {
     backgroundColor: colors.card,
     borderRadius: 14,
@@ -697,7 +828,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     color: '#fff',
   },
 
-  // Empty State
+  // ── Empty State ──
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -747,7 +878,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     color: '#fff',
   },
 
-  // FAB
+  // ── FAB ──
   fab: {
     position: 'absolute',
     width: 60,

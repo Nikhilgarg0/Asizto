@@ -14,7 +14,7 @@ import AddAppointmentScreen from './AddAppointmentScreen';
 const Stack = createStackNavigator();
 
 const TABS = [
-  { key: 'medicines',    label: 'Medicines',    icon: 'medical'  },
+  { key: 'medicines', label: 'Medicines', icon: 'medical' },
   { key: 'appointments', label: 'Appointments', icon: 'calendar' },
 ];
 
@@ -163,10 +163,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 14,
     marginBottom: 10,
-    borderRadius: 14,
+    borderRadius: 25,
     borderWidth: 1,
     padding: 4,
-    gap: 4,
+    gap: 2,
   },
   segment: {
     flex: 1,
@@ -175,10 +175,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 7,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 25,
   },
   segLabel: {
     fontSize: 13,
-    letterSpacing: 0.2,
+    letterSpacing: 1,
   },
 });

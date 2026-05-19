@@ -1103,7 +1103,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 2,
     gap: 10,
   },
   searchInput: {
