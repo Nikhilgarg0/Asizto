@@ -66,7 +66,7 @@ react {
 /**
  * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
  */
-def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: true).toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.nikhilgarg8982.Asizto1'
+    namespace 'in.nikhilcodes.asizto'
     defaultConfig {
-        applicationId 'com.nikhilgarg8982.Asizto1'
+        applicationId 'in.nikhilcodes.asizto'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -104,19 +104,33 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Load release signing credentials from ~/.gradle/gradle.properties or local.properties
+            // Never commit keystore or passwords to version control.
+            if (project.hasProperty('ASIZTO_RELEASE_STORE_FILE')) {
+                storeFile file(ASIZTO_RELEASE_STORE_FILE)
+                storePassword ASIZTO_RELEASE_STORE_PASSWORD
+                keyAlias ASIZTO_RELEASE_KEY_ALIAS
+                keyPassword ASIZTO_RELEASE_KEY_PASSWORD
+            } else {
+                // Fallback to debug keystore in CI/local when release key not provided
+                storeFile file('debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            signingConfig signingConfigs.release
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'true'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
         }

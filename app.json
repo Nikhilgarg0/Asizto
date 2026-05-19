@@ -1,8 +1,11 @@
 {
   "expo": {
     "name": "Asizto India",
-    "slug": "Asizto India",
+    "slug": "asizto-india",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,8 +15,23 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/asizto-india"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "in.nikhilcodes.asizto",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Asizto India uses your location to find nearby pharmacies and emergency services.",
+        "NSLocationAlwaysUsageDescription": "Asizto India uses your location to provide emergency assistance.",
+        "NSCameraUsageDescription": "Asizto India needs camera access to take a profile photo.",
+        "NSPhotoLibraryUsageDescription": "Asizto India needs photo library access to set your profile picture."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,20 +39,67 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.nikhilgarg8982.Asizto1"
+      "package": "in.nikhilcodes.asizto",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.INTERNET",
+        "android.permission.VIBRATE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "asizto.nikhilcodes.in",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "scheme": "asizto",
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "extra": {
+      "eas": {
+        "projectId": "asizto-india"
+      }
+    },
+    "owner": "nikhilgarg0",
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-font",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#06B6D4",
+          "sounds": []
+        }
+      ],
+      [
         "expo-image-picker",
         {
-          "photosPermission": "Asizto needs photo access to set your profile picture.",
-          "cameraPermission": "Asizto needs camera access to take a profile photo."
+          "photosPermission": "Asizto India needs photo access to set your profile picture.",
+          "cameraPermission": "Asizto India needs camera access to take a profile photo."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Asizto India uses your location to find nearby pharmacies and emergency services."
         }
       ]
     ]

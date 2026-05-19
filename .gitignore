@@ -14,6 +14,7 @@ expo-env.d.ts
 *.p8
 *.p12
 *.key
+*.keystore
 *.mobileprovision
 
 # Metro
@@ -36,6 +37,12 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# Production secrets — NEVER commit these
+local.properties
+android/local.properties
+google-services-account.json
+*-release.keystore
+release.keystore
+
+# generated native folders (android IS tracked for bare workflow)
 /ios
-/android
