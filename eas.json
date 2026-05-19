@@ -13,6 +13,10 @@
       },
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "NODE_ENV": "development",
+        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
       }
     },
     "preview": {
@@ -22,6 +26,10 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
       }
     },
     "production": {
@@ -34,7 +42,9 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "NODE_ENV": "production",
+        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
       }
     }
   },
