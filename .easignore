@@ -1,0 +1,33 @@
+# Node modules & package managers
+node_modules/
+.yarn/
+
+# Expo & Metro caches
+.expo/
+dist/
+web-build/
+metro-cache/
+
+# Local Native Android build folders (Crucial: prevents uploading hundreds of MBs of cache)
+android/app/build/
+android/build/
+android/.gradle/
+.gradle/
+
+# Production secrets & local properties
+.env
+.env*.local
+*.keystore
+*.jks
+*.key
+*.pem
+google-services-account.json
+local.properties
+android/local.properties
+
+# Logs and system files
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

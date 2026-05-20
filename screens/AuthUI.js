@@ -152,12 +152,25 @@ export const Field = ({
     const focused = useRef(new Animated.Value(0)).current;
     const { colors, theme } = useTheme();
 
-    const onFocus = () => Animated.spring(focused, { toValue: 1, friction: 5, useNativeDriver: false }).start();
-    const onBlur = () => Animated.spring(focused, { toValue: 0, friction: 5, useNativeDriver: false }).start();
+    const onFocus = () => Animated.spring(focused, { toValue: 1, friction: 6, tension: 60, useNativeDriver: false }).start();
+    const onBlur = () => Animated.spring(focused, { toValue: 0, friction: 6, tension: 60, useNativeDriver: false }).start();
 
-    const border = focused.interpolate({ inputRange: [0, 1], outputRange: [error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.4)' : '#111111'] });
-    const bg = focused.interpolate({ inputRange: [0, 1], outputRange: [theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'] });
-    const shadow = focused.interpolate({ inputRange: [0, 1], outputRange: [0, isDark ? 8 : 4] });
+    const border = focused.interpolate({
+        inputRange: [0, 1],
+        outputRange: [
+            error ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            error ? '#E05555' : colors.primary
+        ]
+    });
+    const bg = focused.interpolate({
+        inputRange: [0, 1],
+        outputRange: [
+            theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+            theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.035)'
+        ]
+    });
+    const shadow = focused.interpolate({ inputRange: [0, 1], outputRange: [0, 6] });
+    const shadowOpacity = focused.interpolate({ inputRange: [0, 1], outputRange: [0, theme === 'dark' ? 0.35 : 0.18] });
 
     const wrapper = animValue ? {
         opacity: animValue,
@@ -177,7 +190,7 @@ export const Field = ({
                 backgroundColor: bg, overflow: 'hidden',
                 minHeight: multiline ? 88 : 50,
                 shadowColor: colors.primary, shadowRadius: shadow,
-                shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5,
+                shadowOffset: { width: 0, height: 2 }, shadowOpacity: shadowOpacity,
                 elevation: 0,
             }}>
                 {prefix ? (
@@ -293,17 +306,22 @@ export const Pills = ({ options, selected, onSelect, isDark }) => {
         <View style={{ flexDirection: 'row', gap: 9 }}>
             {options.map(({ value, label }) => {
                 const sel = selected === value;
+                const scale = useRef(new Animated.Value(1)).current;
+                const onIn = () => Animated.spring(scale, { toValue: 0.94, friction: 3, useNativeDriver: true }).start();
+                const onOut = () => Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
                 return (
-                    <Pressable key={value} onPress={() => { haptic(); onSelect(value); }} style={{ flex: 1 }}>
-                        {sel ? (
-                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
-                                <Text style={{ color: colors.background, fontWeight: '800', fontSize: 13 }}>{label}</Text>
-                            </View>
-                        ) : (
-                            <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}>
-                                <Text style={{ color: colors.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
-                            </View>
-                        )}
+                    <Pressable key={value} onPressIn={onIn} onPressOut={onOut} onPress={() => { haptic(); onSelect(value); }} style={{ flex: 1 }}>
+                        <Animated.View style={{ transform: [{ scale }] }}>
+                            {sel ? (
+                                <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', backgroundColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+                                    <Text style={{ color: colors.background, fontWeight: '800', fontSize: 13 }}>{label}</Text>
+                                </View>
+                            ) : (
+                                <View style={{ paddingVertical: 11, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.card }}>
+                                    <Text style={{ color: colors.subtext, fontWeight: '600', fontSize: 13 }}>{label}</Text>
+                                </View>
+                            )}
+                        </Animated.View>
                     </Pressable>
                 );
             })}

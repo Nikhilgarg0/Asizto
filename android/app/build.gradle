@@ -87,7 +87,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.nikhilgarg8982.Asizto1'
+    namespace 'in.nikhilcodes.asizto'
     defaultConfig {
         applicationId 'in.nikhilcodes.asizto'
         minSdkVersion rootProject.ext.minSdkVersion

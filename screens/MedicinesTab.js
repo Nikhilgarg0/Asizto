@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { db } from '../firebaseConfig';
@@ -400,29 +400,33 @@ export default function MedicinesTab({ route } = {}) {
     <View style={styles.container}>
       {/* Stats Header */}
       {!searchQuery && allMedicines.length > 0 && (
-        <Animatable.View animation="fadeInDown" duration={600} style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconCircle, { backgroundColor: `${colors.primary}20` }]}>
-              <Ionicons name="medical" size={20} color={colors.primary} />
+        <Animatable.View animation="fadeInDown" duration={600} style={styles.statsStrip}>
+          <View style={styles.statChip}>
+            <View style={[styles.statDot, { backgroundColor: `${colors.primary}25` }]}>
+              <Ionicons name="medical" size={13} color={colors.primary} />
             </View>
-            <Text style={styles.statValue}>{stats.total}</Text>
-            <Text style={styles.statLabel}>Active</Text>
+            <Text style={styles.statChipValue}>{stats.total}</Text>
+            <Text style={styles.statChipLabel}>Active</Text>
           </View>
 
-          <View style={styles.statCard}>
-            <View style={[styles.statIconCircle, { backgroundColor: '#fef3e2' }]}>
-              <Ionicons name="alarm" size={20} color="#f39c12" />
+          <View style={styles.statDivider} />
+
+          <View style={styles.statChip}>
+            <View style={[styles.statDot, { backgroundColor: '#fef3e2' }]}>
+              <Ionicons name="alarm" size={13} color="#f39c12" />
             </View>
-            <Text style={styles.statValue}>{stats.dueNow}</Text>
-            <Text style={styles.statLabel}>Scheduled</Text>
+            <Text style={styles.statChipValue}>{stats.dueNow}</Text>
+            <Text style={styles.statChipLabel}>Scheduled</Text>
           </View>
 
-          <View style={styles.statCard}>
-            <View style={[styles.statIconCircle, { backgroundColor: '#e8f5e9' }]}>
-              <Ionicons name="checkmark-done" size={20} color="#27ae60" />
+          <View style={styles.statDivider} />
+
+          <View style={styles.statChip}>
+            <View style={[styles.statDot, { backgroundColor: '#e8f5e9' }]}>
+              <Ionicons name="checkmark-done" size={13} color="#27ae60" />
             </View>
-            <Text style={styles.statValue}>{stats.completed}</Text>
-            <Text style={styles.statLabel}>Finished</Text>
+            <Text style={styles.statChipValue}>{stats.completed}</Text>
+            <Text style={styles.statChipLabel}>Finished</Text>
           </View>
         </Animatable.View>
       )}
@@ -476,64 +480,69 @@ export default function MedicinesTab({ route } = {}) {
           }
         }}
       >
-        <View style={styles.modalOverlay}>
-          <Animatable.View animation="zoomIn" duration={300} style={styles.modalContent}>
-            <View style={styles.modalIcon}>
-              <Ionicons name="warning" size={48} color="#e74c3c" />
-            </View>
-            <Text style={styles.modalTitle}>Delete Medicine</Text>
-            <Text style={styles.modalMessage}>
-              This will cancel all future reminders for <Text style={styles.modalMedicineName}>{medicineToDelete?.name}</Text>. This action cannot be undone.
-            </Text>
-
-            <View style={styles.confirmInputContainer}>
-              <Text style={styles.confirmLabel}>
-                Type <Text style={styles.confirmHighlight}>DELETE</Text> to confirm
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <Animatable.View animation="zoomIn" duration={300} style={styles.modalContent}>
+              <View style={styles.modalIcon}>
+                <Ionicons name="warning" size={48} color="#e74c3c" />
+              </View>
+              <Text style={styles.modalTitle}>Delete Medicine</Text>
+              <Text style={styles.modalMessage}>
+                This will cancel all future reminders for <Text style={styles.modalMedicineName}>{medicineToDelete?.name}</Text>. This action cannot be undone.
               </Text>
-              <TextInput
-                placeholder="DELETE"
-                placeholderTextColor={colors.subtext}
-                value={confirmText}
-                onChangeText={setConfirmText}
-                style={styles.confirmInput}
-                autoCapitalize="characters"
-                accessibilityLabel="Type DELETE to confirm medicine deletion"
-              />
-            </View>
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalCancelButton]}
-                onPress={() => {
-                  if (!isDeleting) {
-                    setDeleteModalVisible(false);
-                    setConfirmText('');
-                  }
-                }}
-                disabled={isDeleting}
-                accessibilityLabel="Cancel medicine deletion"
-                accessibilityRole="button"
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.modalDeleteButton,
-                  (isDeleting || confirmText !== 'DELETE') && styles.modalButtonDisabled
-                ]}
-                onPress={confirmDelete}
-                disabled={isDeleting || confirmText !== 'DELETE'}
-                accessibilityLabel="Confirm delete medicine"
-                accessibilityRole="button"
-              >
-                <Text style={styles.modalDeleteText}>
-                  {isDeleting ? 'Deleting...' : 'Delete'}
+              <View style={styles.confirmInputContainer}>
+                <Text style={styles.confirmLabel}>
+                  Type <Text style={styles.confirmHighlight}>DELETE</Text> to confirm
                 </Text>
-              </TouchableOpacity>
-            </View>
-          </Animatable.View>
-        </View>
+                <TextInput
+                  placeholder="DELETE"
+                  placeholderTextColor={colors.subtext}
+                  value={confirmText}
+                  onChangeText={setConfirmText}
+                  style={styles.confirmInput}
+                  autoCapitalize="characters"
+                  accessibilityLabel="Type DELETE to confirm medicine deletion"
+                />
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalCancelButton]}
+                  onPress={() => {
+                    if (!isDeleting) {
+                      setDeleteModalVisible(false);
+                      setConfirmText('');
+                    }
+                  }}
+                  disabled={isDeleting}
+                  accessibilityLabel="Cancel medicine deletion"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    styles.modalDeleteButton,
+                    (isDeleting || confirmText !== 'DELETE') && styles.modalButtonDisabled
+                  ]}
+                  onPress={confirmDelete}
+                  disabled={isDeleting || confirmText !== 'DELETE'}
+                  accessibilityLabel="Confirm delete medicine"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.modalDeleteText}>
+                    {isDeleting ? 'Deleting...' : 'Delete'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Animatable.View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* FAB */}
@@ -600,45 +609,52 @@ const createStyles = (colors, theme) => StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Stats
-  statsContainer: {
+  // ── Compact Stats Strip ──
+  statsStrip: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 2,
-    paddingBottom: 2,
-    gap: 10,
-  },
-  statCard: {
-    flexDirection: 'row',
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: 25,
-    padding: 5,
     alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: theme === 'dark' ? 0.3 : 0.06,
-    shadowRadius: 6,
-    elevation: 3,
-    gap: 10,
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    marginTop: 2,
+    marginBottom: 10,
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: theme === 'dark' ? 0.25 : 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  statIconCircle: {
+  statChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  statDot: {
     width: 22,
     height: 22,
-    borderRadius: 25,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 6,
   },
-  statValue: {
+  statChipValue: {
     fontSize: 17,
     fontWeight: '800',
     color: colors.text,
   },
-  statLabel: {
+  statChipLabel: {
     fontSize: 11,
     color: colors.subtext,
     fontWeight: '500',
+  },
+  statDivider: {
+    width: 1.5,
+    height: 22,
+    backgroundColor: colors.border,
+    marginHorizontal: 10,
   },
 
   // List

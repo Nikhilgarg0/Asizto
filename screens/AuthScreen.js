@@ -117,6 +117,7 @@ export default function AuthScreen() {
   const [drinking, setDrinking] = useState('no');
   const [selectedAvatarKey, setSelectedAvatarKey] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // ── OTP ─────────────────────────────────────────────────────────────────────
   const [signupOtp, setSignupOtp] = useState('');
@@ -234,6 +235,7 @@ export default function AuthScreen() {
     if (emailTaken) e.email = 'Already registered — log in instead.';
     if (!password) e.password = 'Password is required.';
     else if (password.length < 6) e.password = 'Min. 6 characters.';
+    if (!acceptedTerms) e.terms = 'You must accept the terms and conditions.';
     setErrors(p => ({ ...p, ...e }));
     return !Object.keys(e).length;
   };
@@ -256,7 +258,36 @@ export default function AuthScreen() {
 
   const fromStep1 = async () => {
     if (!v1()) return;
+
+    // If a background email check is still running, do a fresh live check now
+    // to avoid a race condition where the user taps Continue before the debounce fires.
+    const trimmedEmail = email.trim().toLowerCase();
+    if (checkingEmail) {
+      // Wait for the in-flight check to settle (max ~1.5s)
+      setIsLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 900));
+      setIsLoading(false);
+      // Re-read emailTaken state after waiting — if still taken, bail
+      if (emailTaken) {
+        setErrors(p => ({ ...p, email: 'Already registered — log in instead.' }));
+        return;
+      }
+    }
+
+    // Final authoritative check: query Firebase directly before sending OTP
     setIsLoading(true);
+    try {
+      const methods = await fetchSignInMethodsForEmail(auth, trimmedEmail);
+      if (methods.length > 0) {
+        setEmailTaken(true);
+        setErrors(p => ({ ...p, email: 'Already registered — log in instead.' }));
+        setIsLoading(false);
+        return;
+      }
+    } catch (_) {
+      // Network/auth error — let it proceed; Firebase will catch it at account creation
+    }
+
     await sendSignupOtp();
     setIsLoading(false);
     goTo(2, 'forward');
@@ -323,6 +354,7 @@ export default function AuthScreen() {
           setHeight, setWeight].forEach(fn => fn(''));
         [setDob, setGender, setBloodGroup, setSelectedAvatarKey].forEach(fn => fn(null));
         setConditions([]); setSmoking('no'); setDrinking('no');
+        setAcceptedTerms(false);
       }, 1500);
     } catch (err) {
       setBanner({ type: 'error', message: friendlyErr(err, 'signup') });
@@ -354,6 +386,7 @@ export default function AuthScreen() {
           lastName={lastName} setLastName={v => { setLastName(v); setErrors(p => ({ ...p, lastName: undefined })); }}
           email={email} setEmail={v => { setEmail(v); setErrors(p => ({ ...p, email: undefined })); }}
           password={password} setPassword={v => { setPassword(v); setErrors(p => ({ ...p, password: undefined })); }}
+          acceptedTerms={acceptedTerms} setAcceptedTerms={v => { setAcceptedTerms(v); setErrors(p => ({ ...p, terms: undefined })); }}
           isCheckingEmail={checkingEmail} isEmailTaken={emailTaken}
           onNext={fromStep1} {...base}
         />
@@ -455,7 +488,7 @@ export default function AuthScreen() {
             ]}>
               {/* Top gradient accent */}
               <LinearGradient
-                colors={['#888888', colors.primary, 'transparent']}
+                colors={[colors.primary, '#34D9A0', colors.primary]}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={s.accent}
               />
@@ -557,14 +590,14 @@ const s = StyleSheet.create({
   root: { flex: 1 },
   safe: { flex: 1 },
   kav: { flex: 1 },
-  scroll: { alignItems: 'center', paddingHorizontal: 16, paddingTop: 20 },
+  scroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 24 },
 
   logoWrap: { alignItems: 'center', marginBottom: 18 },
-  logo: { width: 155, height: 58 },
+  logo: { width: 155 * 2, height: 58 * 2 },
   logoText: { fontSize: 20, fontWeight: '900', letterSpacing: 3 },
 
   card: {
-    borderRadius: 22, padding: 22, borderWidth: 1.5, overflow: 'hidden',
+    borderRadius: 30, padding: 30, borderWidth: 0, overflow: 'hidden',
     shadowRadius: 30, shadowOffset: { width: 0, height: 14 }, elevation: 18,
   },
   accent: { height: 3, position: 'absolute', top: 0, left: 0, right: 0 },

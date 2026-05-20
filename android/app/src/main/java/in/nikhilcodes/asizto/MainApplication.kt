@@ -1,4 +1,4 @@
-package com.nikhilgarg8982.Asizto1
+package `in`.nikhilcodes.asizto
 
 import android.app.Application
 import android.content.res.Configuration

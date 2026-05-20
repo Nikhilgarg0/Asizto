@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import {
     View, Text, Image, Pressable, ScrollView,
     Animated, ActivityIndicator, Platform, useWindowDimensions,
+    Linking, Modal,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
@@ -18,6 +19,13 @@ import {
     Field, Btn, GhostBtn, Pills, GenderPicker, Chip, OTPRow, Label,
     useStagger,
 } from './AuthUI';
+
+let Haptics = null;
+try { Haptics = require('expo-haptics'); } catch (_) { }
+
+const haptic = (style = 'Light') => {
+    try { Haptics?.impactAsync(Haptics.ImpactFeedbackStyle[style]); } catch (_) { }
+};
 
 const fmt = d => d
     ? d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -115,6 +123,7 @@ export function LoginView({
 export function Step1Account({
     firstName, setFirstName, lastName, setLastName,
     email, setEmail, password, setPassword,
+    acceptedTerms, setAcceptedTerms,
     errors, isDark, onNext, isCheckingEmail, isEmailTaken,
 }) {
     const [showPwd, setShowPwd] = useState(false);
@@ -197,6 +206,51 @@ export function Step1Account({
                     <Text style={{ color: strength.color, fontSize: 13, fontWeight: '700', marginTop: 4 }}>{strength.label} password</Text>
                 </Animated.View>
             )}
+
+            <Animated.View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginBottom: errors.terms ? 6 : 16,
+                marginTop: 6,
+                paddingHorizontal: 2,
+                opacity: anims[4] || 1
+            }}>
+                <Pressable
+                    onPress={() => {
+                        setAcceptedTerms(!acceptedTerms);
+                    }}
+                    style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        borderWidth: 1.5,
+                        borderColor: errors.terms ? '#E05555' : acceptedTerms ? colors.primary : colors.subtext,
+                        backgroundColor: acceptedTerms ? `${colors.primary}15` : 'transparent',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 10,
+                    }}
+                    accessibilityLabel="Accept Terms and Conditions"
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: acceptedTerms }}
+                >
+                    {acceptedTerms && <Ionicons name="checkmark" size={15} color={colors.primary} />}
+                </Pressable>
+                <Text style={{ flex: 1, fontSize: 13, color: colors.subtext, lineHeight: 18 }}>
+                    I agree to the{' '}
+                    <Text
+                        onPress={() => Linking.openURL('https://asizto.nikhilcodes.in/docs/terms-and-conditions')}
+                        style={{ color: colors.primary, fontWeight: '700', textDecorationLine: 'underline' }}
+                    >
+                        Terms & Conditions
+                    </Text>
+                </Text>
+            </Animated.View>
+            {errors.terms ? (
+                <Text style={{ color: '#E05555', fontSize: 12, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>
+                    {errors.terms}
+                </Text>
+            ) : null}
 
             <Animated.View style={{ opacity: anims[4], transform: [{ translateY: anims[4].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
                 <Btn title="Continue" icon="arrow-forward" onPress={onNext} style={{ marginTop: 4 }} />
@@ -301,13 +355,37 @@ export function Step3Details({
                 </Pressable>
                 {errors.dob ? <Text style={{ color: '#E05555', fontSize: 13, fontWeight: '600', marginBottom: 12, marginLeft: 2 }}>{errors.dob}</Text> : null}
                 {showDatePicker && (
-                    <DateTimePicker
-                        value={dob || new Date(2000, 0, 1)}
-                        mode="date"
-                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        maximumDate={new Date()}
-                        onChange={(_, d) => { setShowDatePicker(false); if (d) setDob(d); }}
-                    />
+                    Platform.OS === 'ios' ? (
+                        <Modal transparent visible={showDatePicker} animationType="slide">
+                            <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                                <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 30 }}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1.5, borderColor: colors.border }}>
+                                        <Pressable onPress={() => setShowDatePicker(false)}>
+                                            <Text style={{ color: colors.subtext, fontSize: 16, fontWeight: '600' }}>Cancel</Text>
+                                        </Pressable>
+                                        <Pressable onPress={() => setShowDatePicker(false)}>
+                                            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Done</Text>
+                                        </Pressable>
+                                    </View>
+                                    <DateTimePicker
+                                        value={dob || new Date(2000, 0, 1)}
+                                        mode="date"
+                                        display="spinner"
+                                        maximumDate={new Date()}
+                                        onChange={(_, d) => { if (d) setDob(d); }}
+                                    />
+                                </View>
+                            </View>
+                        </Modal>
+                    ) : (
+                        <DateTimePicker
+                            value={dob || new Date(2000, 0, 1)}
+                            mode="date"
+                            display="default"
+                            maximumDate={new Date()}
+                            onChange={(_, d) => { setShowDatePicker(false); if (d) setDob(d); }}
+                        />
+                    )
                 )}
             </Animated.View>
 
@@ -340,6 +418,65 @@ export function Step3Details({
     );
 }
 
+// ─── MEDICAL CHIP FOR PREMIUM SELECTOR ────────────────────────────────────────
+function MedicalChip({ label, selected, isCustom, onPress, isDark }) {
+    const { colors } = useTheme();
+    const scale = useRef(new Animated.Value(1)).current;
+    
+    const onIn = () => Animated.spring(scale, { toValue: 0.93, friction: 3, useNativeDriver: true }).start();
+    const onOut = () => Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
+    
+    return (
+        <Pressable onPressIn={onIn} onPressOut={onOut} onPress={onPress}>
+            <Animated.View style={{ transform: [{ scale }] }}>
+                {selected ? (
+                    <View style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 9,
+                        borderRadius: 20,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        backgroundColor: isCustom ? `${colors.primary}18` : colors.primary,
+                        borderWidth: 1.5,
+                        borderColor: colors.primary,
+                    }}>
+                        <Ionicons 
+                            name={isCustom ? "close" : "checkmark"} 
+                            size={13} 
+                            color={isCustom ? colors.primary : colors.background} 
+                        />
+                        <Text style={{ 
+                            color: isCustom ? colors.text : colors.background, 
+                            fontSize: 13, 
+                            fontWeight: '700' 
+                        }}>{label}</Text>
+                    </View>
+                ) : (
+                    <View style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 9,
+                        borderRadius: 20,
+                        borderWidth: 1.5,
+                        borderColor: colors.border,
+                        backgroundColor: colors.card,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6
+                    }}>
+                        <Ionicons name="add" size={13} color={colors.subtext} />
+                        <Text style={{ 
+                            color: colors.subtext, 
+                            fontSize: 13, 
+                            fontWeight: '600' 
+                        }}>{label}</Text>
+                    </View>
+                )}
+            </Animated.View>
+        </Pressable>
+    );
+}
+
 // ─── STEP 4 — Health profile ──────────────────────────────────────────────────
 export function Step4Health({
     heightVal, setHeight, weightVal, setWeight,
@@ -348,14 +485,68 @@ export function Step4Health({
     errors, isDark, onNext, onBack,
 }) {
     const [showBlood, setShowBlood] = useState(false);
+    const [customCond, setCustomCond] = useState('');
     const { colors, theme } = useTheme();
     const pillOpts = HABITS.map(v => ({ value: v, label: HABIT_LABELS[v] }));
-    const { anims } = useStagger(7, { delay: 40, duration: 260 });
+    const { anims } = useStagger(8, { delay: 40, duration: 260 });
+
+    // Live BMI calculations
+    const height = parseFloat(heightVal);
+    const weight = parseFloat(weightVal);
+    const bmiValue = (height && weight && height > 0 && weight > 0)
+        ? (weight / Math.pow(height / 100, 2)).toFixed(1)
+        : null;
+
+    let bmiCategory = '';
+    let bmiColor = '';
+    let bmiBgColor = '';
+
+    if (bmiValue) {
+        const bmi = parseFloat(bmiValue);
+        if (bmi < 18.5) {
+            bmiCategory = 'Underweight';
+            bmiColor = '#F0A030';
+            bmiBgColor = 'rgba(240, 160, 48, 0.12)';
+        } else if (bmi >= 18.5 && bmi <= 24.9) {
+            bmiCategory = 'Normal Weight';
+            bmiColor = colors.success || '#4CAF50';
+            bmiBgColor = theme === 'dark' ? 'rgba(76, 175, 80, 0.16)' : 'rgba(76, 175, 80, 0.08)';
+        } else if (bmi >= 25 && bmi <= 29.9) {
+            bmiCategory = 'Overweight';
+            bmiColor = '#F0A030';
+            bmiBgColor = 'rgba(240, 160, 48, 0.12)';
+        } else {
+            bmiCategory = 'Obese';
+            bmiColor = '#E05555';
+            bmiBgColor = 'rgba(224, 85, 85, 0.12)';
+        }
+    }
+
+    const handleAddCustomCondition = () => {
+        const trimmed = customCond.trim();
+        if (!trimmed) return;
+        
+        // Match casing of predefined conditions if there is a case-insensitive match
+        const predefinedMatch = CONDITIONS.find(c => c.toLowerCase() === trimmed.toLowerCase());
+        const condToAdd = predefinedMatch || trimmed;
+        
+        // Add if not already selected (case insensitive)
+        const exists = conditions.some(c => c.toLowerCase() === condToAdd.toLowerCase());
+        if (!exists) {
+            toggleCondition(condToAdd);
+        }
+        setCustomCond('');
+        try {
+            haptic('Success');
+        } catch (_) {}
+    };
+
+    const uniqueConditions = [...new Set([...CONDITIONS, ...conditions])];
 
     return (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
             <Animated.View style={{ opacity: anims[0], transform: [{ translateY: anims[0].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 0 }}>
                     <View style={{ flex: 1 }}>
                         <Label isDark={isDark}>Height (cm)</Label>
                         <Field placeholder="170" value={heightVal} onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))} isDark={isDark} keyboardType="numeric" />
@@ -367,7 +558,31 @@ export function Step4Health({
                 </View>
             </Animated.View>
 
-            <Animated.View style={{ opacity: anims[1], transform: [{ translateY: anims[1].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            {/* Dynamic BMI calculator card */}
+            {bmiValue && (
+                <Animated.View style={{
+                    opacity: anims[1], transform: [{ translateY: anims[1].interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                    padding: 15, borderRadius: 16, backgroundColor: bmiBgColor,
+                    borderWidth: 1.5, borderColor: bmiColor + '30',
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                    marginTop: -2, marginBottom: 14,
+                }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: bmiColor + '20', alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="speedometer-outline" size={20} color={bmiColor} />
+                        </View>
+                        <View>
+                            <Text style={{ fontSize: 10, color: colors.subtext, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Calculated BMI</Text>
+                            <Text style={{ fontSize: 19, fontWeight: '900', color: colors.text, marginTop: 1 }}>{bmiValue}</Text>
+                        </View>
+                    </View>
+                    <View style={{ backgroundColor: bmiColor, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 }}>
+                        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{bmiCategory}</Text>
+                    </View>
+                </Animated.View>
+            )}
+
+            <Animated.View style={{ opacity: anims[2], transform: [{ translateY: anims[2].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
                 <Label isDark={isDark}>Blood Group</Label>
                 <Pressable
                     onPress={() => setShowBlood(v => !v)}
@@ -403,26 +618,67 @@ export function Step4Health({
                 )}
             </Animated.View>
 
-            <Animated.View style={{ opacity: anims[2], transform: [{ translateY: anims[2].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            <Animated.View style={{ opacity: anims[3], transform: [{ translateY: anims[3].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
                 <Label isDark={isDark}>Medical Conditions (Optional)</Label>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                    {CONDITIONS.map(cond => (
-                        <Chip key={cond} label={cond} selected={conditions.includes(cond)} onPress={() => toggleCondition(cond)} isDark={isDark} />
-                    ))}
+                
+                {/* Search & Custom Add Input */}
+                <View style={{ marginBottom: 12 }}>
+                    <Field
+                        placeholder="Search or add custom condition (e.g. Migraine)"
+                        value={customCond}
+                        onChangeText={setCustomCond}
+                        isDark={isDark}
+                        onSubmitEditing={handleAddCustomCondition}
+                        right={
+                            customCond.trim().length > 0 ? (
+                                <Pressable
+                                    onPress={handleAddCustomCondition}
+                                    style={{
+                                        paddingHorizontal: 15,
+                                        height: '100%',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        backgroundColor: 'transparent',
+                                    }}
+                                    accessibilityLabel="Add custom condition"
+                                    accessibilityRole="button"
+                                >
+                                    <Ionicons name="add-circle" size={24} color={colors.primary} />
+                                </Pressable>
+                            ) : null
+                        }
+                    />
+                </View>
+
+                {/* Chips Grid */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                    {uniqueConditions.map(cond => {
+                        const isCustom = !CONDITIONS.includes(cond);
+                        return (
+                            <MedicalChip 
+                                key={cond} 
+                                label={cond} 
+                                selected={conditions.includes(cond)} 
+                                isCustom={isCustom}
+                                onPress={() => toggleCondition(cond)} 
+                                isDark={isDark} 
+                            />
+                        );
+                    })}
                 </View>
             </Animated.View>
 
-            <Animated.View style={{ opacity: anims[3], transform: [{ translateY: anims[3].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            <Animated.View style={{ opacity: anims[4], transform: [{ translateY: anims[4].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
                 <Label isDark={isDark}>Smoking Habits</Label>
                 <View style={{ marginBottom: 14 }}><Pills options={pillOpts} selected={smoking} onSelect={setSmoking} isDark={isDark} /></View>
             </Animated.View>
 
-            <Animated.View style={{ opacity: anims[4], transform: [{ translateY: anims[4].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+            <Animated.View style={{ opacity: anims[5], transform: [{ translateY: anims[5].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
                 <Label isDark={isDark}>Drinking Habits</Label>
                 <View style={{ marginBottom: 18 }}><Pills options={pillOpts} selected={drinking} onSelect={setDrinking} isDark={isDark} /></View>
             </Animated.View>
 
-            <Animated.View style={{ opacity: anims[5], transform: [{ translateY: anims[5].interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}>
+            <Animated.View style={{ opacity: anims[6], transform: [{ translateY: anims[6].interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                     <View style={{ flex: 1 }}><GhostBtn title="Back" icon="arrow-back-outline" onPress={onBack} isDark={isDark} /></View>
                     <View style={{ flex: 1.6 }}><Btn title="Continue" icon="arrow-forward" onPress={onNext} /></View>

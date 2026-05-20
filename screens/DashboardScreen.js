@@ -97,7 +97,8 @@ export default function DashboardScreen({ navigation }) {
 
   // Track keyboard height so the result panel matches it exactly
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const show = Keyboard.addListener(showEvent, (e) => {
       setKeyboardHeight(e.endCoordinates.height);
       resultPanelAnim.setValue(e.endCoordinates.height + 40);
     });
@@ -301,8 +302,13 @@ export default function DashboardScreen({ navigation }) {
       weightedSum += drinkingPct * weights.drinking;
 
       let conditionsPct = 100;
-      if (profile.conditions && Array.isArray(profile.conditions)) {
-        const condCount = profile.conditions.length;
+      if (profile.conditions) {
+        const condArr = Array.isArray(profile.conditions)
+          ? profile.conditions
+          : typeof profile.conditions === 'string'
+            ? profile.conditions.split(',').map(c => c.trim()).filter(Boolean)
+            : [];
+        const condCount = condArr.length;
         if (condCount === 0) conditionsPct = 100;
         else if (condCount <= 2) conditionsPct = 85;
         else if (condCount <= 4) conditionsPct = 70;
@@ -577,7 +583,11 @@ export default function DashboardScreen({ navigation }) {
           return Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
         } catch (e) { return 'unknown'; }
       })() : 'unknown');
-      const conditions = (userProfile.conditions && userProfile.conditions.length > 0) ? userProfile.conditions.join(', ') : 'none';
+      const conditions = userProfile.conditions
+        ? Array.isArray(userProfile.conditions)
+          ? userProfile.conditions.join(', ')
+          : userProfile.conditions
+        : 'none';
       const smoking = userProfile.smoking || userProfile.smokingFreq || 'No';
       const drinking = userProfile.drinking || userProfile.drinkingFreq || 'No';
       const bmiVal = bmiData.value || 'N/A';
@@ -685,8 +695,7 @@ export default function DashboardScreen({ navigation }) {
       <OnboardingModal />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 80}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <View style={{ flex: 1 }}>

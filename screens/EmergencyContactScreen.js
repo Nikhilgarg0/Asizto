@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { auth, db } from '../firebaseConfig';
 import { collection, addDoc, Timestamp } from "firebase/firestore";
 import { useTheme } from '../context/ThemeContext';
@@ -42,39 +42,44 @@ export default function EmergencyContactScreen({ navigation }) {
   const styles = createStyles(colors);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.label}>Contact Name</Text>
-      <TextInput
-        placeholder="e.g., Jane Doe"
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-        placeholderTextColor={colors.subtext}
-      />
-      
-      <Text style={styles.label}>Contact Phone Number</Text>
-      <TextInput
-        placeholder="e.g., 9876543210"
-        style={styles.input}
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
-        placeholderTextColor={colors.subtext}
-      />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1, backgroundColor: colors.background }}
+    >
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Text style={styles.label}>Contact Name</Text>
+        <TextInput
+          placeholder="e.g., Jane Doe"
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor={colors.subtext}
+        />
+        
+        <Text style={styles.label}>Contact Phone Number</Text>
+        <TextInput
+          placeholder="e.g., 9876543210"
+          style={styles.input}
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+          placeholderTextColor={colors.subtext}
+        />
 
-      <Text style={styles.label}>Relationship</Text>
-      <TextInput
-        placeholder="e.g., Mother, Doctor, Friend"
-        style={styles.input}
-        value={relationship}
-        onChangeText={setRelationship}
-        placeholderTextColor={colors.subtext}
-      />
+        <Text style={styles.label}>Relationship</Text>
+        <TextInput
+          placeholder="e.g., Mother, Doctor, Friend"
+          style={styles.input}
+          value={relationship}
+          onChangeText={setRelationship}
+          placeholderTextColor={colors.subtext}
+        />
 
-      <TouchableOpacity style={styles.button} onPress={saveContact}>
-        <Text style={styles.buttonText}>Save Contact</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity style={styles.button} onPress={saveContact}>
+          <Text style={styles.buttonText}>Save Contact</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
