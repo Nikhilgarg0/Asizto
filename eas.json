@@ -15,8 +15,7 @@
         "simulator": true
       },
       "env": {
-        "NODE_ENV": "development",
-        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
+        "NODE_ENV": "development"
       }
     },
     "preview": {
@@ -28,8 +27,7 @@
         "simulator": false
       },
       "env": {
-        "NODE_ENV": "production",
-        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
+        "NODE_ENV": "production"
       }
     },
     "production": {
@@ -43,8 +41,7 @@
       },
       "env": {
         "APP_ENV": "production",
-        "NODE_ENV": "production",
-        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
+        "NODE_ENV": "production"
       }
     }
   },
