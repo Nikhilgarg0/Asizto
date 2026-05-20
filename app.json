@@ -16,8 +16,8 @@
       "backgroundColor": "#ffffff"
     },
     "updates": {
-      "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/asizto-india"
+      "enabled": true,
+      "url": "https://u.expo.dev/cfae5437-9b6b-43f3-ab56-abff66ab70d4"
     },
     "assetBundlePatterns": [
       "**/*"
