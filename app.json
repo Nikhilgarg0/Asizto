@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Asizto India",
+    "name": "ASIZTO India",
     "slug": "asizto-india",
     "version": "1.0.0",
     "runtimeVersion": {
@@ -27,10 +27,10 @@
       "bundleIdentifier": "in.nikhilcodes.asizto",
       "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Asizto India uses your location to find nearby pharmacies and emergency services.",
-        "NSLocationAlwaysUsageDescription": "Asizto India uses your location to provide emergency assistance.",
-        "NSCameraUsageDescription": "Asizto India needs camera access to take a profile photo.",
-        "NSPhotoLibraryUsageDescription": "Asizto India needs photo library access to set your profile picture."
+        "NSLocationWhenInUseUsageDescription": "ASIZTO India uses your location to find nearby pharmacies and emergency services.",
+        "NSLocationAlwaysUsageDescription": "ASIZTO India uses your location to provide emergency assistance.",
+        "NSCameraUsageDescription": "ASIZTO India needs camera access to take a profile photo.",
+        "NSPhotoLibraryUsageDescription": "ASIZTO India needs photo library access to set your profile picture."
       }
     },
     "android": {
@@ -94,14 +94,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Asizto India needs photo access to set your profile picture.",
-          "cameraPermission": "Asizto India needs camera access to take a profile photo."
+          "photosPermission": "ASIZTO India needs photo access to set your profile picture.",
+          "cameraPermission": "ASIZTO India needs camera access to take a profile photo."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Asizto India uses your location to find nearby pharmacies and emergency services."
+          "locationWhenInUsePermission": "ASIZTO India uses your location to find nearby pharmacies and emergency services."
         }
       ]
     ]
