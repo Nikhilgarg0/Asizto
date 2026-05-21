@@ -1,5 +1,5 @@
 // screens/CabinetScreen.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -19,15 +19,33 @@ const TABS = [
 ];
 
 // ─── Custom pill tab switcher + swipeable pager ───────────────────────────────
-function CabinetHome() {
+function CabinetHome({ route, navigation }) {
   const { colors } = useTheme();
-  const [activeTab, setActiveTab] = useState(0);
+  
+  // Safely parse nested screen params
+  const getInitialTab = () => {
+    const targetScreen = route?.params?.screen;
+    if (targetScreen === 'Appointments') return 1;
+    return 0; // Default to Medicines (tab 0)
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialTab());
   const pagerRef = useRef(null);
 
   const switchTab = (index) => {
     setActiveTab(index);
     pagerRef.current?.setPage(index);
   };
+
+  // Dynamically switch tab when navigation params change
+  useEffect(() => {
+    const targetScreen = route?.params?.screen;
+    if (targetScreen === 'Appointments') {
+      switchTab(1);
+    } else if (targetScreen === 'Medicines') {
+      switchTab(0);
+    }
+  }, [route?.params?.screen]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -78,10 +96,10 @@ function CabinetHome() {
         onPageSelected={(e) => setActiveTab(e.nativeEvent.position)}
       >
         <View key="0" style={{ flex: 1 }}>
-          <MedicinesTab />
+          <MedicinesTab route={route} />
         </View>
         <View key="1" style={{ flex: 1 }}>
-          <AppointmentsTab />
+          <AppointmentsTab route={route} />
         </View>
       </PagerView>
     </View>
@@ -94,6 +112,7 @@ export default function CabinetScreen() {
 
   return (
     <Stack.Navigator
+      initialRouteName="CabinetHome"
       screenOptions={{
         headerStyle: {
           backgroundColor: colors.card,

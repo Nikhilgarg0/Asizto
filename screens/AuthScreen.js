@@ -1,57 +1,27 @@
-
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Animated, Easing, SafeAreaView,
   KeyboardAvoidingView, Platform, ScrollView, Pressable,
-  useWindowDimensions, ActivityIndicator, UIManager,
+  useWindowDimensions, ActivityIndicator, BackHandler,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 
-import { auth, db } from '../firebaseConfig';
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  fetchSignInMethodsForEmail,
-} from 'firebase/auth';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { sendOTP, verifyOTP, clearOTP } from '../services/emailService';
-
 import { Blob, ProgressStepper, Banner } from './AuthUI';
 import { useTheme } from '../context/ThemeContext';
+import useAuthFlow from '../hooks/useAuthFlow';
 
 import {
   LoginView, Step1Account, Step2Verify,
   Step3Details, Step4Health, Step5Avatar,
 } from './AuthSteps';
 
-let Haptics = null;
-try { Haptics = require('expo-haptics'); } catch (_) { }
-
 let LogoLight = null, LogoDark = null;
 try { LogoLight = require('../assets/Brandkit/LightLogo.png'); } catch (_) { }
 try { LogoDark = require('../assets/Brandkit/DarkLogo.png'); } catch (_) { }
 
-
-function friendlyErr(e, ctx = 'login') {
-  switch (e?.code) {
-    case 'auth/invalid-email': return 'Invalid email address.';
-    case 'auth/user-not-found': return 'No account found with that email.';
-    case 'auth/wrong-password':
-    case 'auth/invalid-credential': return 'Incorrect email or password.';
-    case 'auth/too-many-requests': return 'Too many attempts — try again later.';
-    case 'auth/network-request-failed': return 'Network error. Check your connection.';
-    case 'auth/email-already-in-use': return 'Email already registered — please log in.';
-    case 'auth/weak-password': return 'Password too weak (min 6 characters).';
-    default: return ctx === 'signup' ? 'Could not create account. Try again.' : 'Sign in failed. Try again.';
-  }
-}
-
 // ─── Directional slide transition engine ──────────────────────────────────────
-// Returns a component that slides/fades child content when `stepKey` changes.
-// direction: 'forward' slides new content in from right; 'back' from left.
 function StepSlide({ children, stepKey, direction }) {
   const { width } = useWindowDimensions();
   const tx = useRef(new Animated.Value(0)).current;
@@ -63,11 +33,9 @@ function StepSlide({ children, stepKey, direction }) {
     prevKey.current = stepKey;
 
     const isForward = direction === 'forward';
-    // Instantly place new content off-screen
     tx.setValue(isForward ? width * 0.35 : -width * 0.35);
     op.setValue(0);
 
-    // Slide in + fade in
     Animated.parallel([
       Animated.spring(tx, {
         toValue: 0,
@@ -95,51 +63,44 @@ export default function AuthScreen() {
   const { colors, theme } = useTheme();
   const isDark = theme === 'dark';
   const { width, height } = useWindowDimensions();
-  // ── View state ──────────────────────────────────────────────────────────────
-  const [isLogin, setIsLogin] = useState(true);
-  const [signupStep, setSignupStep] = useState(1);
-  const [loginStep, setLoginStep] = useState('credentials');
-  const [direction, setDirection] = useState('forward');
 
-  // ── Form fields ─────────────────────────────────────────────────────────────
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phoneDigits, setPhoneDigits] = useState('');
-  const [dob, setDob] = useState(null);
-  const [gender, setGender] = useState(null);
-  const [heightVal, setHeight] = useState('');
-  const [weightVal, setWeight] = useState('');
-  const [bloodGroup, setBloodGroup] = useState(null);
-  const [conditions, setConditions] = useState([]);
-  const [smoking, setSmoking] = useState('no');
-  const [drinking, setDrinking] = useState('no');
-  const [selectedAvatarKey, setSelectedAvatarKey] = useState(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  // Consume hook for form states, status and authentication events
+  const {
+    isLogin, setIsLogin,
+    signupStep, setSignupStep,
+    loginStep, setLoginStep,
+    direction,
+    email, setEmail,
+    password, setPassword,
+    firstName, setFirstName,
+    lastName, setLastName,
+    phoneDigits, setPhoneDigits,
+    dob, setDob,
+    gender, setGender,
+    heightVal, setHeight,
+    weightVal, setWeight,
+    bloodGroup, setBloodGroup,
+    conditions, toggleCondition,
+    smoking, setSmoking,
+    drinking, setDrinking,
+    selectedAvatarKey, setSelectedAvatarKey,
+    showDatePicker, setShowDatePicker,
+    acceptedTerms, setAcceptedTerms,
+    signupOtp, setSignupOtp,
+    loginOtp, setLoginOtp,
+    signupCooldown, loginCooldown,
+    sendingSignupOtp, sendingLoginOtp,
+    isLoading, errors, setErrors,
+    banner, setBanner,
+    goTo, fromStep1, fromStep2, fromStep3, fromStep4,
+    handleSignup, handleLogin, sendSignupOtp
+  } = useAuthFlow();
 
-  // ── OTP ─────────────────────────────────────────────────────────────────────
-  const [signupOtp, setSignupOtp] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
-  const [signupCooldown, setSignupCooldown] = useState(0);
-  const [loginCooldown, setLoginCooldown] = useState(0);
-  const [sendingSignupOtp, setSendingSignupOtp] = useState(false);
-  const [sendingLoginOtp, setSendingLoginOtp] = useState(false);
-  const signupTimer = useRef(null);
-  const loginTimer = useRef(null);
-  // Ref always holds the latest OTP — bypasses stale-closure in fromStep2
-  const signupOtpRef = useRef('');
+  // ── Layout & View Animations ───────────────────────────────────────────────
+  const [viewKey, setViewKey] = useState(isLogin ? 'login' : 'signup');
+  const viewTx = useRef(new Animated.Value(0)).current;
+  const viewOp = useRef(new Animated.Value(1)).current;
 
-  // ── Status ──────────────────────────────────────────────────────────────────
-  const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [banner, setBanner] = useState(null);
-  const [checkingEmail, setCheckingEmail] = useState(false);
-  const [emailTaken, setEmailTaken] = useState(false);
-  const emailTimer = useRef(null);
-
-  // ── Entrance animations ─────────────────────────────────────────────────────
   const cardScale = useRef(new Animated.Value(0.93)).current;
   const cardOp = useRef(new Animated.Value(0)).current;
   const cardY = useRef(new Animated.Value(30)).current;
@@ -160,10 +121,26 @@ export default function AuthScreen() {
     ]).start();
   }, []);
 
-  // ── Login <-> Signup transition ─────────────────────────────────────────────
-  const [viewKey, setViewKey] = useState('login');
-  const viewTx = useRef(new Animated.Value(0)).current;
-  const viewOp = useRef(new Animated.Value(1)).current;
+  // Synchronize viewKey with isLogin changes (handles Async draft restoration)
+  useEffect(() => {
+    setViewKey(isLogin ? 'login' : 'signup');
+  }, [isLogin]);
+
+  // Intercept hardware back button on Android during multi-step signup
+  useEffect(() => {
+    const handleBackPress = () => {
+      if (!isLogin && signupStep > 1) {
+        goTo(signupStep - 1, 'back');
+        return true; // prevent default behavior
+      }
+      return false; // let the default back button behavior happen
+    };
+
+    BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    return () => {
+      BackHandler.removeEventListener('hardwareBackPress', handleBackPress);
+    };
+  }, [isLogin, signupStep, goTo]);
 
   const switchView = useCallback((toLogin) => {
     const dir = toLogin ? -1 : 1;
@@ -179,267 +156,71 @@ export default function AuthScreen() {
         Animated.timing(viewOp, { toValue: 1, duration: 220, easing: Easing.out(Easing.quad), useNativeDriver: true }),
       ]).start();
     });
-  }, [width]);
+  }, [width, setIsLogin]);
 
-  // ── Email check ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (isLogin || signupStep !== 1) return;
-    clearTimeout(emailTimer.current);
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setEmailTaken(false); return; }
-    setCheckingEmail(true);
-    emailTimer.current = setTimeout(async () => {
-      try {
-        const methods = await fetchSignInMethodsForEmail(auth, trimmed);
-        setEmailTaken(methods.length > 0);
-        setErrors(p => ({ ...p, email: methods.length > 0 ? 'Already registered — log in instead.' : undefined }));
-      } catch (_) { }
-      setCheckingEmail(false);
-    }, 650);
-    return () => clearTimeout(emailTimer.current);
-  }, [email, isLogin, signupStep]);
-
-  // ── Cooldown helper ─────────────────────────────────────────────────────────
-  const startCooldown = (setFn, ref) => {
-    setFn(30);
-    clearInterval(ref.current);
-    ref.current = setInterval(() => setFn(p => {
-      if (p <= 1) { clearInterval(ref.current); return 0; }
-      return p - 1;
-    }), 1000);
-  };
-
-  const sendSignupOtp = async () => {
-    if (signupCooldown > 0) return;
-    setSendingSignupOtp(true);
-    try {
-      const res = await sendOTP(email.trim().toLowerCase(), firstName || 'User');
-      if (res?.success) {
-        startCooldown(setSignupCooldown, signupTimer);
-        Toast.show({ type: 'success', text1: 'Code sent ✓', position: 'top', visibilityTime: 2000, topOffset: 55 });
-      } else {
-        Toast.show({ type: 'error', text1: res?.error || 'Failed to send code', position: 'top', visibilityTime: 2500, topOffset: 55 });
-      }
-    } catch (_) {
-      Toast.show({ type: 'error', text1: 'Could not send code. Try again.', position: 'top', visibilityTime: 2500, topOffset: 55 });
-    } finally { setSendingSignupOtp(false); }
-  };
-
-  // ── Validation ──────────────────────────────────────────────────────────────
-  const v1 = () => {
-    const e = {};
-    if (!firstName.trim()) e.firstName = 'Required';
-    if (!lastName.trim()) e.lastName = 'Required';
-    if (!email.trim()) e.email = 'Email is required.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = 'Invalid email format.';
-    if (emailTaken) e.email = 'Already registered — log in instead.';
-    if (!password) e.password = 'Password is required.';
-    else if (password.length < 6) e.password = 'Min. 6 characters.';
-    if (!acceptedTerms) e.terms = 'You must accept the terms and conditions.';
-    setErrors(p => ({ ...p, ...e }));
-    return !Object.keys(e).length;
-  };
-
-  const v3 = () => {
-    const e = {};
-    if (!dob) e.dob = 'Date of birth is required.';
-    if (!phoneDigits.trim()) e.phone = 'Phone number is required.';
-    else if (!/^\d{10}$/.test(phoneDigits.trim())) e.phone = 'Must be 10 digits.';
-    if (!gender) e.gender = 'Please select your gender.';
-    setErrors(p => ({ ...p, ...e }));
-    return !Object.keys(e).length;
-  };
-
-  // ── Step navigation with direction ──────────────────────────────────────────
-  const goTo = useCallback((n, dir = 'forward') => {
-    setDirection(dir);
-    setSignupStep(n);
-  }, []);
-
-  const fromStep1 = async () => {
-    if (!v1()) return;
-
-    // If a background email check is still running, do a fresh live check now
-    // to avoid a race condition where the user taps Continue before the debounce fires.
-    const trimmedEmail = email.trim().toLowerCase();
-    if (checkingEmail) {
-      // Wait for the in-flight check to settle (max ~1.5s)
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 900));
-      setIsLoading(false);
-      // Re-read emailTaken state after waiting — if still taken, bail
-      if (emailTaken) {
-        setErrors(p => ({ ...p, email: 'Already registered — log in instead.' }));
-        return;
-      }
-    }
-
-    // Final authoritative check: query Firebase directly before sending OTP
-    setIsLoading(true);
-    try {
-      const methods = await fetchSignInMethodsForEmail(auth, trimmedEmail);
-      if (methods.length > 0) {
-        setEmailTaken(true);
-        setErrors(p => ({ ...p, email: 'Already registered — log in instead.' }));
-        setIsLoading(false);
-        return;
-      }
-    } catch (_) {
-      // Network/auth error — let it proceed; Firebase will catch it at account creation
-    }
-
-    await sendSignupOtp();
-    setIsLoading(false);
-    goTo(2, 'forward');
-  };
-
-  const fromStep2 = async () => {
-    // Read from ref so we always get the current value regardless of render cycle
-    const currentOtp = signupOtpRef.current;
-    if (currentOtp.length < 6) { setErrors(p => ({ ...p, otp: 'Enter the 6-digit code.' })); return; }
-    setIsLoading(true);
-    try {
-      const res = await verifyOTP(email.trim().toLowerCase(), currentOtp);
-      if (res.success) {
-        Toast.show({ type: 'success', text1: 'Email verified ✓', position: 'top', visibilityTime: 1800, topOffset: 55 });
-        signupOtpRef.current = '';
-        setSignupOtp('');
-        goTo(3, 'forward');
-      } else {
-        setErrors(p => ({ ...p, otp: res.error || 'Invalid code. Try again.' }));
-      }
-    } catch (_) { setErrors(p => ({ ...p, otp: 'Verification failed.' })); }
-    finally { setIsLoading(false); }
-  };
-
-  // Auto-submit as soon as all 6 digits are entered — no button tap needed
-  const fromStep2Ref = useRef(fromStep2);
-  fromStep2Ref.current = fromStep2;
-  useEffect(() => {
-    if (!isLogin && signupStep === 2 && signupOtp.length === 6 && !isLoading) {
-      fromStep2Ref.current();
-    }
-  }, [signupOtp, signupStep, isLogin]);
-
-  const fromStep3 = () => { if (!v3()) return; goTo(4, 'forward'); };
-  const fromStep4 = () => goTo(5, 'forward');
-
-  const toggleCondition = (cond) =>
-    setConditions(prev => prev.includes(cond) ? prev.filter(x => x !== cond) : [...prev, cond]);
-
-  // ── Final account creation ───────────────────────────────────────────────────
-  const handleSignup = async () => {
-    if (!selectedAvatarKey) { setErrors(p => ({ ...p, avatar: 'Please pick an avatar.' })); return; }
-    setIsLoading(true);
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
-      await setDoc(doc(db, 'users', cred.user.uid), {
-        uid: cred.user.uid, email: cred.user.email,
-        firstName: firstName.trim(), lastName: lastName.trim(),
-        phone: phoneDigits ? `+91${phoneDigits.trim()}` : null,
-        dob: dob ? Timestamp.fromDate(dob) : null,
-        gender,
-        height: heightVal ? Number(heightVal) : null,
-        weight: weightVal ? Number(weightVal) : null,
-        bloodGroup,
-        conditions: conditions.length ? conditions.join(', ') : null,
-        smoking, drinking, avatarKey: selectedAvatarKey,
-        createdAt: Timestamp.now(),
-      });
-      Toast.show({ type: 'success', text1: 'Welcome to ASIZTO! 🎉', position: 'top', visibilityTime: 3000, topOffset: 55 });
-      setTimeout(() => {
-        switchView(true);
-        setSignupStep(1);
-        [setFirstName, setLastName, setEmail, setPassword, setPhoneDigits,
-          setHeight, setWeight].forEach(fn => fn(''));
-        [setDob, setGender, setBloodGroup, setSelectedAvatarKey].forEach(fn => fn(null));
-        setConditions([]); setSmoking('no'); setDrinking('no');
-        setAcceptedTerms(false);
-      }, 1500);
-    } catch (err) {
-      setBanner({ type: 'error', message: friendlyErr(err, 'signup') });
-    } finally { setIsLoading(false); }
-  };
-
-  // ── Login ────────────────────────────────────────────────────────────────────
-  const handleLogin = async () => {
-    setBanner(null);
-    if (!email.trim() || !password) {
-      setBanner({ type: 'error', message: 'Email and password are required.' }); return;
-    }
-    setIsLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
-    } catch (err) {
-      setBanner({ type: 'error', message: friendlyErr(err, 'login') });
-    } finally { setIsLoading(false); }
-  };
-
-  // ── Render step content ──────────────────────────────────────────────────────
   const base = { errors, isDark };
 
   const renderStep = () => {
     switch (signupStep) {
-      case 1: return (
-        <Step1Account
-          firstName={firstName} setFirstName={v => { setFirstName(v); setErrors(p => ({ ...p, firstName: undefined })); }}
-          lastName={lastName} setLastName={v => { setLastName(v); setErrors(p => ({ ...p, lastName: undefined })); }}
-          email={email} setEmail={v => { setEmail(v); setErrors(p => ({ ...p, email: undefined })); }}
-          password={password} setPassword={v => { setPassword(v); setErrors(p => ({ ...p, password: undefined })); }}
-          acceptedTerms={acceptedTerms} setAcceptedTerms={v => { setAcceptedTerms(v); setErrors(p => ({ ...p, terms: undefined })); }}
-          isCheckingEmail={checkingEmail} isEmailTaken={emailTaken}
-          onNext={fromStep1} {...base}
-        />
-      );
-      case 2: return (
-        <Step2Verify
-          email={email.trim().toLowerCase()}
-          otp={signupOtp} setOtp={v => {
-            signupOtpRef.current = v;   // keep ref in sync — fixes stale closure
-            setSignupOtp(v);
-            setErrors(p => ({ ...p, otp: undefined }));
-          }}
-          error={errors.otp} onVerify={fromStep2}
-          onBack={() => {
-            // UX-6: clear OTP state + ref so field is fresh on re-entry
-            signupOtpRef.current = '';
-            setSignupOtp('');
-            setErrors(p => ({ ...p, otp: undefined }));
-            goTo(1, 'back');
-          }}
-          isLoading={isLoading} resendCooldown={signupCooldown}
-          isSendingOtp={sendingSignupOtp} onResend={sendSignupOtp} {...base}
-        />
-      );
-      case 3: return (
-        <Step3Details
-          dob={dob} setDob={v => { setDob(v); setErrors(p => ({ ...p, dob: undefined })); }}
-          phoneDigits={phoneDigits} setPhoneDigits={v => { setPhoneDigits(v); setErrors(p => ({ ...p, phone: undefined })); }}
-          gender={gender} setGender={v => { setGender(v); setErrors(p => ({ ...p, gender: undefined })); }}
-          showDatePicker={showDatePicker} setShowDatePicker={setShowDatePicker}
-          onNext={fromStep3} onBack={() => goTo(2, 'back')} {...base}
-        />
-      );
-      case 4: return (
-        <Step4Health
-          heightVal={heightVal} setHeight={setHeight}
-          weightVal={weightVal} setWeight={setWeight}
-          bloodGroup={bloodGroup} setBloodGroup={v => { setBloodGroup(v); setErrors(p => ({ ...p, bloodGroup: undefined })); }}
-          conditions={conditions} toggleCondition={toggleCondition}
-          smoking={smoking} setSmoking={setSmoking}
-          drinking={drinking} setDrinking={setDrinking}
-          onNext={fromStep4} onBack={() => goTo(3, 'back')} {...base}
-        />
-      );
-      case 5: return (
-        <Step5Avatar
-          selectedAvatarKey={selectedAvatarKey}
-          setSelectedAvatarKey={v => { setSelectedAvatarKey(v); setErrors(p => ({ ...p, avatar: undefined })); }}
-          gender={gender}
-          onFinish={handleSignup} onBack={() => goTo(4, 'back')}
-          isLoading={isLoading} {...base}
-        />
-      );
+      case 1:
+        return (
+          <Step1Account
+            firstName={firstName} setFirstName={v => { setFirstName(v); setErrors(p => ({ ...p, firstName: undefined })); }}
+            lastName={lastName} setLastName={v => { setLastName(v); setErrors(p => ({ ...p, lastName: undefined })); }}
+            email={email} setEmail={v => { setEmail(v); setErrors(p => ({ ...p, email: undefined })); }}
+            password={password} setPassword={v => { setPassword(v); setErrors(p => ({ ...p, password: undefined })); }}
+            acceptedTerms={acceptedTerms} setAcceptedTerms={v => { setAcceptedTerms(v); setErrors(p => ({ ...p, terms: undefined })); }}
+            isCheckingEmail={false} isEmailTaken={false}
+            onNext={fromStep1} {...base}
+          />
+        );
+      case 2:
+        return (
+          <Step2Verify
+            email={email.trim().toLowerCase()}
+            otp={signupOtp} setOtp={setSignupOtp}
+            error={errors.otp} onVerify={fromStep2}
+            onBack={() => {
+              setSignupOtp('');
+              setErrors(p => ({ ...p, otp: undefined }));
+              goTo(1, 'back');
+            }}
+            isLoading={isLoading} resendCooldown={signupCooldown}
+            isSendingOtp={sendingSignupOtp} onResend={sendSignupOtp} {...base}
+          />
+        );
+      case 3:
+        return (
+          <Step3Details
+            dob={dob} setDob={v => { setDob(v); setErrors(p => ({ ...p, dob: undefined })); }}
+            phoneDigits={phoneDigits} setPhoneDigits={v => { setPhoneDigits(v); setErrors(p => ({ ...p, phone: undefined })); }}
+            gender={gender} setGender={v => { setGender(v); setErrors(p => ({ ...p, gender: undefined })); }}
+            showDatePicker={showDatePicker} setShowDatePicker={setShowDatePicker}
+            onNext={fromStep3} onBack={() => goTo(2, 'back')} {...base}
+          />
+        );
+      case 4:
+        return (
+          <Step4Health
+            heightVal={heightVal} setHeight={setHeight}
+            weightVal={weightVal} setWeight={setWeight}
+            bloodGroup={bloodGroup} setBloodGroup={v => { setBloodGroup(v); setErrors(p => ({ ...p, bloodGroup: undefined })); }}
+            conditions={conditions} toggleCondition={toggleCondition}
+            smoking={smoking} setSmoking={setSmoking}
+            drinking={drinking} setDrinking={setDrinking}
+            onNext={fromStep4} onBack={() => goTo(3, 'back')} {...base}
+          />
+        );
+      case 5:
+        return (
+          <Step5Avatar
+            selectedAvatarKey={selectedAvatarKey}
+            setSelectedAvatarKey={v => { setSelectedAvatarKey(v); setErrors(p => ({ ...p, avatar: undefined })); }}
+            gender={gender}
+            onFinish={handleSignup} onBack={() => goTo(4, 'back')}
+            isLoading={isLoading} {...base}
+          />
+        );
       default: return null;
     }
   };

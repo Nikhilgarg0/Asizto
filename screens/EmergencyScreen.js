@@ -12,10 +12,11 @@ import {
   Easing,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Keyboard,
   Dimensions,
+  Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
@@ -148,6 +149,29 @@ export default function EmergencyScreen({ navigation }) {
   };
 
   const handleLongPressSOS = async () => {
+    Alert.alert(
+      "Confirm Emergency SOS",
+      "Are you sure you want to send emergency SOS messages containing your location and medical profile details to your emergency contacts?",
+      [
+        {
+          text: "Cancel",
+          onPress: () => {
+            showBanner('SOS cancelled', 'info');
+          },
+          style: "cancel"
+        },
+        {
+          text: "Send SOS",
+          style: "destructive",
+          onPress: async () => {
+            await triggerSOSDispatch();
+          }
+        }
+      ]
+    );
+  };
+
+  const triggerSOSDispatch = async () => {
     try {
       showBanner('Sending SOS...', 'info', null, 1200);
 

@@ -1,570 +1,368 @@
-# Asizto India — Expert App Audit Report
+# Asizto App — Expert-Level Code & Design Review
 
-**Project:** Asizto India (React Native / Expo)
-**Stack:** React Native 0.81.5 · Expo ~54 · Firebase 12 · React Navigation 7
-**Screens reviewed:** 16 screens, ~8,000+ lines of source code
-**Overall Score: 67 / 100**
-
-> **Verdict:** Genuine, feature-rich health app with good bones — a proper theme system, thoughtful animations, real Firestore integration, error boundaries, and a performance monitor. However, three critical security issues must be fixed before real users interact with it. After that, state management consolidation is the highest-leverage improvement.
+**Reviewed by:** Claude Sonnet 4.6  
+**Date:** May 21, 2026  
+**Stack:** React Native (Expo ~54), Firebase v12, React 19, Gemini API  
+**Overall Score: 74 / 100 — Good foundation, several issues need attention before production**
 
 ---
 
-## Score Summary
+## Executive Summary
 
-| # | Dimension | Rating | Score |
-|---|-----------|--------|-------|
-| 1 | UI Design | Good | 72 / 100 |
-| 2 | UX Design | Needs Improvement | 58 / 100 |
-| 3 | App Performance | Needs Improvement | 55 / 100 |
-| 4 | Code Quality | Good | 68 / 100 |
-| 5 | Navigation & User Flow | Good | 74 / 100 |
-| 6 | State Management | Needs Improvement | 52 / 100 |
-| 7 | Error Handling & Edge Cases | Good | 70 / 100 |
-| 8 | Security | **Critical Issue** | 34 / 100 |
-| 9 | Scalability | Needs Improvement | 56 / 100 |
-| 10 | Platform Best Practices | Needs Improvement | 60 / 100 |
-
-
+Asizto is a health management app for the Indian market covering medicine tracking, appointments, emergency contacts, and an AI chatbot. The codebase shows clear evidence of a thoughtful developer: proper DataContext architecture, deep-link support, dark/light theming, skeleton loading screens, accessibility labels, and well-structured notification handling. However, several issues — a non-cryptographic OTP generator, exposed Gemini model identifiers, a 1,330-line God-component, duplicate Firestore listeners, and missing Firestore security rules — need to be resolved before a production launch.
 
 ---
 
-## Detailed Findings
+## 1. UI Design
 
+**Rating: Good**
 
+### What's working
+- Consistent green primary palette (`#83b271`) with a clear semantic color set (danger, warning, success) in `ThemeContext.js`.
+- Dual-logo brandkit (`headerlogo_dark.png` / `headerlogo_light.png`) with proper `resizeMode="contain"` — no platform-specific hacks.
+- Token system in `theme/tokens.js` covers spacing, radius, fontSize, and iconSize uniformly.
+- Dark/light mode is fully implemented and persisted via AsyncStorage.
 
-### 1. UI Design — Good (72 / 100)
+### Issues Found
 
-**What's working well**
+**UI-1 — System font only (`tokens.js` line 6–10):**  
+`fontFamily` is hardcoded to `'System'` for regular, semiBold, and bold. The comment says "swap to Nunito if loaded," but no custom font is loaded anywhere in `App.js`. This means the app uses San Francisco on iOS and Roboto on Android with no brand consistency. For a health app, typography is a major trust signal.
 
-- Green palette (`#83b271`) is cohesive and appropriate for a health app.
-- `ThemeContext` properly manages dark/light tokens, and separate logo assets exist for each mode.
-- `theme/tokens.js` centralises spacing, radius, font sizes, and icon sizes — a mature pattern.
-- Card shadows are tastefully subtle (`shadowOpacity: 0.08`).
-- Entrance animations use `Animated.parallel` with spring physics, which feels polished.
-
-**Problems found**
-
-**Hardcoded hex throughout screens — 25+ instances**
-`DashboardScreen.js` lines ~310–350, `MedicinesTab.js`, `EmergencyScreen.js`
-
-Despite having `colors.success`, `colors.warning`, and `colors.danger` in the theme, the codebase uses raw hex (`'#4CAF50'`, `'#F44336'`, `'#FFC107'`) as literals throughout. These do not respond to dark mode and can clash visually on dark backgrounds.
-
-*Fix:* Replace every hardcoded status color with `colors.success`, `colors.warning`, or `colors.danger` from `useTheme()`.
-
-**No font family defined**
-`theme/tokens.js`
-
-`tokens.js` defines size scales but no typeface. The app uses the system default (San Francisco on iOS, Roboto on Android), giving it an inconsistent personality across platforms.
-
-*Fix:* Load a custom font via `expo-font` (e.g. `DM Sans` or `Nunito` suit the friendly health aesthetic) and reference it via a `fontFamily` token.
-
-**Inconsistent card padding**
-`DashboardScreen.js` lines ~430, ~550
-
-Inside-card padding alternates between `spacing.md` (16), `spacing.lg` (24), and the raw literal `18`. Choose one token and apply it uniformly.
-
-**`CardGap` is a needlessly reified spacer**
-`components/CardGap.js`
-
-The entire component is `<View style={{ marginBottom: 16 }} />`. This creates an import + component overhead for something that should be a token used inline. Delete it and use `marginBottom: spacing.md` on the adjacent card.
-
----
-
-### 2. UX Design — Needs Improvement (58 / 100)
-
-**What's working well**
-
-- Multi-step auth flow with directional slide animation is excellent UX.
-- OTP cooldown timers prevent spam.
-- Pull-to-refresh is present on Dashboard.
-- `accessibilityLabel` and `accessibilityRole` are applied to interactive elements in DashboardScreen.
-
-**Problems found**
-
-**No post-onboarding guidance**
-
-After completing 5-step registration the user lands cold on Dashboard with empty states and no guidance. There is no tooltip, spotlight, or "add your first medicine" prompt to orient them.
-
-*Fix:* Add a first-run walkthrough. A simple 3-step modal ("Add your medicines → Set reminders → Track health score") shown once after registration is sufficient.
-
-**Empty states are incomplete**
-`screens/MedicinesTab.js`, `screens/AppointmentsTab.js`
-
-Both screens show `ActivityIndicator` during load, but when lists are genuinely empty the user sees a blank screen with no instruction.
-
-*Fix:* Add a proper empty state: icon + heading + short copy + CTA button (`Add your first medicine →`) for each empty list.
-
-**"Refresh health tip" fires two sequential AI calls**
-`DashboardScreen.js` — `fetchAIPersonalTip` → `fetchAIFact`
-
-When the user taps the refresh button, `fetchAIPersonalTip` fires first. If it fails, `fetchAIFact` fires. Both show the same spinner, so from the user's perspective the spinner appears, disappears, and appears again — which reads as a bug.
-
-*Fix:* Run both in `Promise.race` / `Promise.any`, or show a single persistent loading state until either resolves.
-
-**Long-press SOS button has no visible progress indicator**
-`screens/EmergencyScreen.js`
-
-`longPressProgress` is tracked as an `Animated.Value` but is never rendered as a visual arc or fill. Users cannot tell how long they need to hold.
-
-*Fix:* Render a `Animated.View` circular progress ring driven by `longPressProgress`.
-
-**No haptic feedback on health-critical actions**
-
-Haptics are imported in `AuthScreen.js` but unused elsewhere. Marking a medicine as taken, triggering an emergency SMS, and deleting a contact all deserve haptic confirmation.
-
-*Fix:* Add `Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)` on primary confirmation actions.
-
-**Health Score progress bar inaccessible to screen readers**
-`DashboardScreen.js` — the animated `<View>` progress bar
-
-The numeric score is visible but the bar has no `accessibilityRole="progressbar"` or `accessibilityValue`.
-
-*Fix:*
-```jsx
-<View
-  accessibilityRole="progressbar"
-  accessibilityValue={{ min: 0, max: 100, now: healthScore }}
-  accessibilityLabel={`Health score ${healthScore} out of 100`}
-/>
-```
-
----
-
-### 3. App Performance — Needs Improvement (55 / 100)
-
-**What's working well**
-
-- `useCallback` and `useMemo` are used correctly for `calculateHealthScore`, `bmiData`, and `nextDoseStatus`.
-- Firestore `onSnapshot` listeners are correctly cleaned up on unmount.
-- A `PerformanceMonitor` utility exists — rare and commendable in an indie project.
-
-**Problems found**
-
-**Multiple independent Firestore listeners for identical data**
-`DashboardScreen.js`, `MedicinesTab.js`, `AppointmentsTab.js`
-
-Dashboard opens listeners for `medicines` AND `appointments`. MedicinesTab opens another for `medicines`. AppointmentsTab opens another for `appointments`. At runtime: 4–6 simultaneous listeners reading the same documents. Every write triggers 2–3 independent snapshot callbacks. This inflates Firestore read billing and risks race conditions between stale states.
-
-*Fix:* Create a `DataContext` that opens exactly one listener per collection and distributes data via context.
-
-**Pulse animation loop runs unconditionally and leaks on early return**
-`DashboardScreen.js` — `useEffect` with `[]` dependency
-
-The pulse `Animated.loop` starts immediately on mount regardless of whether there are any due medicines. More critically, when `loading === true` the component returns early, but the cleanup function `() => pulse.stop()` is part of the same effect that started the loop — if the component unmounts during loading, the loop may not be stopped before the early return path is rendered.
-
-*Fix:* Start the pulse animation only after `loading` is false and only when `nextDoseStatus?.isDue` is true.
-
-**`onRefresh` is a fake no-op**
-`DashboardScreen.js` — `onRefresh` callback
-
+*Fix:* Load `@expo-google-fonts/nunito` or similar in `App.js` using `expo-font`, then update `tokens.js`:
 ```js
-await new Promise(resolve => setTimeout(resolve, 1000)); // does nothing
+fontFamily: { regular: 'Nunito_400Regular', semiBold: 'Nunito_600SemiBold', bold: 'Nunito_700Bold' }
 ```
 
-The real Firestore listeners are already live — pull-to-refresh does not re-fetch anything. Users get a 1-second spinner with no actual data update.
 
-*Fix:* In a `DataContext` model, expose a `refetch()` method that cancels and re-subscribes the listeners. Or at minimum, call `getDoc` imperatively to force a server fetch.
 
-**AI fetch calls are not cancellation-safe**
-`DashboardScreen.js` — `fetchAIFact` in `useEffect([], [])`
+**UI-2 — Hard-coded BMI category colors in `ProfileScreen.js` (line ~96):**  
+BMI colors (`#3b82f6`, `#22c55e`, etc.) are hardcoded hex values instead of using `colors.primary`, `colors.warning`, etc. These do not adapt to theme changes and clash with the green primary palette in dark mode.
 
-If the user navigates away before the Gemini response resolves, `setRandomFact` and `setAIFactSource` are still called on an unmounted component.
+*Fix:* Use theme tokens: `color: colors.primary` (normal), `colors.warning` (borderline), `colors.danger` (obese).
 
-*Fix:*
+**UI-3 — `SafeAreaView` import inconsistency:**  
+`EmergencyScreen.js` imports `SafeAreaView` from `react-native` (line 12) while `DashboardScreen.js` and `ProfileScreen.js` import it from `react-native-safe-area-context`. The `react-native` version does not respect bottom insets on notch-less Android devices.
+
+*Fix:* Use `react-native-safe-area-context` `SafeAreaView` uniformly across all screens.
+
+---
+
+## 2. UX Design
+
+**Rating: Good**
+
+### What's working
+- `OnboardingModal` component exists for first-run guidance.
+- Toast messages with `react-native-toast-message` for feedback instead of raw `Alert`.
+- Haptics integrated via `expo-haptics` with graceful try/catch fallback.
+- Skeleton loading screen (`DashboardSkeleton`) avoids blank flash during data load.
+- Step-based auth (`AuthSteps.js`) with stagger animations and directional slide transitions.
+- Notification action buttons ("Mark Taken" / "Ignore") that work from the notification tray.
+
+### Issues Found
+
+**UX-1 — 5-step signup with no progress save:**  
+`AuthScreen.js` has a 5-step onboarding flow (Account → Verify → Details → Health → Avatar). If the app crashes or the user exits after Step 3, they must start over from Step 1. There is no partial-save mechanism.
+
+*Fix:* Persist completed steps to AsyncStorage and resume from the last completed step on re-open.
+
+**UX-2 — No empty state UI in MedicinesTab or AppointmentsTab:**  
+When a user has no medicines or appointments, the `FlatList` renders an empty screen with no visual prompt. This is the most common state for new users.
+
+*Fix:* Add `ListEmptyComponent` to each `FlatList` with an illustration, headline, and a CTA button to add the first item.
+
+**UX-3 — OTP resend cooldown only shown as a number:**  
+The resend countdown is rendered as a plain number with no unit ("Resend in 45"). This is confusing without context.
+
+*Fix:* Render "Resend in 45s" with the unit clearly visible.
+
+**UX-4 — Emergency SOS flow has no confirmation dialog:**  
+`EmergencyScreen.js` allows SMS dispatch to emergency contacts. A misfire (pocket dial) during a real emergency UX scenario is dangerous. There is a `deleteConfirmId` pattern for deletes but not for the SOS send.
+
+*Fix:* Add a 2-second press-and-hold gesture or a single confirmation modal before dispatching SOS messages.
+
+**UX-5 — Health score algorithm is opaque to the user:**  
+`DashboardScreen.js` (line ~214) calculates a health score internally but never explains to the user how it is computed. This is especially important for a health app where users may make decisions based on it.
+
+*Fix:* Add a "How is this calculated?" info icon that expands a brief explainer.
+
+---
+
+## 3. App Performance
+
+**Rating: Good**
+
+### What's working
+- `DataContext.js` uses a single `onSnapshot` per collection — no duplicate reads across screens.
+- `useNow` hook (`utils/useNow.js`) provides a single shared clock to avoid multiple `setInterval` instances.
+- `useMemo` and `useCallback` are used correctly in `DashboardScreen.js` and `MedicinesTab.js`.
+- `DashboardSkeleton` prevents layout shift during loading.
+- Client-side appointment sorting avoids needing a Firestore composite index.
+
+### Issues Found
+
+**PERF-1 — DashboardScreen.js is 1,330 lines (God component):**  
+This single file handles: health fact display, AI search, health score calculation, BMI display, next dose tracking, medicine mark-as-taken, keyboard animation, result panel animation, onboarding modal, and skeleton loading. This causes unnecessary re-renders: any state change (e.g., `isSearchFocused`) triggers the entire tree to re-evaluate.
+
+*Fix:* Extract into sub-components: `HealthScoreCard`, `NextDoseWidget`, `AISearchPanel`, `HealthFactCard`. Each isolated component will only re-render when its own props change.
+
+**PERF-2 — Gemini fallback iterates 10 model+version combinations sequentially:**  
+`utils/gemini.js` iterates across 5 models × 2 API versions sequentially with `await fetch(...)` inside nested loops. On a bad network, this could run for 24+ seconds (3 retries × 8 seconds backoff) before surfacing an error, with no user-visible cancellation.
+
+*Fix:* Add an `AbortController` that the component can trigger on unmount or user cancel. Surface a timeout error after a configurable deadline (e.g., 12 seconds).
+
+**PERF-3 — `ProfileScreen.js` creates its own `onSnapshot` listener (line ~170):**  
+ProfileScreen sets up `onSnapshot(doc(db, 'users', uid), ...)` independently, duplicating the profile listener already owned by `DataContext`. This means two live listeners to the same document simultaneously.
+
+*Fix:* Remove ProfileScreen's own listener and consume `userProfile` from `useData()`.
+
+**PERF-4 — Animated values created inside render cycle:**  
+In `AuthUI.js` the `useStagger` hook creates `new Animated.Value(0)` inside `useRef(Array.from(...))`. While `useRef` prevents re-creation, the count argument is not stable between renders if passed as an expression. Verify that all `useRef(new Animated.Value(...))` calls are at the top level of the component, not inside conditionals.
+
+---
+
+## 4. Code Quality
+
+**Rating: Good**
+
+### What's working
+- Consistent folder structure: `screens/`, `components/`, `context/`, `utils/`, `services/`, `theme/`.
+- Custom `Logger` utility with log-level filtering, buffering, and per-domain methods.
+- `PerformanceMonitor` utility for screen load timing.
+- `ErrorBoundary` component with error ID generation and retry.
+- Comments use consistent `// ─── section ───` delimiters for visual scanning.
+- `RootNavigation.js` provides imperative navigation without prop-drilling.
+
+### Issues Found
+
+**CODE-1 — Avatar switch-case duplicated in two files:**  
+`ProfileScreen.js` (line ~30) and `AuthUI.js` both define `getAvatarSource(key)` with an identical 12-case switch statement. This is the most obvious duplication in the codebase.
+
+*Fix:* Move `getAvatarSource` to a shared `utils/avatars.js` and import it in both files.
+
+**CODE-2 — `AuthScreen.js` (620 lines) manages too much state:**  
+The auth screen owns signup step state, OTP state, login flow state, error state, loading state, and animation direction all in one component. The step components (`AuthSteps.js`) receive 15+ props each.
+
+*Fix:* Extract an `useAuthFlow` custom hook to own the state machine logic, leaving `AuthScreen.js` as a pure rendering shell.
+
+**CODE-3 — `fetchSignInMethodsForEmail` is deprecated:**  
+`AuthScreen.js` (lines 17, 193, 280) uses `fetchSignInMethodsForEmail` from Firebase Auth. This method was deprecated in Firebase v9 and is slated for removal. It also has privacy implications (allows email enumeration).
+
+*Fix:* Remove the pre-check; attempt `signInWithEmailAndPassword` directly and handle `auth/user-not-found` in the error handler — which is already implemented in `friendlyErr()`.
+
+**CODE-4 — Inline styles throughout `AuthSteps.js`:**  
+Auth step components use dense inline style objects (some over 10 properties long) directly in JSX. This makes the code hard to read and prevents style sharing between similar elements.
+
+*Fix:* Move repeated styles into `StyleSheet.create()` blocks.
+
+---
+
+## 5. Navigation & User Flow
+
+**Rating: Excellent**
+
+### What's working
+- Deep link config is thorough and maps all major screens (`asizto://dashboard`, `asizto://cabinet/medicines`, etc.).
+- Modal screens have an explicit close button (✕) instead of a back arrow — correct UX convention.
+- `RootNavigation.js` allows imperative navigation from notification handlers outside the React tree.
+- Tab navigator is defined at module scope (`AppTabs`, `MainStack`) preventing re-creation on auth state changes.
+- `navigation.canGoBack()` guard prevents orphaned back buttons.
+
+### Issues Found
+
+**NAV-1 — No `initialRouteName` on the Cabinet tab navigator:**  
+`CabinetScreen.js` uses a nested tab navigator (Medicines / Appointments). Without an `initialRouteName`, React Navigation defaults to the first tab, but this is implicit. If tab order ever changes, the default silently shifts.
+
+*Fix:* Explicitly set `initialRouteName="Medicines"` on the Cabinet tab navigator.
+
+**NAV-2 — Highlight params not cleared after navigation:**  
+Notification taps navigate to `MedicinesTab` with `highlightMedicine: data.medicineId`. If the user navigates away and returns, the highlight param persists in the route. This can cause a previously highlighted item to flash again unexpectedly.
+
+*Fix:* Clear the highlight param after a timeout or on item press: `navigation.setParams({ highlightMedicine: null })`.
+
+---
+
+## 6. State Management
+
+**Rating: Good**
+
+### What's working
+- `DataContext` is the single source of truth for all Firestore data — no prop drilling for medicines, appointments, or user profile.
+- Per-collection loading and error flags (`loadingMeds`, `errorMeds`, etc.) allow granular UI states.
+- `refetch()` correctly tears down and re-attaches listeners rather than duplicating them.
+- Auth state drives listener lifecycle — listeners are cleanly torn down on sign-out.
+
+### Issues Found
+
+**STATE-1 — `ThemeContext` does not handle `Appearance` change events:**  
+`ThemeContext.js` reads `useColorScheme()` once on mount and then overrides it with the stored preference. If the user has "Follow system" and changes their OS theme while the app is in the background, the app will not update until restart.
+
+*Fix:* Subscribe to `Appearance.addChangeListener` in ThemeContext and update the theme if no user override is stored.
+
+**STATE-2 — `DashboardScreen.js` has a local `loading` state shadowing the DataContext `loading`:**  
+The dashboard declares `const [loading, setLoading] = useState(true)` (line 74) alongside `const { loading: dataLoading } = useData()`. The local flag is set to `false` in a `useEffect` that depends on `dataLoading`. This creates a race condition where the skeleton may disappear before data is actually rendered.
+
+*Fix:* Remove the local `loading` state and drive skeleton display directly from `dataLoading`.
+
+---
+
+## 7. Error Handling & Edge Cases
+
+**Rating: Good**
+
+### What's working
+- `ErrorBoundary` wraps the entire app with retry and error ID display.
+- All Firestore listeners have both `onNext` and `onError` handlers in `DataContext`.
+- `friendlyErr()` in `AuthScreen.js` maps all common Firebase Auth error codes to user-readable messages.
+- `Gemini.js` implements exponential backoff across multiple model fallbacks.
+- Notification response handler has a top-level `try/catch` with fallback navigation.
+
+### Issues Found
+
+**ERR-1 — `AddMedicineScreen.js` has no upper bound on `timesPerDay`:**  
+`handleTimesPerDayChange` allows up to 5 times per day (line 35: `count <= 5`), but there is no validation that the user hasn't typed `50` — parseInt("50") passes `> 0` and `<= 5` is false, so `times` is cleared. However, a user typing `5a` gets `NaN` and an empty times array with no error message shown.
+
+*Fix:* Show an inline validation message ("Enter a number between 1 and 5") when the parsed value is invalid, rather than silently clearing the times array.
+
+**ERR-2 — No network connectivity detection:**  
+The app makes Firestore and Gemini API calls with no offline state detection. On a flaky Indian mobile connection, failures silently surface as generic error states.
+
+*Fix:* Use `NetInfo` from `@react-native-community/netinfo` to detect offline state and show a banner rather than triggering error states.
+
+**ERR-3 — `callGemini` silently swallows empty responses:**  
+In `gemini.js` (line ~57): if the API returns `200 OK` but `candidates[0].content.parts[0].text` is falsy, the code does `continue` and tries the next model. This means a valid but empty response from Gemini is treated as a failure and triggers unnecessary retries.
+
+*Fix:* Log a warning and break the model loop on a successful 200 with an empty body, rather than continuing to retry.
+
+---
+
+## 8. Security
+
+**Rating: Needs Improvement**
+
+### What's working
+- Firebase credentials loaded from `@env` (react-native-dotenv) — not hardcoded.
+- `.gitignore` correctly excludes `.env`, `*.keystore`, `google-services-account.json`.
+- OTP stored in Firestore with expiry timestamp — not in client memory only.
+- `reauthenticateWithCredential` used before account deletion in `ProfileScreen.js`.
+
+### Issues Found
+
+**SEC-1 (Critical) — OTP generated with `Math.random()`:**  
+`services/emailService.js` (line 9):
 ```js
-useEffect(() => {
-  let mounted = true;
-  fetchAIFact().then(result => {
-    if (mounted) setRandomFact(result);
-  });
-  return () => { mounted = false; };
-}, []);
+const generateCode = () => String(Math.floor(100000 + Math.random() * 900000));
 ```
+`Math.random()` is a pseudo-random number generator, not a cryptographically secure one. On V8 (React Native's JS engine), its state can be predicted with sufficient observations. OTPs protecting account access must use a CSPRNG.
 
-**`MedicineDoseStatus` renders every 5 minutes via interval**
-`screens/MedicinesTab.js`
+*Fix:* Generate the OTP server-side in your Vercel API route using Node.js `crypto.randomInt(100000, 999999)` and never return it to the client. The client should only submit what the user typed.
 
-Every `MedicineDoseStatus` card runs `setInterval(() => setNow(new Date()), 300000)`. With 10 medicines, that's 10 timers all triggering re-renders simultaneously every 5 minutes. This pattern also stores a `Date` object in state, which always creates a new reference.
+**SEC-2 (Critical) — No Firestore Security Rules visible:**  
+The repository contains no `firestore.rules` file. Firebase projects default to "open" rules if rules were never set. Given that `medicines`, `appointments`, and `otp_verifications` collections store sensitive health data, this is the highest-priority security item.
 
-*Fix:* Lift the clock tick to a single top-level context or use a shared `useNow()` hook.
-
-**12 large PNG avatar files statically bundled**
-`screens/ProfileScreen.js` — `getAvatarSource` switch
-
-All 12 PNGs (60–97 KB each, ~900 KB total) are `require()`d unconditionally. They inflate the initial app bundle for all users regardless of gender selection.
-
-*Fix:* Convert to WebP (saves ~35%), and load only the selected avatar lazily. Host on Firebase Storage CDN for remote delivery.
-
----
-
-### 4. Code Quality — Good (68 / 100)
-
-**What's working well**
-
-- Folder structure (`screens/`, `components/`, `context/`, `services/`, `utils/`, `theme/`) is well-organised.
-- `Logger.js` and `PerformanceMonitor.js` are professional additions rarely seen in solo projects.
-- Root-level `ErrorBoundary` is correctly implemented.
-- `friendlyErr()` in `AuthScreen.js` maps all Firebase error codes to user-friendly strings.
-
-**Problems found**
-
-**Gemini fetch pattern copy-pasted 4 times** *(see Priority 5 above)*
-
-**`AppTabs` and `MainStack` defined inside `AppContent` render**
-`App.js` — lines ~50–100
-
-Defining navigator components inline inside a parent component means they are re-created on every render. React Navigation treats new component references as new screens, which causes unmount/remount — losing scroll positions, local state, and cached data.
-
-*Fix:*
-```js
-// Move OUTSIDE AppContent and AppTabs
-function AppTabs() { ... }
-function MainStack() { ... }
-function AppContent() { ... }
+*Fix:* Add `firestore.rules` with ownership checks:
 ```
-
-**`ProfileScreen.js` is 69 KB / ~1,800 lines**
-
-Handles: profile display, editing, avatar selection, unit switching, date picker, dropdown menus, delete account modal, and theme toggling — all in one file.
-
-*Fix:* Split into `ProfileHeader`, `HealthInfoSection`, `EditProfileModal`, `DeleteAccountModal`, and `AvatarPickerModal`.
-
-**`getAvatarSource` uses a 12-arm switch instead of a map**
-`screens/ProfileScreen.js`
-
-```js
-// Current — verbose and error-prone
-switch (key) {
-  case 'male1': return require('../assets/avatars/male1.png');
-  ...
-}
-
-// Better — declarative and extensible
-const AVATAR_MAP = {
-  male1: require('../assets/avatars/male1.png'),
-  male2: require('../assets/avatars/male2.png'),
-  // ...
-};
-export const getAvatarSource = (key) => AVATAR_MAP[key] ?? AVATAR_MAP.male1;
-```
-
-**Unused dependencies in `package.json`**
-
-`@react-navigation/drawer` and `@react-navigation/material-top-tabs` are installed but no drawer or top-tab navigator appears in the app code. These add to bundle size and upgrade maintenance surface.
-
-*Fix:* Run `npx depcheck` and remove unused packages.
-
----
-
-### 5. Navigation & User Flow — Good (74 / 100)
-
-**What's working well**
-
-- `RootNavigation.js` with `navigationRef` correctly enables imperative navigation from notification handlers.
-- Notification tap routing in `App.js` navigates to the correct medicine/appointment with params.
-- Stack + Tab composition is clean and logical.
-
-**Problems found**
-
-**`AppTabs` defined inside render** *(see Code Quality — causes unmount/remount on auth change)*
-
-**Notification deep links use fragile 3-level nested params**
-`App.js` — notification response listener
-
-```js
-navigationRef.current?.navigate('Main', {
-  screen: 'Cabinet',
-  params: { screen: 'Medicines', params: { highlightMedicine: data.medicineId } }
-});
-```
-
-This is tightly coupled to the navigator hierarchy. A future rename or restructure silently breaks notification taps.
-
-*Fix:* Use React Navigation's `Linking` config to declare deep link paths declaratively, then call `navigate` with a path string.
-
-**Modal header uses back arrow instead of close button**
-`screens/NotificationScreen.js` — presented as `modal`
-
-`presentation: 'modal'` conventionally uses a `✕` close button on the trailing edge, not a `‹` back arrow. The current implementation shows a back arrow because `canGoBack()` returns true.
-
-*Fix:* In the header options for modal screens, render a close icon button on the right and hide the default back button.
-
-**No deep link URI scheme defined**
-`app.json`
-
-Without a `scheme` (e.g. `asizto://`), the app cannot be opened from emails, SMS, or other apps — common for health apps that send appointment reminders.
-
-*Fix:* Add `"scheme": "asizto"` to `app.json` and configure React Navigation's `Linking`.
-
----
-
-### 6. State Management — Needs Improvement (52 / 100)
-
-**What's working well**
-
-- `ThemeContext` is cleanly implemented with AsyncStorage persistence and system scheme detection.
-- `useTheme()` has a graceful fallback that prevents crashes outside the provider.
-- Firebase auth state is managed at the top level in `App.js`.
-
-**Problems found**
-
-**No shared data layer — listeners duplicated across screens** *(see Priority 4 above)*
-
-**`AuthScreen.js` has 20+ `useState` declarations**
-`screens/AuthScreen.js`
-
-The component tracks: email, password, firstName, lastName, phoneDigits, dob, gender, height, weight, bloodGroup, conditions, smoking, drinking, selectedAvatarKey, showDatePicker, signupOtp, loginOtp, signupCooldown, loginCooldown, sendingSignupOtp, sendingLoginOtp, isLoading, errors, banner, checkingEmail, emailTaken, direction, loginStep, signupStep, isLogin. This is 28 separate state values, making the state machine invisible and hard to test.
-
-*Fix:* Use `useReducer` with typed actions (`SET_FIELD`, `NEXT_STEP`, `SET_ERROR`, `RESET`). The reducer becomes the explicit state machine for the auth flow.
-
-**`sectionLoading` is never reset on refresh**
-`DashboardScreen.js` — `onRefresh` callback
-
-`onRefresh` resets `refreshing` to `false` after a fake timeout, but never resets `sectionLoading`. The gate condition `!sectionLoading.profile && !sectionLoading.medicines && !sectionLoading.appointments` is never re-entered, so a refresh never re-triggers `calculateHealthScore` or `setLoading(false)`.
-
-*Fix:* Call `setSectionLoading({ profile: true, medicines: true, appointments: true })` at the start of `onRefresh`, then let the existing `onSnapshot` callbacks drive it back to false naturally.
-
----
-
-### 7. Error Handling & Edge Cases — Good (70 / 100)
-
-**What's working well**
-
-- Root `ErrorBoundary` generates unique error IDs and provides a retry mechanism.
-- Firebase auth errors are mapped to human-readable messages via `friendlyErr()`.
-- Firestore listener errors are individually caught per data type with fallback states.
-- The Gemini API has a multi-model fallback chain.
-- Toast messages provide non-blocking feedback for success/failure states.
-
-**Problems found**
-
-**"Next appointment" shown without sorting**
-`DashboardScreen.js` — `const nextAppointment = appointments[0]`
-
-The Firestore query on `appointments` has no `orderBy('date', 'asc')`. The "next" appointment could be one that already passed months ago.
-
-*Fix:*
-```js
-const apptQuery = query(
-  collection(db, 'appointments'),
-  where('userId', '==', userId),
-  orderBy('date', 'asc'),
-  where('date', '>=', new Date())
-);
-```
-
-**Invalid medicine schedules silently skipped**
-`DashboardScreen.js`, `MedicinesTab.js` — time parsing
-
-When a medicine's `times` array contains an invalid date format, the code logs a warning and returns `null`, which is then filtered out. The user sees the medicine in their list but it never appears in the dose schedule or reminders — with no indication that anything is wrong.
-
-*Fix:* Add a visible "schedule error" badge on the medicine card when its times cannot be parsed.
-
-**`auth.currentUser` accessed directly in effects**
-Multiple screens
-
-Several `useEffect` hooks access `auth.currentUser` directly. During sign-out, `onAuthStateChanged` fires and the navigator switches to the auth stack — but in-flight effects may still execute against a now-null `currentUser`, causing silent crashes.
-
-*Fix:* Derive a `userId` from React state (not from `auth.currentUser` directly) and guard all effects with `if (!userId) return`.
-
-**OTP has no brute-force protection**
-`services/emailService.js` — `verifyOTP`
-
-There is no attempt counter on OTP documents. A determined attacker could iterate all 900,000 possible 6-digit codes via the Firestore SDK.
-
-*Fix:* Add an `attempts` counter to the OTP document and block after 5 failed attempts (or handle server-side in a Cloud Function).
-
----
-
-### 8. Security — Critical Issue (34 / 100)
-
-> This section is the most urgent. The app stores sensitive health data including medications, diagnoses, emergency contacts, and location. All three critical issues below must be addressed before production release.
-
-**Critical: OTP verified client-side**
-`services/emailService.js`
-
-The OTP is stored in plain text in a Firestore document readable by the creating user. The client fetches it, compares it locally, and proceeds. An attacker can bypass email verification by reading the document directly.
-
-*Fix:* Move `verifyOTP` entirely to a Firebase Cloud Function. The client sends the entered code; the function reads and compares it server-side and returns only success/failure.
-
-**Critical: Gemini API key exposed in client bundle**
-`screens/DashboardScreen.js`, `screens/ChatbotScreen.js`
-
-`react-native-dotenv` inlines environment variables at build time into the JavaScript bundle. The compiled APK/IPA contains the key in plain text, extractable with standard tooling.
-
-*Fix:* Create a `/api/gemini` endpoint (Vercel or Firebase Functions) that holds the key server-side. The app calls your endpoint; your endpoint calls Gemini.
-
-**Critical: No Firestore security rules**
-
-Without rules, any authenticated user can read or write any document in any collection — including other users' medicines, appointments, and emergency contacts.
-
-*Fix:* See the `firestore.rules` example in Priority 3 above.
-
-**Dangerous Android permissions declared unnecessarily**
-`android/app/src/main/AndroidManifest.xml`
-
-- `SYSTEM_ALERT_WINDOW` — allows drawing over other apps. Not needed for any feature in this app. Remove immediately.
-- `WRITE_EXTERNAL_STORAGE` — deprecated on Android 10+ (API 29+). Use scoped storage APIs via `expo-image-picker` instead.
-- `RECORD_AUDIO` — declared but no audio recording feature is visible in the codebase. Remove if unused.
-
-**Emergency contacts stored without encryption**
-`Firestore collection: emergencyContacts`
-
-Phone numbers are stored as plain strings in Firestore. For a health app, consider field-level encryption for PII, or at minimum document in your privacy policy what data is stored.
-
----
-
-### 9. Scalability — Needs Improvement (56 / 100)
-
-**What's working well**
-
-- Firebase + Expo is a horizontally scalable stack for the data layer.
-- `@env` environment variable separation is a good pattern.
-- `NotificationManager.js` correctly abstracts scheduling logic into a utility.
-
-**Problems found**
-
-**Firestore listeners grow linearly with screens** *(see State Management)*
-
-Every new screen that needs medicine or appointment data adds another listener. This model does not scale past a handful of screens.
-
-**Health score recalculates on every Firestore update**
-`DashboardScreen.js` — `useEffect` watching `sectionLoading`
-
-`calculateHealthScore` is a pure function that runs synchronously on the JS thread whenever any of `medicines`, `userProfile`, or `appointments` changes. As the data grows, this becomes heavier.
-
-*Fix:* Move health score calculation to a Firebase Cloud Function triggered on writes, and store the result as a field on the user document.
-
-**Chatbot has no conversation history limit**
-`screens/ChatbotScreen.js`
-
-The full message array is passed to Gemini on every turn. At 50+ messages the prompt will exceed the model's context window and begin returning errors.
-
-*Fix:* Keep the last N messages (e.g. 20) and prepend a system summary: `"Previous conversation summary: [...]"`.
-
-**All avatar assets bundled at build time**
-
-Adding more avatar options inflates the initial download for all users.
-
-*Fix:* Host avatars on Firebase Storage and load them as remote URIs. Cache with `expo-image` for offline access.
-
-**Large screen files with no code splitting**
-
-`AuthSteps.js` (31 KB), `AuthUI.js` (26 KB), `ProfileScreen.js` (69 KB), `ChatbotScreen.js` (40 KB), `DashboardScreen.js` (44 KB). None use `React.lazy`. On low-end Android devices, parsing this JS synchronously on cold start adds meaningful startup latency.
-
-*Fix:* Split large screens into sub-components. Use `React.lazy` + `Suspense` for screens not on the critical path (chatbot, debug screens).
-
----
-
-### 10. Platform Best Practices — Needs Improvement (60 / 100)
-
-**What's working well**
-
-- `SafeAreaView` from `react-native-safe-area-context` is used (not the deprecated RN built-in).
-- `KeyboardAvoidingView` with `Platform.OS` conditional behavior is present.
-- Portrait orientation is locked — appropriate for a health utility app.
-- Android notification channels are set with correct importance levels.
-
-**Problems found**
-
-**Predictive back gesture disabled on Android 13+**
-`android/app/src/main/AndroidManifest.xml`
-
-```xml
-android:enableOnBackInvokedCallback="false"
-```
-
-This disables the predictive back gesture introduced in Android 13, which is a regression from modern Android UX standards. React Navigation 7 supports predictive back.
-
-*Fix:* Set to `true` and test gesture navigation across all screens.
-
-**`windowSoftInputMode="adjustResize"` is deprecated**
-`android/app/src/main/AndroidManifest.xml`
-
-This attribute is deprecated from Android API 30+ and conflicts with edge-to-edge rendering. The `KeyboardAvoidingView` already in the codebase handles keyboard avoidance correctly.
-
-*Fix:* Remove `windowSoftInputMode` from the manifest and rely on `KeyboardAvoidingView`.
-
-**Missing iOS permission strings**
-`app.json` (not found)
-
-`expo-image-picker` is a dependency, implying profile photo support. On iOS this requires `NSPhotoLibraryUsageDescription` and potentially `NSCameraUsageDescription` in `app.json`. Without them the app crashes on permission request.
-
-*Fix:*
-```json
-{
-  "expo": {
-    "plugins": [
-      ["expo-image-picker", {
-        "photosPermission": "Asizto needs photo access to set your profile picture.",
-        "cameraPermission": "Asizto needs camera access to take a profile photo."
-      }]
-    ]
-  }
+match /medicines/{docId} {
+  allow read, write: if request.auth != null && resource.data.userId == request.auth.uid;
 }
 ```
+Apply the same pattern for `appointments`, `emergencyContacts`, and `users`.
 
-**Header logo width is platform-hacked**
-`components/customHeader.js`
+**SEC-3 — `GEMINI_API_KEY` exposed in the client bundle:**  
+`DashboardScreen.js` (line 20) and `ChatbotScreen.js` import `GEMINI_API_KEY` from `@env`. This key is bundled into the JavaScript and is trivially extractable from a production APK/IPA using standard reverse-engineering tools. The Gemini API key grants unlimited usage billed to your account.
 
-```js
-width: Platform.OS === 'ios' ? 150 : 140,
-```
+*Fix:* Proxy all Gemini calls through your existing Vercel backend. The key should only exist in your server environment variables, never in the mobile bundle.
 
-This is a magic number workaround. The logo should be properly sized for its container using `maxWidth` and `resizeMode="contain"` within a `flex: 1` center view.
+**SEC-4 — OTP Firestore collection keyed by email address:**  
+`emailService.js` uses `doc(db, 'otp_verifications', email)` as the document ID. This means any authenticated Firebase user (including attackers who created a valid account) can read or overwrite OTP documents for arbitrary email addresses if Firestore rules are not properly set (see SEC-2).
 
-**No `GestureHandlerRootView` wrapper**
-`App.js`
+*Fix:* Key OTPs by a server-generated token, not the raw email, and enforce Firestore rules to block all client-side reads of the `otp_verifications` collection.
 
-`react-native-gesture-handler` is a declared dependency, but `<GestureHandlerRootView style={{ flex: 1 }}>` does not appear at the app root. Without it, gestures may silently fail on Android.
+**SEC-5 — `fetchSignInMethodsForEmail` enables email enumeration:**  
+(Also flagged in CODE-3.) Calling this before sign-in allows an attacker to enumerate which emails are registered in your Firebase project.
 
-*Fix:*
-```jsx
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-export default function App() {
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ErrorBoundary>
-        <ThemeProvider>
-          <AppContent />
-          <Toast />
-        </ThemeProvider>
-      </ErrorBoundary>
-    </GestureHandlerRootView>
-  );
-}
-```
+*Fix:* Remove the pre-check as described in CODE-3.
 
 ---
 
-## Recommended Refactor Roadmap
+## 9. Scalability
 
-### Phase 1 — High Impact (Do this sprint)
-- [ ] Create `DataContext` with single Firestore listener set
-- [ ] Extract `callGemini()` utility
-- [ ] Move `AppTabs` and `MainStack` outside render functions
-- [ ] Add `orderBy('date', 'asc')` to appointment queries
-- [ ] Fix cancellation-unsafe AI fetch calls with mounted refs
-- [ ] Add `accessibilityValue` to Health Score progress bar
+**Rating: Good**
 
-### Phase 2 — Quality (Next sprint)
-- [ ] Split `ProfileScreen.js` into sub-components
-- [ ] Replace 12-arm avatar switch with a lookup map
-- [ ] Convert avatar PNGs to WebP
-- [ ] Add empty-state UI to MedicinesTab and AppointmentsTab
-- [ ] Add first-run onboarding flow
-- [ ] Remove unused npm packages (`@react-navigation/drawer`, etc.)
-- [ ] Replace `CardGap` component with inline spacing tokens
+### What's working
+- DataContext's listener pattern scales cleanly — adding new collections requires only adding a new `onSnapshot` block.
+- `theme/tokens.js` provides a centralized token system that would support a design system expansion.
+- Screen-level code splitting is implicit in React Native's bundler.
+- The Vercel backend abstraction for email means the backend can be extended to proxy other API calls.
 
-### Phase 3 — Polish & Scale (Ongoing)
-- [ ] Add `React.lazy` code splitting for non-critical screens
-- [ ] Move health score calculation to a Cloud Function
-- [ ] Add chatbot history limit (last 20 messages)
-- [ ] Add long-press progress ring to SOS button
-- [ ] Add haptic feedback to health-critical actions
-- [ ] Define a URI scheme in `app.json` for deep links
-- [ ] Load avatars from Firebase Storage CDN
+### Issues Found
+
+**SCALE-1 — All medicines fetched without pagination:**  
+`DataContext.js` queries all of a user's medicines with no `limit()`. A user with 100+ medicines (chronic conditions) will receive the entire collection on every app open.
+
+*Fix:* For now, add `limit(50)` to the query and implement pagination in `MedicinesTab` with a "Load more" button. For real-time use cases, onSnapshot + limit requires careful cursor management.
+
+**SCALE-2 — Client-side sorting of all appointments:**  
+The appointment query fetches all records then sorts in JavaScript. This is fine for small datasets but will degrade for power users. A Firestore composite index on `(userId, date)` is the correct fix.
+
+*Fix:* Add the composite index via the Firebase console and switch to server-side `orderBy('date', 'asc')`.
+
+**SCALE-3 — No code splitting for the debug screen:**  
+`App.js` (line 64) uses `require()` inside a conditional to lazy-load `DebugNotificationsScreen`. This is a good pattern, but the same approach should be applied to other heavy screens (Chatbot, Dashboard) using React.lazy + Suspense when Expo/Metro supports it.
+
+**SCALE-4 — `healthFacts` object is 45 entries hardcoded in `DashboardScreen.js`:**  
+As the app grows, content like health facts should live in a remote config (Firebase Remote Config or a CMS), not in source code.
 
 ---
+
+## 10. Platform Best Practices
+
+**Rating: Good**
+
+### What's working
+- `GestureHandlerRootView` correctly wraps the entire app.
+- `KeyboardAvoidingView` with `Platform.OS === 'ios' ? 'padding' : 'height'` used correctly in form screens.
+- Android notification channels created with proper importance levels.
+- `hitSlop` on all header icon buttons for larger touch targets.
+- `accessibilityLabel` and `accessibilityRole` on interactive elements in `customHeader.js`.
+- Portrait-only orientation locked in `app.json`.
+- `SafeAreaView` with `edges={['top']}` in the custom header.
+
+### Issues Found
+
+**PLAT-1 — No `accessibilityLabel` on most list items:**  
+`MedicineDoseStatus` renders complex cards with multiple buttons ("Mark as Taken", delete) but provides no `accessibilityLabel` describing what medicine the button refers to. A screen reader user would hear "button, button, button" with no context.
+
+*Fix:* Add `accessibilityLabel={`Mark ${medicine.name} as taken`}` and `accessibilityLabel={`Delete ${medicine.name}`}` to action buttons.
+
+**PLAT-2 — Android back button not handled in multi-step auth:**  
+On Android, pressing the hardware back button during the 5-step signup flow will pop the entire Auth stack rather than going to the previous step. The `BackHandler` is not intercepted in `AuthScreen.js`.
+
+*Fix:* Add a `BackHandler.addEventListener('hardwareBackPress', handleBack)` in `AuthScreen.js` that decrements the step counter rather than navigating away.
+
+**PLAT-3 — `LayoutAnimation` used without `UIManager.setLayoutAnimationEnabledExperimental` on Android:**  
+`ProfileScreen.js` (line 12) imports `LayoutAnimation` from React Native. On Android (New Architecture), `LayoutAnimation` requires explicit enablement. With `newArchEnabled: true` in `app.json`, this may cause crashes on some Android versions.
+
+*Fix:* Replace `LayoutAnimation` with `react-native-reanimated` animations (already a dependency) which work correctly with the New Architecture.
+
+**PLAT-4 — `userInterfaceStyle: "light"` forces light status bar:**  
+(Linked to UI-2.) The status bar will remain light-on-dark on iOS regardless of the user's chosen theme. Use `expo-status-bar`'s `<StatusBar style="auto" />` and set `userInterfaceStyle: "automatic"`.
+
+---
+
+## Overall Score Breakdown
+
+| Area | Rating | Score |
+|---|---|---|
+| UI Design | Good | 7/10 |
+| UX Design | Good | 7/10 |
+| Performance | Good | 7/10 |
+| Code Quality | Good | 7/10 |
+| Navigation | Excellent | 9/10 |
+| State Management | Good | 7/10 |
+| Error Handling | Good | 7/10 |
+| Security | Needs Improvement | 5/10 |
+| Scalability | Good | 7/10 |
+| Platform Practices | Good | 7/10 |
+| **Total** | | **74 / 100** |
 

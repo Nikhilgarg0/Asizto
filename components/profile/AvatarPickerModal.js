@@ -13,29 +13,7 @@ import * as Animatable from 'react-native-animatable';
 import Toast from 'react-native-toast-message';
 import { useTheme } from '../../context/ThemeContext';
 
-const AVATAR_KEYS = [
-  'male1', 'male2', 'male3', 'male4', 'male5', 'male6',
-  'female1', 'female2', 'female3', 'female4', 'female5', 'female6',
-];
-
-const AVATAR_MAP = {
-  male1:   require('../../assets/avatars/male1.webp'),
-  male2:   require('../../assets/avatars/male2.webp'),
-  male3:   require('../../assets/avatars/male3.webp'),
-  male4:   require('../../assets/avatars/male4.webp'),
-  male5:   require('../../assets/avatars/male5.webp'),
-  male6:   require('../../assets/avatars/male6.webp'),
-  female1: require('../../assets/avatars/female1.webp'),
-  female2: require('../../assets/avatars/female2.webp'),
-  female3: require('../../assets/avatars/female3.webp'),
-  female4: require('../../assets/avatars/female4.webp'),
-  female5: require('../../assets/avatars/female5.webp'),
-  female6: require('../../assets/avatars/female6.webp'),
-};
-
-export function getAvatarSource(key) {
-  return AVATAR_MAP[key] ?? AVATAR_MAP.male1;
-}
+import { AVATAR_KEYS, getAvatarSource } from '../../utils/avatars';
 
 /**
  * @param {boolean}  visible

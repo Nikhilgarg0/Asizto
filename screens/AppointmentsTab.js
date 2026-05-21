@@ -23,15 +23,47 @@ import * as Animatable from 'react-native-animatable';
 
 const { width } = Dimensions.get('window');
 
-export default function AppointmentsTab() {
+export default function AppointmentsTab({ route } = {}) {
   const { colors, theme } = useTheme();
   const navigation = useNavigation();
   // ── Shared data from DataContext (single listener) ──
   const { appointments, loadingAppts: loading } = useData();
 
+  const flatListRef = useRef(null);
   const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [sortBy, setSortBy] = useState('date');
   const [filterStatus, setFilterStatus] = useState('all');
+
+  // Support nested and direct parameters
+  const nestedParams = route?.params?.params || route?.params;
+  const highlightAppointment = nestedParams?.highlightAppointment;
+
+  // Auto-scroll and clear params
+  useEffect(() => {
+    if (highlightAppointment && filteredAppointments.length > 0) {
+      const index = filteredAppointments.findIndex(apt => apt.id === highlightAppointment);
+      if (index !== -1) {
+        setTimeout(() => {
+          try {
+            flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+          } catch (err) {
+            console.warn('scrollToIndex failed:', err);
+          }
+        }, 500);
+      }
+
+      const timer = setTimeout(() => {
+        navigation.setParams({
+          params: {
+            ...nestedParams,
+            highlightAppointment: null
+          }
+        });
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [highlightAppointment, filteredAppointments, nestedParams, navigation]);
 
   // Dropdown visibility state
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -405,11 +437,21 @@ export default function AppointmentsTab() {
 
       {/* ── Appointments List ── */}
       <FlatList
+        ref={flatListRef}
         data={filteredAppointments}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         onScrollBeginDrag={closeDropdowns}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            try {
+              flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+            } catch (err) {
+              console.warn('scrollToIndex inside onScrollToIndexFailed failed:', err);
+            }
+          }, 250);
+        }}
         renderItem={({ item, index }) => {
           const aptDateObj = item.date && item.date.toDate ? item.date.toDate() : (item.date ? new Date(item.date) : null);
           const isPast = aptDateObj ? (aptDateObj <= new Date()) : false;
@@ -417,13 +459,25 @@ export default function AppointmentsTab() {
           const timeUntil = aptDateObj ? getTimeUntil(aptDateObj) : null;
           const statusColor = getStatusColor(item);
           const statusIcon = getStatusIcon(item);
+          const isHighlighted = item.id === highlightAppointment;
 
           return (
             <Animatable.View
-              animation="fadeInUp"
-              duration={500}
-              delay={index * 50}
-              style={styles.appointmentCard}
+              animation={isHighlighted ? "pulse" : "fadeInUp"}
+              iterationCount={isHighlighted ? 3 : 1}
+              duration={isHighlighted ? 1000 : 500}
+              delay={isHighlighted ? 0 : index * 50}
+              style={[
+                styles.appointmentCard,
+                isHighlighted && {
+                  borderColor: colors.primary,
+                  borderWidth: 2,
+                  shadowColor: colors.primary,
+                  shadowOpacity: 0.4,
+                  shadowRadius: 10,
+                  elevation: 6,
+                }
+              ]}
             >
               {/* Status Indicator Bar */}
               <View style={[styles.statusBar, { backgroundColor: statusColor }]} />
@@ -691,6 +745,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
     padding: 16,
     paddingTop: 4,
     paddingBottom: 100,
+    flexGrow: 1,
   },
 
   // ── Appointment Card ──
@@ -830,6 +885,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
 
   // ── Empty State ──
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 80,

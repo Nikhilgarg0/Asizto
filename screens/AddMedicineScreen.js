@@ -22,17 +22,25 @@ export default function AddMedicineScreen({ navigation }) {
   const [pickerIndex, setPickerIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
+  const [freqError, setFreqError] = useState('');
 
   const handleTimesPerDayChange = (text) => {
     setTimesPerDay(text);
+    if (!text.trim()) {
+      setFreqError('');
+      setTimes([]);
+      return;
+    }
     const count = parseInt(text, 10);
-    if (!isNaN(count) && count > 0 && count <= 5) {
+    if (/^[1-5]$/.test(text.trim())) {
+      setFreqError('');
       const newArr = Array(count).fill(null);
       for (let i = 0; i < Math.min(times.length, count); i++) {
         newArr[i] = times[i];
       }
       setTimes(newArr);
     } else {
+      setFreqError('Please enter a number between 1 and 5');
       setTimes([]);
     }
   };
@@ -259,6 +267,9 @@ export default function AddMedicineScreen({ navigation }) {
                 </View>
               </View>
             </View>
+            {freqError ? (
+              <Text style={styles.errorText}>{freqError}</Text>
+            ) : null}
           </View>
 
           {/* Dose Times */}
@@ -383,6 +394,12 @@ const createStyles = (colors) => StyleSheet.create({
   },
   section: {
     marginBottom: 18,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 12,
+    marginTop: 6,
+    fontWeight: '500',
   },
   label: {
     fontSize: 14,

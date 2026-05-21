@@ -11,13 +11,21 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { DataProvider } from './context/DataContext';
 import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
-import { Alert, TouchableOpacity } from 'react-native';
+import { Alert, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import NetInfo from '@react-native-community/netinfo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
   registerNotificationCategories,
   NOTIF_ACTION_MARK_TAKEN,
   NOTIF_ACTION_IGNORE,
 } from './utils/NotificationManager';
+import { useFonts, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
+import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+
+// Prevent splash screen auto-hide so we can load fonts
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // NAV-3: deep link config — scheme defined in app.json as 'asizto'
 const linking = {
@@ -60,7 +68,11 @@ registerNotificationCategories();
 import DashboardScreen from './screens/DashboardScreen';
 import CabinetScreen from './screens/CabinetScreen';
 import EmergencyScreen from './screens/EmergencyScreen';
-import ChatbotScreen from './screens/ChatbotScreen';
+const ChatbotScreen = (props) => {
+  const Screen = require('./screens/ChatbotScreen').default;
+  return <Screen {...props} />;
+};
+
 import ProfileScreen from './screens/ProfileScreen';
 import AuthScreen from './screens/AuthScreen';
 import NotificationScreen from './screens/NotificationScreen';
@@ -167,6 +179,14 @@ function MainStack() {
 function AppContent() {
   const { theme, colors } = useTheme();
   const [user, setUser] = useState(null);
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const unsubscribeNet = NetInfo.addEventListener((state) => {
+      setIsOffline(state.isConnected === false);
+    });
+    return () => unsubscribeNet();
+  }, []);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -245,15 +265,42 @@ function AppContent() {
   };
 
   return (
-    <NavigationContainer ref={navigationRef} theme={navigationTheme} linking={linking}>
-      {user ? <MainStack /> : <AuthStack />}
-    </NavigationContainer>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style="auto" />
+      {isOffline && (
+        <SafeAreaView edges={['top']} style={{ backgroundColor: colors.danger }}>
+          <View style={styles.offlineBanner}>
+            <Ionicons name="cloud-offline" size={16} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.offlineText}>No Internet Connection. You are offline.</Text>
+          </View>
+        </SafeAreaView>
+      )}
+      <NavigationContainer ref={navigationRef} theme={navigationTheme} linking={linking}>
+        {user ? <MainStack /> : <AuthStack />}
+      </NavigationContainer>
+    </View>
   );
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Nunito_400Regular,
+    Nunito_600SemiBold,
+    Nunito_700Bold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     // PLAT-1: GestureHandlerRootView must be the outermost native view
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -268,3 +315,19 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+});

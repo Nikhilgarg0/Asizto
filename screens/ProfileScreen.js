@@ -2,53 +2,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Switch, Alert, ScrollView, TouchableOpacity,
-  Modal, Image, TextInput, Platform, Keyboard, LayoutAnimation, Animated,
+  Modal, Image, TextInput, Platform, Keyboard, Animated,
   Pressable, KeyboardAvoidingView,
 } from 'react-native';
+import Reanimated, { LinearTransition, FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
 import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
+import { useData } from '../context/DataContext';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-import * as Animatable from 'react-native-animatable';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Dropdown } from 'react-native-element-dropdown';
 import { LinearGradient } from 'expo-linear-gradient';
-
-// ─── Avatar helpers ──────────────────────────────────────────────────────────
-const AVATAR_KEYS = {
-  male: ['male1', 'male2', 'male3', 'male4', 'male5', 'male6'],
-  female: ['female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
-};
-const ALL_AVATAR_KEYS = [...AVATAR_KEYS.male, ...AVATAR_KEYS.female];
-
-function getAvatarSource(key) {
-  switch (key) {
-    case 'male1': return require('../assets/avatars/male1.webp');
-    case 'male2': return require('../assets/avatars/male2.webp');
-    case 'male3': return require('../assets/avatars/male3.webp');
-    case 'male4': return require('../assets/avatars/male4.webp');
-    case 'male5': return require('../assets/avatars/male5.webp');
-    case 'male6': return require('../assets/avatars/male6.webp');
-    case 'female1': return require('../assets/avatars/female1.webp');
-    case 'female2': return require('../assets/avatars/female2.webp');
-    case 'female3': return require('../assets/avatars/female3.webp');
-    case 'female4': return require('../assets/avatars/female4.webp');
-    case 'female5': return require('../assets/avatars/female5.webp');
-    case 'female6': return require('../assets/avatars/female6.webp');
-    default: return require('../assets/avatars/male1.webp');
-  }
-}
-
-function getImageSourceFromProfile(profile) {
-  if (profile?.avatarKey) return getAvatarSource(profile.avatarKey);
-  if (profile?.profilePictureUrl && typeof profile.profilePictureUrl === 'string') {
-    return { uri: profile.profilePictureUrl };
-  }
-  return getAvatarSource('male1');
-}
+import { ALL_AVATAR_KEYS, getAvatarSource, getImageSourceFromProfile } from '../utils/avatars';
 
 // ─── Dropdown data ─────────────────────────────────────────────────────────
 const bloodGroupData = [
@@ -71,20 +40,27 @@ const formatGender = g => {
 };
 
 // ─── BMI helpers ──────────────────────────────────────────────────────────
-function computeBMIFromMetric(heightCm, weightKg) {
+function computeBMIFromMetric(heightCm, weightKg, colors) {
   if (!heightCm || !weightKg) return null;
   const hm = Number(heightCm) / 100;
   if (hm <= 0) return null;
   const bmi = parseFloat((Number(weightKg) / (hm * hm)).toFixed(1));
-  if (bmi < 18.5) return { bmi, category: 'Underweight', color: '#3b82f6' };
-  if (bmi < 25)   return { bmi, category: 'Normal',      color: '#22c55e' };
-  if (bmi < 30)   return { bmi, category: 'Overweight',  color: '#f59e0b' };
-                  return { bmi, category: 'Obese',        color: '#ef4444' };
+  
+  const normalColor = colors?.success || '#22c55e';
+  const warningColor = colors?.warning || '#f59e0b';
+  const dangerColor = colors?.danger || '#ef4444';
+  const underweightColor = colors?.accent || '#3b82f6';
+
+  if (bmi < 18.5) return { bmi, category: 'Underweight', color: underweightColor };
+  if (bmi < 25)   return { bmi, category: 'Normal',      color: normalColor };
+  if (bmi < 30)   return { bmi, category: 'Overweight',  color: warningColor };
+                  return { bmi, category: 'Obese',        color: dangerColor };
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────
 export default function ProfileScreen() {
   const { theme, toggleTheme, colors } = useTheme();
+  const { userProfile } = useData();
   const isGoogleUser = auth.currentUser?.providerData?.some(p => p.providerId === 'google.com');
 
   const [profileData, setProfileData]     = useState({});
@@ -101,26 +77,23 @@ export default function ProfileScreen() {
   const scaleAnim   = useRef(new Animated.Value(1)).current;
   const S = createStyles(colors, theme);
 
-  // ── Firestore listener ────────────────────────────────────────────────
+  // ── Synchronize with global userProfile from useData context ──────────
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const ref = doc(db, 'users', auth.currentUser.uid);
-    return onSnapshot(ref, snap => {
-      if (!snap.exists()) return;
-      const raw = snap.data();
-      const savedUnits = raw.units || 'metric';
-      const mH = raw.height != null && raw.height !== '' ? Number(raw.height) : null;
-      const mW = raw.weight != null && raw.weight !== '' ? Number(raw.weight) : null;
-      const data = { ...raw, dob: raw.dob ? raw.dob.toDate() : null, height: mH, weight: mW, units: savedUnits };
-      setUnits(savedUnits);
-      setProfileData(data);
-      setEditableData({
-        ...data,
-        height: savedUnits === 'metric' ? (mH != null ? String(mH) : '') : (mH != null ? String((mH / 2.54).toFixed(2)) : ''),
-        weight: savedUnits === 'metric' ? (mW != null ? String(mW) : '') : (mW != null ? String((mW * 2.2046).toFixed(2)) : ''),
-      });
+    if (!userProfile || Object.keys(userProfile).length === 0) return;
+    const raw = userProfile;
+    const savedUnits = raw.units || 'metric';
+    const mH = raw.height != null && raw.height !== '' ? Number(raw.height) : null;
+    const mW = raw.weight != null && raw.weight !== '' ? Number(raw.weight) : null;
+    const dobDate = raw.dob ? (raw.dob.toDate ? raw.dob.toDate() : new Date(raw.dob)) : null;
+    const data = { ...raw, dob: dobDate, height: mH, weight: mW, units: savedUnits };
+    setUnits(savedUnits);
+    setProfileData(data);
+    setEditableData({
+      ...data,
+      height: savedUnits === 'metric' ? (mH != null ? String(mH) : '') : (mH != null ? String((mH / 2.54).toFixed(2)) : ''),
+      weight: savedUnits === 'metric' ? (mW != null ? String(mW) : '') : (mW != null ? String((mW * 2.2046).toFixed(2)) : ''),
     });
-  }, []);
+  }, [userProfile]);
 
   // ── Derived values ─────────────────────────────────────────────────────
   const computeAge = dob => {
@@ -132,14 +105,14 @@ export default function ProfileScreen() {
     return a;
   };
 
-  const savedBMI = computeBMIFromMetric(profileData.height, profileData.weight);
+  const savedBMI = computeBMIFromMetric(profileData.height, profileData.weight, colors);
 
   const editBMI = (() => {
     const h = editableData.height, w = editableData.weight;
     if (!h || !w) return null;
     return units === 'metric'
-      ? computeBMIFromMetric(Number(h), Number(w))
-      : computeBMIFromMetric(Number(h) * 2.54, Number(w) / 2.2046);
+      ? computeBMIFromMetric(Number(h), Number(w), colors)
+      : computeBMIFromMetric(Number(h) * 2.54, Number(w) / 2.2046, colors);
   })();
 
   const bmiProgress = bmi => {
@@ -168,7 +141,6 @@ export default function ProfileScreen() {
       const payload = { ...editableData, dob: dob ? Timestamp.fromDate(dob) : null, height: mH, weight: mW, units };
       delete payload.__temp;
       await setDoc(doc(db, 'users', auth.currentUser.uid), payload, { merge: true });
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setIsEditing(false);
       scrollRef.current?.scrollTo({ y: 0, animated: true });
       Toast.show({ type: 'success', text1: 'Profile saved', text2: 'Your changes have been saved.' });
@@ -306,7 +278,6 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={[S.editBtn, isEditing && { backgroundColor: colors.primary }]}
             onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               if (isEditing) {
                 setIsEditing(false);
                 setEditableData({ ...profileData });
@@ -326,16 +297,25 @@ export default function ProfileScreen() {
 
         {/* ── Quick Stats ─────────────────────────────────────────────── */}
         {!isEditing && (
-          <View style={S.statsRow}>
+          <Reanimated.View
+            layout={LinearTransition}
+            entering={FadeIn.duration(400)}
+            exiting={FadeOut.duration(400)}
+            style={S.statsRow}
+          >
             <StatCard label="Height" value={displayH || '—'} icon="body-outline" color="#3b82f6" colors={colors} theme={theme} S={S} />
             <StatCard label="Weight" value={displayW || '—'} icon="scale-outline" color="#a855f7" colors={colors} theme={theme} S={S} />
             <StatCard label="BMI" value={savedBMI ? String(savedBMI.bmi) : '—'} icon="fitness-outline" color={savedBMI?.color || colors.primary} colors={colors} theme={theme} S={S} />
-          </View>
+          </Reanimated.View>
         )}
 
         {/* ═══════════════════════ VIEW MODE ═══════════════════════════ */}
         {!isEditing && (
-          <Animatable.View animation="fadeIn" duration={400}>
+          <Reanimated.View
+            layout={LinearTransition}
+            entering={FadeIn.duration(400)}
+            exiting={FadeOut.duration(400)}
+          >
             {/* Personal */}
             <Section title="PERSONAL INFORMATION">
               <ListRow icon="person" label="Full Name" value={`${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || null} />
@@ -417,12 +397,16 @@ export default function ProfileScreen() {
                 }
               />
             </Section>
-          </Animatable.View>
+          </Reanimated.View>
         )}
 
         {/* ═══════════════════════ EDIT MODE ═══════════════════════════ */}
         {isEditing && (
-          <Animatable.View animation="fadeInUp" duration={400}>
+          <Reanimated.View
+            layout={LinearTransition}
+            entering={FadeInDown.duration(400)}
+            exiting={FadeOut.duration(400)}
+          >
             {/* Personal */}
             <Section title="PERSONAL INFORMATION">
               {/* Name row — inlineRow avoids double padding */}
@@ -638,7 +622,7 @@ export default function ProfileScreen() {
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>
-          </Animatable.View>
+          </Reanimated.View>
         )}
 
         {/* ── Account Actions ──────────────────────────────────────────── */}
@@ -665,7 +649,7 @@ export default function ProfileScreen() {
       {/* ── Avatar Picker Modal ──────────────────────────────────────── */}
       <Modal visible={showAvatarModal} transparent animationType="slide" onRequestClose={() => setShowAvatarModal(false)}>
         <Pressable style={S.modalBackdrop} onPress={() => setShowAvatarModal(false)} />
-        <Animatable.View animation="slideInUp" duration={340} style={[S.sheet, { backgroundColor: colors.card }]}>
+        <Reanimated.View style={[S.sheet, { backgroundColor: colors.card }]}>
           <View style={S.sheetHandle} />
           <View style={S.sheetHeader}>
             <Text style={[S.sheetTitle, { color: colors.text }]}>Choose Avatar</Text>
@@ -697,7 +681,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </Animatable.View>
+        </Reanimated.View>
       </Modal>
 
       <Modal visible={deleteModal} transparent animationType="fade" onRequestClose={() => setDeleteModal(false)}>
@@ -706,7 +690,7 @@ export default function ProfileScreen() {
           style={{ flex: 1 }}
         >
           <View style={S.modalBackdropCentered}>
-            <Animatable.View animation="zoomIn" duration={260} style={[S.alertCard, { backgroundColor: colors.card }]}>
+            <Reanimated.View style={[S.alertCard, { backgroundColor: colors.card }]}>
               <View style={S.alertIconWrap}>
                 <Ionicons name="warning" size={44} color="#ef4444" />
               </View>
@@ -756,7 +740,7 @@ export default function ProfileScreen() {
                   <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Delete Forever</Text>
                 </TouchableOpacity>
               </View>
-            </Animatable.View>
+            </Reanimated.View>
           </View>
         </KeyboardAvoidingView>
       </Modal>

@@ -15,7 +15,7 @@ import * as Haptics from 'expo-haptics'; // UX-5
 const { width } = Dimensions.get('window');
 
 // PERF-4: `now` is passed as a prop from the parent so only ONE interval runs
-const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
+const MedicineDoseStatus = ({ medicine, handleDelete, index, now, isHighlighted }) => {
   const { colors, theme } = useTheme();
 
   const handleMarkAsTaken = async (medicineId) => {
@@ -175,8 +175,23 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
   const styles = createStyles(colors, theme);
 
   return (
-    <Animatable.View animation="fadeInUp" duration={500} delay={index * 50}>
-      <View style={styles.medicineCard}>
+    <Animatable.View
+      animation={isHighlighted ? "pulse" : "fadeInUp"}
+      iterationCount={isHighlighted ? 3 : 1}
+      duration={isHighlighted ? 1000 : 500}
+      delay={isHighlighted ? 0 : index * 50}
+    >
+      <View style={[
+        styles.medicineCard,
+        isHighlighted && {
+          borderColor: colors.primary,
+          borderWidth: 2,
+          shadowColor: colors.primary,
+          shadowOpacity: 0.4,
+          shadowRadius: 10,
+          elevation: 6,
+        }
+      ]}>
         {/* Status Bar Indicator */}
         <View style={[styles.statusBar, { backgroundColor: getStatusColor() }]} />
 
@@ -287,8 +302,15 @@ const MedicineDoseStatus = ({ medicine, handleDelete, index, now }) => {
 export default function MedicinesTab({ route } = {}) {
   const { colors, theme } = useTheme();
   const navigation = useNavigation();
-  const { medicines: allMedicines, loadingMeds: loading, errorMeds: error } = useData();
+  const {
+    medicines: allMedicines,
+    loadingMeds: loading,
+    errorMeds: error,
+    loadMoreMeds,
+    hasMoreMeds,
+  } = useData();
 
+  const flatListRef = useRef(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [medicineToDelete, setMedicineToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -296,7 +318,39 @@ export default function MedicinesTab({ route } = {}) {
   const [filteredMedicines, setFilteredMedicines] = useState([]);
 
   const styles = createStyles(colors, theme);
-  const searchQuery = route?.params?.searchQuery || '';
+
+  // Support both direct and nested route params
+  const nestedParams = route?.params?.params || route?.params;
+  const highlightMedicine = nestedParams?.highlightMedicine;
+  const searchQuery = nestedParams?.searchQuery || '';
+
+  // Scroll to and clear highlight parameters
+  useEffect(() => {
+    if (highlightMedicine && filteredMedicines.length > 0) {
+      const index = filteredMedicines.findIndex(med => med.id === highlightMedicine);
+      if (index !== -1) {
+        setTimeout(() => {
+          try {
+            flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+          } catch (err) {
+            console.warn('scrollToIndex failed:', err);
+          }
+        }, 500);
+      }
+
+      const timer = setTimeout(() => {
+        // Clear highlightMedicine param in navigation state to prevent re-flashing
+        navigation.setParams({
+          params: {
+            ...nestedParams,
+            highlightMedicine: null
+          }
+        });
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [highlightMedicine, filteredMedicines, nestedParams, navigation]);
 
   const memoizedFilteredMedicines = useMemo(() => {
     if (searchQuery) {
@@ -316,6 +370,24 @@ export default function MedicinesTab({ route } = {}) {
     setDeleteModalVisible(true);
     setConfirmText('');
   }, []);
+
+  const renderFooter = useCallback(() => {
+    if (!hasMoreMeds) return null;
+    return (
+      <View style={styles.loadMoreContainer}>
+        <TouchableOpacity
+          style={styles.loadMoreButton}
+          onPress={loadMoreMeds}
+          activeOpacity={0.7}
+          accessibilityLabel="Load more medicines"
+          accessibilityRole="button"
+        >
+          <Ionicons name="chevron-down" size={16} color={colors.primary} />
+          <Text style={styles.loadMoreText}>Load More</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }, [hasMoreMeds, loadMoreMeds, colors.primary, styles.loadMoreContainer, styles.loadMoreButton, styles.loadMoreText]);
 
   const confirmDelete = useCallback(async () => {
     if (!medicineToDelete) return;
@@ -432,12 +504,28 @@ export default function MedicinesTab({ route } = {}) {
       )}
 
       <FlatList
+        ref={flatListRef}
         data={filteredMedicines}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
           // Pass shared `now` down so each card doesn't need its own interval
-          <MedicineDoseStatus medicine={item} handleDelete={handleDelete} index={index} now={now} />
+          <MedicineDoseStatus 
+            medicine={item} 
+            handleDelete={handleDelete} 
+            index={index} 
+            now={now} 
+            isHighlighted={item.id === highlightMedicine} 
+          />
         )}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            try {
+              flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
+            } catch (err) {
+              console.warn('scrollToIndex inside onScrollToIndexFailed failed:', err);
+            }
+          }, 250);
+        }}
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={600} style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
@@ -461,6 +549,7 @@ export default function MedicinesTab({ route } = {}) {
             </TouchableOpacity>
           </Animatable.View>
         }
+        ListFooterComponent={renderFooter}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
@@ -661,6 +750,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
   listContainer: {
     padding: 16,
     paddingBottom: 100,
+    flexGrow: 1,
   },
 
   // Medicine Card
@@ -807,6 +897,7 @@ const createStyles = (colors, theme) => StyleSheet.create({
 
   // Empty State
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 80,
@@ -980,5 +1071,27 @@ const createStyles = (colors, theme) => StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 10,
+  },
+  loadMoreContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}10`,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });

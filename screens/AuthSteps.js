@@ -4,11 +4,10 @@ import React, { useRef, useState, useEffect } from 'react';
 import {
     View, Text, Image, Pressable, ScrollView,
     Animated, ActivityIndicator, Platform, useWindowDimensions,
-    Linking, Modal,
+    Linking, Modal, StyleSheet,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
-import { makeAuthStyles } from './AuthUI';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -16,7 +15,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import {
     BLOOD_GROUPS, CONDITIONS, HABITS, HABIT_LABELS,
     AVATAR_KEYS, AVATAR_KEYS_BY_GENDER, getAvatarSource,
-    Field, Btn, GhostBtn, Pills, GenderPicker, Chip, OTPRow, Label,
+    Field, Btn, GhostBtn, Pills, GenderPicker, OTPRow, Label,
     useStagger,
 } from './AuthUI';
 
@@ -42,27 +41,28 @@ export function LoginView({
     const [showPwd, setShowPwd] = useState(false);
     const pwdRef = useRef(null);
     const { colors, theme } = useTheme();
+    const styles = getStyles(colors, theme);
     const { anims } = useStagger(3, { delay: 55, duration: 300 });
 
     if (loginStep === 'otp') {
         return (
             <View>
-                <View style={{ alignItems: 'center', marginBottom: 26 }}>
-                    <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', alignItems: 'center', justifyContent: 'center', marginBottom: 14, borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }}>
+                <View style={styles.centerHeader}>
+                    <View style={styles.iconContainerSmall}>
                         <Ionicons name="shield-checkmark-outline" size={30} color={colors.primary} />
                     </View>
-                    <Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, letterSpacing: 0.2 }}>Verify It's You</Text>
-                    <Text style={{ fontSize: 13, color: colors.subtext, marginTop: 5, textAlign: 'center', lineHeight: 20 }}>
+                    <Text style={styles.headerTitleSmall}>Verify It's You</Text>
+                    <Text style={[styles.headerSubtitle, { marginTop: 5 }]}>
                         6-digit code sent to{'\n'}
                         <Text style={{ color: colors.primary, fontWeight: '700' }}>{email?.trim()}</Text>
                     </Text>
                 </View>
                 <OTPRow value={loginOtp} onChangeText={setLoginOtp} error={otpError} isDark={isDark} />
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                <View style={styles.buttonRowSmall}>
                     <View style={{ flex: 1 }}><GhostBtn title="Back" icon="arrow-back-outline" onPress={onBack} isDark={isDark} /></View>
                     <View style={{ flex: 1.6 }}><Btn title="Verify" icon="checkmark-circle-outline" onPress={onVerifyOtp} loading={isLoading} /></View>
                 </View>
-                <Pressable onPress={onResend} disabled={isSendingOtp || resendCooldown > 0} style={{ alignItems: 'center', marginTop: 18, opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }} accessibilityLabel="Resend OTP" accessibilityRole="button">
+                <Pressable onPress={onResend} disabled={isSendingOtp || resendCooldown > 0} style={[styles.resendBtnWrapperSmall, { opacity: isSendingOtp || resendCooldown > 0 ? 0.4 : 1 }]} accessibilityLabel="Resend OTP" accessibilityRole="button">
                     {isSendingOtp ? <ActivityIndicator size="small" color={colors.primary} /> : (
                         <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
                             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
@@ -129,6 +129,7 @@ export function Step1Account({
     const [showPwd, setShowPwd] = useState(false);
     const lastRef = useRef(null), emailRef = useRef(null), pwdRef = useRef(null);
     const { colors, theme } = useTheme();
+    const styles = getStyles(colors, theme);
     const { anims } = useStagger(5, { delay: 50, duration: 280 });
 
     const strength = (() => {
@@ -148,7 +149,7 @@ export function Step1Account({
         <View>
             <Animated.View style={{ opacity: anims[0], transform: [{ translateY: anims[0].interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }}>
                 <Label isDark={isDark}>Your Name</Label>
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 0 }}>
+                <View style={styles.gridRow}>
                     <View style={{ flex: 1 }}>
                         <Field placeholder="First" value={firstName} onChangeText={setFirstName} error={errors.firstName} isDark={isDark} autoCapitalize="words" returnKeyType="next" onSubmitEditing={() => lastRef.current?.focus()} />
                     </View>
@@ -207,36 +208,22 @@ export function Step1Account({
                 </Animated.View>
             )}
 
-            <Animated.View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginBottom: errors.terms ? 6 : 16,
-                marginTop: 6,
-                paddingHorizontal: 2,
-                opacity: anims[4] || 1
-            }}>
+            <Animated.View style={[styles.termsRow, { marginBottom: errors.terms ? 6 : 16, opacity: anims[4] || 1 }]}>
                 <Pressable
                     onPress={() => {
                         setAcceptedTerms(!acceptedTerms);
                     }}
-                    style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 6,
-                        borderWidth: 1.5,
+                    style={[styles.checkbox, {
                         borderColor: errors.terms ? '#E05555' : acceptedTerms ? colors.primary : colors.subtext,
                         backgroundColor: acceptedTerms ? `${colors.primary}15` : 'transparent',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 10,
-                    }}
+                    }]}
                     accessibilityLabel="Accept Terms and Conditions"
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: acceptedTerms }}
                 >
                     {acceptedTerms && <Ionicons name="checkmark" size={15} color={colors.primary} />}
                 </Pressable>
-                <Text style={{ flex: 1, fontSize: 13, color: colors.subtext, lineHeight: 18 }}>
+                <Text style={styles.termsText}>
                     I agree to the{' '}
                     <Text
                         onPress={() => Linking.openURL('https://asizto.nikhilcodes.in/docs/terms-and-conditions')}
@@ -265,6 +252,7 @@ export function Step2Verify({
     onVerify, onBack, isLoading, resendCooldown, isSendingOtp, onResend,
 }) {
     const { colors, theme } = useTheme();
+    const styles = getStyles(colors, theme);
     const iconAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -275,18 +263,12 @@ export function Step2Verify({
 
     return (
         <View>
-            <View style={{ alignItems: 'center', marginBottom: 26 }}>
-                <Animated.View style={{
-                    transform: [{ scale: iconScale }],
-                    width: 74, height: 74, borderRadius: 37,
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
-                    borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
-                }}>
+            <View style={styles.centerHeader}>
+                <Animated.View style={[styles.iconContainer, { transform: [{ scale: iconScale }] }]}>
                     <Ionicons name="mail-open-outline" size={34} color={colors.primary} />
                 </Animated.View>
-                <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 5, letterSpacing: 0.2 }}>Check your inbox</Text>
-                <Text style={{ fontSize: 13, color: colors.subtext, textAlign: 'center', lineHeight: 20 }}>
+                <Text style={styles.headerTitle}>Check your inbox</Text>
+                <Text style={styles.headerSubtitle}>
                     We sent a 6-digit code to
                 </Text>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 2 }}>{email}</Text>
@@ -294,7 +276,7 @@ export function Step2Verify({
 
             <OTPRow value={otp} onChangeText={setOtp} error={error} isDark={isDark} />
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 22 }}>
+            <View style={styles.buttonRow}>
                 <View style={{ flex: 1 }}><GhostBtn title="Back" icon="arrow-back-outline" onPress={onBack} isDark={isDark} /></View>
                 <View style={{ flex: 1.6 }}><Btn title="Verify Email" icon="shield-checkmark-outline" onPress={onVerify} loading={isLoading} /></View>
             </View>
@@ -329,6 +311,7 @@ export function Step3Details({
     showDatePicker, setShowDatePicker, errors, isDark, onNext, onBack,
 }) {
     const { colors, theme } = useTheme();
+    const styles = getStyles(colors, theme);
     const { anims } = useStagger(4, { delay: 55, duration: 280 });
 
     return (
@@ -337,17 +320,14 @@ export function Step3Details({
                 <Label isDark={isDark}>Date of Birth</Label>
                 <Pressable
                     onPress={() => setShowDatePicker(true)}
-                    style={{
-                        height: 50, borderRadius: 13, borderWidth: 1.5,
+                    style={[styles.datePickerBtn, {
                         borderColor: errors.dob ? '#E05555' : theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-                        backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', flexDirection: 'row', alignItems: 'center',
-                        paddingHorizontal: 15, justifyContent: 'space-between',
                         marginBottom: errors.dob ? 2 : 14,
-                    }}
+                    }]}
                     accessibilityLabel="Select date of birth"
                     accessibilityRole="button"
                 >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={styles.datePickerContent}>
                         <Ionicons name="calendar-outline" size={17} color={dob ? colors.text : colors.subtext} />
                         <Text style={{ color: dob ? colors.text : colors.subtext, fontSize: 15 }}>{dob ? fmt(dob) : 'Select date of birth'}</Text>
                     </View>
@@ -357,9 +337,9 @@ export function Step3Details({
                 {showDatePicker && (
                     Platform.OS === 'ios' ? (
                         <Modal transparent visible={showDatePicker} animationType="slide">
-                            <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.3)' }}>
-                                <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 30 }}>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1.5, borderColor: colors.border }}>
+                            <View style={styles.iosDatePickerModal}>
+                                <View style={[styles.iosDatePickerContainer, { backgroundColor: colors.card }]}>
+                                    <View style={[styles.iosDatePickerHeader, { borderColor: colors.border }]}>
                                         <Pressable onPress={() => setShowDatePicker(false)}>
                                             <Text style={{ color: colors.subtext, fontSize: 16, fontWeight: '600' }}>Cancel</Text>
                                         </Pressable>
@@ -379,11 +359,11 @@ export function Step3Details({
                         </Modal>
                     ) : (
                         <DateTimePicker
-                            value={dob || new Date(2000, 0, 1)}
-                            mode="date"
-                            display="default"
-                            maximumDate={new Date()}
-                            onChange={(_, d) => { setShowDatePicker(false); if (d) setDob(d); }}
+                             value={dob || new Date(2000, 0, 1)}
+                             mode="date"
+                             display="default"
+                             maximumDate={new Date()}
+                             onChange={(_, d) => { setShowDatePicker(false); if (d) setDob(d); }}
                         />
                     )
                 )}
@@ -487,6 +467,7 @@ export function Step4Health({
     const [showBlood, setShowBlood] = useState(false);
     const [customCond, setCustomCond] = useState('');
     const { colors, theme } = useTheme();
+    const styles = getStyles(colors, theme);
     const pillOpts = HABITS.map(v => ({ value: v, label: HABIT_LABELS[v] }));
     const { anims } = useStagger(8, { delay: 40, duration: 260 });
 
@@ -546,7 +527,7 @@ export function Step4Health({
     return (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
             <Animated.View style={{ opacity: anims[0], transform: [{ translateY: anims[0].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 0 }}>
+                <View style={styles.gridRow}>
                     <View style={{ flex: 1 }}>
                         <Label isDark={isDark}>Height (cm)</Label>
                         <Field placeholder="170" value={heightVal} onChangeText={t => setHeight(t.replace(/[^0-9.]/g, ''))} isDark={isDark} keyboardType="numeric" />
@@ -622,7 +603,7 @@ export function Step4Health({
                 <Label isDark={isDark}>Medical Conditions (Optional)</Label>
                 
                 {/* Search & Custom Add Input */}
-                <View style={{ marginBottom: 12 }}>
+                <View style={styles.customConditionWrapper}>
                     <Field
                         placeholder="Search or add custom condition (e.g. Migraine)"
                         value={customCond}
@@ -651,7 +632,7 @@ export function Step4Health({
                 </View>
 
                 {/* Chips Grid */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                <View style={styles.chipsGrid}>
                     {uniqueConditions.map(cond => {
                         const isCustom = !CONDITIONS.includes(cond);
                         return (
@@ -750,7 +731,8 @@ function AvatarTile({ avatarKey, selected, onPress, isDark, size }) {
 
 export function Step5Avatar({ selectedAvatarKey, setSelectedAvatarKey, gender, errors, isDark, onFinish, onBack, isLoading }) {
     const { width } = useWindowDimensions();
-    const { colors } = useTheme();
+    const { colors, theme } = useTheme();
+    const styles = getStyles(colors, theme);
 
     // Filter avatars by gender — 'other' gets all 12
     const keys = AVATAR_KEYS_BY_GENDER[gender] ?? AVATAR_KEYS;
@@ -783,13 +765,10 @@ export function Step5Avatar({ selectedAvatarKey, setSelectedAvatarKey, gender, e
     return (
         <View>
             {/* Header */}
-            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+            <View style={styles.avatarHeader}>
                 <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: 0.2 }}>Pick your avatar</Text>
                 <Text style={{ fontSize: 13, color: colors.subtext, marginTop: 4 }}>This represents you in the app</Text>
-                <View style={{
-                    marginTop: 8, paddingHorizontal: 12, paddingVertical: 4,
-                    backgroundColor: colors.primary + '18', borderRadius: 20,
-                }}>
+                <View style={styles.avatarBadge}>
                     <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '600' }}>{genderLabel}</Text>
                 </View>
                 {errors.avatar
@@ -844,3 +823,146 @@ export function Step5Avatar({ selectedAvatarKey, setSelectedAvatarKey, gender, e
         </View>
     );
 }
+
+// ─── DYNAMIC STYLESHEET GENERATOR ──────────────────────────────────────────
+const getStyles = (colors, theme) => {
+    const isDark = theme === 'dark';
+    return StyleSheet.create({
+        centerHeader: {
+            alignItems: 'center',
+            marginBottom: 26,
+        },
+        iconContainer: {
+            width: 74,
+            height: 74,
+            borderRadius: 37,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 14,
+            borderWidth: 1.5,
+            borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+        },
+        iconContainerSmall: {
+            width: 70,
+            height: 70,
+            borderRadius: 35,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 14,
+            borderWidth: 1.5,
+            borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+        },
+        headerTitle: {
+            fontSize: 20,
+            fontWeight: '800',
+            color: colors.text,
+            marginBottom: 5,
+            letterSpacing: 0.2,
+        },
+        headerTitleSmall: {
+            fontSize: 19,
+            fontWeight: '800',
+            color: colors.text,
+            letterSpacing: 0.2,
+        },
+        headerSubtitle: {
+            fontSize: 13,
+            color: colors.subtext,
+            textAlign: 'center',
+            lineHeight: 20,
+        },
+        buttonRow: {
+            flexDirection: 'row',
+            gap: 10,
+            marginTop: 22,
+        },
+        buttonRowSmall: {
+            flexDirection: 'row',
+            gap: 10,
+            marginTop: 20,
+        },
+        termsRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginTop: 6,
+            paddingHorizontal: 2,
+        },
+        checkbox: {
+            width: 22,
+            height: 22,
+            borderRadius: 6,
+            borderWidth: 1.5,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 10,
+        },
+        termsText: {
+            flex: 1,
+            fontSize: 13,
+            color: colors.subtext,
+            lineHeight: 18,
+        },
+        datePickerBtn: {
+            height: 50,
+            borderRadius: 13,
+            borderWidth: 1.5,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 15,
+            justifyContent: 'space-between',
+        },
+        datePickerContent: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+        },
+        gridRow: {
+            flexDirection: 'row',
+            gap: 10,
+            marginBottom: 0,
+        },
+        chipsGrid: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 8,
+            marginBottom: 16,
+        },
+        customConditionWrapper: {
+            marginBottom: 12,
+        },
+        resendBtnWrapperSmall: {
+            alignItems: 'center',
+            marginTop: 18,
+        },
+        avatarHeader: {
+            alignItems: 'center',
+            marginBottom: 16,
+        },
+        avatarBadge: {
+            marginTop: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+            backgroundColor: colors.primary + '18',
+            borderRadius: 20,
+        },
+        iosDatePickerModal: {
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(0,0,0,0.3)',
+        },
+        iosDatePickerContainer: {
+            borderTopLeftRadius: 18,
+            borderTopRightRadius: 18,
+            paddingBottom: 30,
+        },
+        iosDatePickerHeader: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            padding: 16,
+            borderBottomWidth: 1.5,
+        },
+    });
+};

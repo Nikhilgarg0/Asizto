@@ -8,18 +8,32 @@ export const ThemeContext = createContext();
 export const ThemeProvider = ({ children }) => {
   const systemScheme = useColorScheme();
   const [theme, setTheme] = useState(systemScheme || 'light');
+  const [hasUserOverride, setHasUserOverride] = useState(false);
 
   useEffect(() => {
     const loadTheme = async () => {
       const savedTheme = await AsyncStorage.getItem('theme');
-      if (savedTheme) { setTheme(savedTheme); }
+      if (savedTheme) {
+        setTheme(savedTheme);
+        setHasUserOverride(true);
+      }
     };
     loadTheme();
   }, []);
 
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      if (!hasUserOverride && colorScheme) {
+        setTheme(colorScheme);
+      }
+    });
+    return () => subscription.remove();
+  }, [hasUserOverride]);
+
   const toggleTheme = async () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
+    setHasUserOverride(true);
     await AsyncStorage.setItem('theme', newTheme);
   };
   

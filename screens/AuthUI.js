@@ -19,40 +19,29 @@ export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export const CONDITIONS = ['Diabetes', 'Hypertension', 'Asthma', 'Thyroid', 'Arthritis'];
 export const HABITS = ['no', 'occasionally', 'daily'];
 export const HABIT_LABELS = { no: 'No', occasionally: 'Sometimes', daily: 'Daily' };
-export const AVATAR_KEYS = [
-    'male1', 'male2', 'male3', 'male4', 'male5', 'male6',
-    'female1', 'female2', 'female3', 'female4', 'female5', 'female6',
-];
 
-export const AVATAR_KEYS_BY_GENDER = {
-    male:   ['male1', 'male2', 'male3', 'male4', 'male5', 'male6'],
-    female: ['female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
-    other:  ['male1', 'male2', 'male3', 'male4', 'male5', 'male6',
-             'female1', 'female2', 'female3', 'female4', 'female5', 'female6'],
-};
-
-export function getAvatarSource(key) {
-    const map = {
-        male1:   require('../assets/avatars/male1.webp'),
-        male2:   require('../assets/avatars/male2.webp'),
-        male3:   require('../assets/avatars/male3.webp'),
-        male4:   require('../assets/avatars/male4.webp'),
-        male5:   require('../assets/avatars/male5.webp'),
-        male6:   require('../assets/avatars/male6.webp'),
-        female1: require('../assets/avatars/female1.webp'),
-        female2: require('../assets/avatars/female2.webp'),
-        female3: require('../assets/avatars/female3.webp'),
-        female4: require('../assets/avatars/female4.webp'),
-        female5: require('../assets/avatars/female5.webp'),
-        female6: require('../assets/avatars/female6.webp'),
-    };
-    return map[key] ?? map.male1;
-}
+import { AVATAR_KEYS, AVATAR_KEYS_BY_GENDER, getAvatarSource } from '../utils/avatars';
+export { AVATAR_KEYS, AVATAR_KEYS_BY_GENDER, getAvatarSource };
 
 // ─── Stagger animation hook ─────────────────────────────────────────────────
 // Returns an array of animated values that stagger in when triggered
 export function useStagger(count, { delay = 60, duration = 320, auto = true } = {}) {
-    const anims = useRef(Array.from({ length: count }, () => new Animated.Value(0))).current;
+    const animsRef = useRef([]);
+
+    // Adjust array size dynamically if count changes
+    if (animsRef.current.length !== count) {
+        if (animsRef.current.length < count) {
+            const extra = Array.from(
+                { length: count - animsRef.current.length },
+                () => new Animated.Value(0)
+            );
+            animsRef.current = [...animsRef.current, ...extra];
+        } else {
+            animsRef.current = animsRef.current.slice(0, count);
+        }
+    }
+
+    const anims = animsRef.current;
 
     const play = useCallback((reverse = false) => {
         const animations = anims.map((a, i) =>
@@ -65,9 +54,9 @@ export function useStagger(count, { delay = 60, duration = 320, auto = true } = 
             })
         );
         Animated.stagger(delay, animations).start();
-    }, []);
+    }, [anims, delay, duration]);
 
-    useEffect(() => { if (auto) play(); }, []);
+    useEffect(() => { if (auto) play(); }, [auto, play]);
 
     return { anims, play };
 }

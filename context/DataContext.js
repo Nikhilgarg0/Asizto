@@ -20,7 +20,8 @@ import {
   where,
   onSnapshot,
   doc,
-  // orderBy removed — appointments are sorted client-side to avoid composite index
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import logger from '../utils/Logger';
@@ -38,6 +39,10 @@ export function DataProvider({ children }) {
   const [medicines, setMedicines]           = useState([]);
   const [appointments, setAppointments]     = useState([]);
   const [userProfile, setUserProfile]       = useState({});
+
+  // Pagination states for medicines
+  const [medsLimit, setMedsLimit]           = useState(50);
+  const [hasMoreMeds, setHasMoreMeds]       = useState(false);
 
   // Loading / error per collection
   const [loadingMeds, setLoadingMeds]       = useState(true);
@@ -70,16 +75,19 @@ export function DataProvider({ children }) {
     setErrorMeds(null);
     setErrorAppts(null);
     setErrorProfile(null);
+    setMedsLimit(50);
+    setHasMoreMeds(false);
   }, []);
 
-  const attachListeners = useCallback((uid) => {
-    // ── User profile ────────────────────────────────────────────────────
+  const attachProfileListener = useCallback((uid) => {
+    if (unsubProfileRef.current) return;
     const profileRef = doc(db, 'users', uid);
     unsubProfileRef.current = onSnapshot(
       profileRef,
       (snap) => {
         try {
           setUserProfile(snap.exists() ? snap.data() : {});
+          setErrorProfile(null);
         } catch (err) {
           logger.error('[DataContext] Profile processing error', err);
           setErrorProfile('Failed to load profile');
@@ -93,52 +101,21 @@ export function DataProvider({ children }) {
         setLoadingProfile(false);
       },
     );
+  }, []);
 
-    // ── Medicines ────────────────────────────────────────────────────────
-    const medsQuery = query(
-      collection(db, 'medicines'),
-      where('userId', '==', uid),
-    );
-    unsubMedsRef.current = onSnapshot(
-      medsQuery,
-      (snap) => {
-        try {
-          setMedicines(snap.docs.map((d) => ({ ...d.data(), id: d.id })));
-          setErrorMeds(null);
-        } catch (err) {
-          logger.error('[DataContext] Medicines processing error', err);
-          setErrorMeds('Failed to load medicines');
-        } finally {
-          setLoadingMeds(false);
-        }
-      },
-      (err) => {
-        logger.error('[DataContext] Medicines listener error', err);
-        setErrorMeds('Failed to load medicines');
-        setLoadingMeds(false);
-      },
-    );
-
-    // ── Appointments ─────────────────────────────────────────────────────
-    // Sort client-side by date asc — avoids needing a Firestore composite index
-    // (userId + date compound query requires a manual index in Firebase console)
+  const attachAppointmentsListener = useCallback((uid) => {
+    if (unsubApptsRef.current) return;
     const apptsQuery = query(
       collection(db, 'appointments'),
       where('userId', '==', uid),
+      orderBy('date', 'asc')
     );
     unsubApptsRef.current = onSnapshot(
       apptsQuery,
       (snap) => {
         try {
-          const sorted = snap.docs
-            .map((d) => ({ ...d.data(), id: d.id }))
-            .sort((a, b) => {
-              // Firestore Timestamps have .seconds; JS Dates have .getTime()
-              const aMs = a.date?.seconds ? a.date.seconds * 1000 : (a.date instanceof Date ? a.date.getTime() : 0);
-              const bMs = b.date?.seconds ? b.date.seconds * 1000 : (b.date instanceof Date ? b.date.getTime() : 0);
-              return aMs - bMs;
-            });
-          setAppointments(sorted);
+          const appts = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+          setAppointments(appts);
           setErrorAppts(null);
         } catch (err) {
           logger.error('[DataContext] Appointments processing error', err);
@@ -155,16 +132,48 @@ export function DataProvider({ children }) {
     );
   }, []);
 
-  // ── Auth observer — drives listener lifecycle ─────────────────────────────
+  const attachMedicinesListener = useCallback((uid, limitCount) => {
+    if (unsubMedsRef.current) {
+      unsubMedsRef.current();
+      unsubMedsRef.current = null;
+    }
+    setLoadingMeds(true);
+    const medsQuery = query(
+      collection(db, 'medicines'),
+      where('userId', '==', uid),
+      limit(limitCount)
+    );
+    unsubMedsRef.current = onSnapshot(
+      medsQuery,
+      (snap) => {
+        try {
+          const meds = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+          setMedicines(meds);
+          setHasMoreMeds(snap.docs.length === limitCount);
+          setErrorMeds(null);
+        } catch (err) {
+          logger.error('[DataContext] Medicines processing error', err);
+          setErrorMeds('Failed to load medicines');
+        } finally {
+          setLoadingMeds(false);
+        }
+      },
+      (err) => {
+        logger.error('[DataContext] Medicines listener error', err);
+        setErrorMeds('Failed to load medicines');
+        setLoadingMeds(false);
+      },
+    );
+  }, []);
+
+  // ── Auth observer — drives user state ─────────────────────────────
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      teardownListeners();
       if (user) {
         setUserId(user.uid);
-        resetData();
-        attachListeners(user.uid);
       } else {
+        teardownListeners();
         setUserId(null);
         resetData();
         // Mark everything as "not loading" for signed-out state
@@ -178,19 +187,43 @@ export function DataProvider({ children }) {
       unsubAuth();
       teardownListeners();
     };
-  }, [attachListeners, teardownListeners, resetData]);
+  }, [teardownListeners, resetData]);
+
+  // ── Sync listeners based on userId & limit ───────────────────────
+
+  useEffect(() => {
+    if (userId) {
+      attachProfileListener(userId);
+      attachAppointmentsListener(userId);
+    }
+  }, [userId, attachProfileListener, attachAppointmentsListener]);
+
+  useEffect(() => {
+    if (userId) {
+      attachMedicinesListener(userId, medsLimit);
+    }
+  }, [userId, medsLimit, attachMedicinesListener]);
 
   // ── Derived: overall loading flag ─────────────────────────────────────────
 
   const loading = loadingMeds || loadingAppts || loadingProfile;
+
+  // ── Pagination triggers ──────────────────────────────────────────────────
+  const loadMoreMeds = useCallback(() => {
+    if (hasMoreMeds && !loadingMeds) {
+      setMedsLimit((prev) => prev + 50);
+    }
+  }, [hasMoreMeds, loadingMeds]);
 
   // ── refetch: tears down and re-attaches all listeners (used by pull-to-refresh) ──
   const refetch = useCallback(() => {
     if (!userId) return;
     teardownListeners();
     resetData();
-    attachListeners(userId);
-  }, [userId, teardownListeners, resetData, attachListeners]);
+    attachProfileListener(userId);
+    attachAppointmentsListener(userId);
+    attachMedicinesListener(userId, 50);
+  }, [userId, teardownListeners, resetData, attachProfileListener, attachAppointmentsListener, attachMedicinesListener]);
 
   // ── Context value ─────────────────────────────────────────────────────────
 
@@ -202,6 +235,10 @@ export function DataProvider({ children }) {
     medicines,
     appointments,
     userProfile,
+
+    // Pagination flags
+    hasMoreMeds,
+    loadMoreMeds,
 
     // Per-collection loading flags
     loadingMeds,
@@ -219,7 +256,7 @@ export function DataProvider({ children }) {
     // Convenience: first non-null error
     error: errorProfile || errorMeds || errorAppts || null,
 
-    // PERF-3: real pull-to-refresh — re-subscribes all listeners
+    // pull-to-refresh — re-subscribes all listeners
     refetch,
   };
 

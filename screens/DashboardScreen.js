@@ -16,6 +16,8 @@ import {
   RefreshControl,
   Animated,
   Easing,
+  Modal,
+  Pressable,
 } from 'react-native';
 import IconBadge from '../components/IconBadge';
 import { db } from '../firebaseConfig';
@@ -33,32 +35,10 @@ import performanceMonitor from '../utils/PerformanceMonitor';
 import OnboardingModal from '../components/OnboardingModal'; // UX-3
 import DashboardSkeleton from '../components/DashboardSkeleton'; // POLISH-2
 
-const healthFacts = {
-  nutrition: [
-    "Drinking 8 glasses of water daily can improve metabolism by 30%.",
-    "Eating breakfast within 1 hour of waking boosts cognitive function.",
-    "Dark chocolate contains antioxidants that support heart health.",
-    "Blueberries can improve memory and cognitive function.",
-    "Green tea contains compounds that may boost metabolism."
-  ],
-  exercise: [
-    "Just 10 minutes of walking can boost energy for 2 hours.",
-    "Regular exercise can improve sleep quality by 65%.",
-    "Strength training twice weekly can prevent age-related muscle loss.",
-    "Yoga can reduce stress hormones by up to 23%.",
-    "Daily stretching improves flexibility and reduces injury risk."
-  ],
-  wellness: [
-    "Good posture can improve mood and reduce stress levels.",
-    "7-9 hours of sleep per night is crucial for immune function.",
-    "Laughter releases endorphins that act as natural painkillers.",
-    "Deep breathing exercises can lower blood pressure.",
-    "Regular social interaction can extend lifespan by 7-10 years."
-  ]
-};
+import { healthFacts } from '../utils/healthFacts';
 
 export default function DashboardScreen({ navigation }) {
-  const { colors, spacing, radius, fontSize, iconSize, theme } = useTheme();
+  const { colors, spacing, fontSize, iconSize } = useTheme();
   const {
     medicines,
     appointments,
@@ -71,82 +51,21 @@ export default function DashboardScreen({ navigation }) {
   const userName = userProfile.firstName || userProfile.name || 'User';
 
   const [healthScore, setHealthScore] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [showScoreModal, setShowScoreModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [randomFact, setRandomFact] = useState('');
   const [aiFactLoading, setAIFactLoading] = useState(false);
   const [aiFactSource, setAIFactSource] = useState('preset');
-  const [searchText, setSearchText] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResult, setSearchResult] = useState('');
   const [error, setError] = useState(null);
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(300);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
-  const scoreAnim = useRef(new Animated.Value(0)).current;
-  const bmiAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  // Panel that slides up from the bottom to replace the keyboard
-  const resultPanelAnim = useRef(new Animated.Value(400)).current;
-  // Search bar bottom — animates up in sync with the panel so it sits on top of it
-  const searchBarBottomAnim = useRef(new Animated.Value(10)).current;
-  // Prevents onBlur from collapsing the UI right after a result arrives
-  const keepFocusedRef = useRef(false);
-
-  // Track keyboard height so the result panel matches it exactly
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const show = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-      resultPanelAnim.setValue(e.endCoordinates.height + 40);
-    });
-    return () => show.remove();
-  }, []);
-
-  // Slide result panel up + move search bar to sit just above it
-  const showResultPanel = useCallback((height) => {
-    Animated.parallel([
-      Animated.spring(resultPanelAnim, {
-        toValue: 0,
-        tension: 68,
-        friction: 12,
-        useNativeDriver: true,
-      }),
-      Animated.timing(searchBarBottomAnim, {
-        toValue: height + 8,
-        duration: 280,
-        useNativeDriver: false,
-      }),
-    ]).start();
-  }, [resultPanelAnim, searchBarBottomAnim]);
-
-  // Dismiss: slide panel + search bar back to resting positions, then clear state
-  const dismissSearch = useCallback(() => {
-    Keyboard.dismiss();
-    Animated.parallel([
-      Animated.timing(resultPanelAnim, {
-        toValue: keyboardHeight + 40,
-        duration: 260,
-        useNativeDriver: true,
-      }),
-      Animated.timing(searchBarBottomAnim, {
-        toValue: 10,
-        duration: 260,
-        useNativeDriver: false,
-      }),
-    ]).start(() => {
-      setSearchResult('');
-      setIsSearchFocused(false);
-    });
-  }, [resultPanelAnim, searchBarBottomAnim, keyboardHeight]);
 
   const screenTimer = useMemo(() => performanceMonitor.startScreenLoad('Dashboard'), []);
 
   // Entrance animations
   useEffect(() => {
-    if (!loading) {
+    if (!dataLoading) {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -161,55 +80,7 @@ export default function DashboardScreen({ navigation }) {
         }),
       ]).start();
     }
-  }, [loading]);
-
-  // Health score animation
-  useEffect(() => {
-    if (healthScore !== null) {
-      Animated.timing(scoreAnim, {
-        toValue: healthScore,
-        duration: 1500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [healthScore]);
-
-  // BMI animation
-  useEffect(() => {
-    const bmiValue = bmiData.value;
-    if (bmiValue) {
-      Animated.timing(bmiAnim, {
-        toValue: bmiValue,
-        duration: 1500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [userProfile.weight, userProfile.height]);
-
-  // Pulse animation for due medicines — PERF-2: only run when a dose is actually due
-  useEffect(() => {
-    if (!nextDoseStatus?.isDue) return;
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 1000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [nextDoseStatus]);
+  }, [dataLoading]);
 
   const calculateHealthScore = useCallback((userMedicines = [], profile = {}, appts = []) => {
     try {
@@ -443,50 +314,6 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [medicines]);
 
-  const handleSearch = useCallback(async () => {
-    if (searchText.trim().length < 3) {
-      Alert.alert('Search Error', 'Please enter at least 3 characters to search.');
-      return;
-    }
-
-    if (isSearching) return;
-
-    setIsSearching(true);
-    setSearchResult('');
-
-    try {
-      const apiTimer = performanceMonitor.startApiCall('gemini', 'POST');
-      const prompt = `Provide a brief, one-paragraph summary for the medicine: "${searchText}". Include its primary use and one or two common side effects. Format it as a simple paragraph.`;
-
-      const summary = await callGemini(prompt);
-
-      // Keep the UI in "focused" mode even after the keyboard closes
-      keepFocusedRef.current = true;
-      setIsSearchFocused(true);
-      setSearchResult(summary);
-
-      // Dismiss keyboard → result panel slides up into the vacated space
-      Keyboard.dismiss();
-      showResultPanel(keyboardHeight);
-
-      logger.info('Medicine search completed', {
-        query: searchText,
-        resultLength: summary.length,
-      });
-      if (apiTimer) performanceMonitor.endApiCall(apiTimer, 200, true);
-    } catch (error) {
-      logger.error('Medicine search failed', error);
-      // Also show error in the panel
-      keepFocusedRef.current = true;
-      setIsSearchFocused(true);
-      setSearchResult("Sorry, we couldn't fetch medicine information at this time. Please try again later.");
-      Keyboard.dismiss();
-      showResultPanel(keyboardHeight);
-    } finally {
-      setIsSearching(false);
-    }
-  }, [searchText, isSearching, keyboardHeight, showResultPanel]);
-
   const handleMarkAsTaken = useCallback(async (medicineId) => {
     try {
       const medicineRef = doc(db, "medicines", medicineId);
@@ -503,11 +330,9 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   const onRefresh = useCallback(async () => {
-    // PERF-3: real refresh — re-subscribes all Firestore listeners
     setRefreshing(true);
     try {
       refetch();
-      // Give listeners a moment to emit the first snapshot
       await new Promise(resolve => setTimeout(resolve, 800));
     } catch (error) {
       logger.error('Refresh failed', error);
@@ -520,7 +345,6 @@ export default function DashboardScreen({ navigation }) {
   useEffect(() => {
     if (!dataLoading) {
       calculateHealthScore(medicines, userProfile, appointments);
-      setLoading(false);
     }
   }, [dataLoading, medicines, userProfile, appointments, calculateHealthScore]);
 
@@ -529,7 +353,7 @@ export default function DashboardScreen({ navigation }) {
     if (dataError) setError(dataError);
   }, [dataError]);
 
-  // PERF-1: cancellation-safe AI fact fetch — guards setState with mounted ref
+  // cancellation-safe AI fact fetch — guards setState with mounted ref
   useEffect(() => {
     let mounted = true;
     const categories = Object.keys(healthFacts);
@@ -613,12 +437,12 @@ export default function DashboardScreen({ navigation }) {
   };
 
   useEffect(() => {
-    if (!loading && screenTimer) {
+    if (!dataLoading && screenTimer) {
       performanceMonitor.endTimer(screenTimer);
     }
-  }, [loading, screenTimer]);
+  }, [dataLoading, screenTimer]);
 
-  if (loading) {
+  if (dataLoading) {
     return <DashboardSkeleton />;
   }
   if (error) {
@@ -639,14 +463,6 @@ export default function DashboardScreen({ navigation }) {
     );
   }
 
-  const getScoreColor = () => {
-    // UI-1: use theme tokens instead of hardcoded hex
-    if (healthScore === null || isNaN(healthScore)) return colors.subtext;
-    if (healthScore >= 80) return colors.success;
-    if (healthScore >= 60) return colors.warning;
-    return colors.danger;
-  };
-
   const getBmiStatusColor = () => {
     switch (bmiData.status) {
       case 'healthy': return colors.success;
@@ -657,7 +473,6 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  // ERR-1: derive next appointment as first future appointment (list is already sorted asc by DataContext)
   const now = new Date();
   const nextAppointment = appointments.find(apt => {
     const aptDate = apt.date?.toDate ? apt.date.toDate() : new Date(apt.date);
@@ -691,7 +506,6 @@ export default function DashboardScreen({ navigation }) {
 
   return (
     <>
-      {/* UX-3: first-run onboarding — shown once, stored in AsyncStorage */}
       <OnboardingModal />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.background }}
@@ -724,99 +538,24 @@ export default function DashboardScreen({ navigation }) {
               <View style={{ marginBottom: spacing.md }} />
 
               {/* ── Health Score Hero ── */}
-              <Animated.View
-                style={[styles.card, { backgroundColor: colors.card, padding: spacing.lg, opacity: fadeAnim }]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-                  <IconBadge icon="fitness" size="lg" color={getScoreColor()} />
-                  <Text style={{ flex: 1, textAlign: 'center', fontSize: 36, fontWeight: '500', color: getScoreColor() }}>
-                    {healthScore ?? 'N/A'}{healthScore !== null && '%'}
-                  </Text>
-                  <View style={{ width: 48, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-                    <Ionicons
-                      name={healthScore >= 80 ? 'checkmark-circle' : healthScore >= 60 ? 'alert-circle' : 'close-circle'}
-                      size={iconSize.sm}
-                      color={healthScore >= 80 ? colors.success : healthScore >= 60 ? colors.warning : colors.danger}
-                    />
-                    <Text style={{ color: colors.subtext, fontSize: fontSize.sm, textAlign: 'right' }}>
-                      {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
-                    </Text>
-                  </View>
-                </View>
-                <View
-                  style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}
-                  // UX-1: accessibility for screen readers
-                  accessibilityRole="progressbar"
-                  accessibilityValue={{ min: 0, max: 100, now: healthScore ?? 0 }}
-                  accessibilityLabel={`Health score ${healthScore ?? 0} out of 100`}
-                >
-                  <Animated.View
-                    style={[
-                      styles.progressFill,
-                      {
-                        backgroundColor: getScoreColor(),
-                        width: scoreAnim.interpolate({
-                          inputRange: [0, 100],
-                          outputRange: ['0%', '100%'],
-                        }),
-                      },
-                    ]}
-                  />
-                </View>
+              <Animated.View style={{ opacity: fadeAnim }}>
+                <HealthScoreCard
+                  healthScore={healthScore}
+                  onShowExplainer={() => setShowScoreModal(true)}
+                />
               </Animated.View>
 
               <View style={{ marginBottom: spacing.md }} />
 
               {/* ── Next Medicine ── */}
               {nextDoseStatus && (
-                <Animated.View
-                  style={[
-                    styles.card,
-                    styles.medicineCard,
-                    {
-                      backgroundColor: colors.card,
-                      opacity: fadeAnim,
-                      transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }],
-                    },
-                  ]}
-                >
-                  <View style={styles.cardHeader}>
-                    <IconBadge icon="medical" size="md" color={colors.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.cardTitle, { color: colors.text }]}>
-                        {nextDoseStatus.medicine.name}
-                      </Text>
-                      <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
-                        {nextDoseStatus.isDue
-                          ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                          : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-                      </Text>
-                    </View>
-                    {nextDoseStatus.isDue && (
-                      <TouchableOpacity
-                        style={{
-                          paddingHorizontal: spacing.md,
-                          paddingVertical: spacing.sm,
-                          borderRadius: radius.pill,
-                          backgroundColor: colors.primary,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}
-                        onPress={() => handleMarkAsTaken(nextDoseStatus.medicine.id)}
-                        activeOpacity={0.8}
-                        accessibilityLabel={`Take ${nextDoseStatus?.medicine?.name ?? 'medicine'} now`}
-                        accessibilityRole="button"
-                      >
-                        <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                        <Text style={{ color: '#fff', fontSize: fontSize.sm, fontWeight: '700' }}>Take Now</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </Animated.View>
+                <View style={{ marginBottom: spacing.md }}>
+                  <NextDoseWidget
+                    nextDoseStatus={nextDoseStatus}
+                    onMarkAsTaken={handleMarkAsTaken}
+                  />
+                </View>
               )}
-
-              <View style={{ marginBottom: spacing.md }} />
 
               {/* ── Next Appointment ── */}
               {appointments.length > 0 && (
@@ -916,141 +655,605 @@ export default function DashboardScreen({ navigation }) {
               <View style={{ marginBottom: spacing.md }} />
 
               {/* ── Health Tip ── */}
-              <Animated.View
-                style={[styles.card, styles.tipCard, { backgroundColor: colors.card, opacity: fadeAnim }]}
-              >
-                <View style={styles.tipHeader}>
-                  <IconBadge icon="bulb" size="md" color={colors.primary} />
-                  <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
-                  <TouchableOpacity
-                    onPress={async () => {
-                      const personal = await fetchAIPersonalTip();
-                      if (personal) {
-                        setRandomFact(personal);
-                        setAIFactSource('ai');
-                        return;
-                      }
-                      const ai = await fetchAIFact(
-                        Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)],
-                        'fact'
-                      );
-                      if (ai) { setRandomFact(ai); setAIFactSource('ai'); }
-                      else { setAIFactSource('preset'); }
-                    }}
-                    disabled={aiFactLoading}
-                    activeOpacity={0.8}
-                    accessibilityLabel="Refresh health tip"
-                    accessibilityRole="button"
-                    style={{ marginLeft: 'auto', padding: spacing.sm }}
-                  >
-                    {aiFactLoading
-                      ? <ActivityIndicator size="small" color={colors.primary} />
-                      : <Ionicons name="refresh" size={iconSize.md} color={colors.primary} />
+              <Animated.View style={{ opacity: fadeAnim }}>
+                <HealthFactCard
+                  randomFact={randomFact}
+                  aiFactLoading={aiFactLoading}
+                  onRefreshTip={async () => {
+                    const personal = await fetchAIPersonalTip();
+                    if (personal) {
+                      setRandomFact(personal);
+                      setAIFactSource('ai');
+                      return;
                     }
-                  </TouchableOpacity>
-                </View>
-                <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
+                    const ai = await fetchAIFact(
+                      Object.keys(healthFacts)[Math.floor(Math.random() * Object.keys(healthFacts).length)],
+                      'fact'
+                    );
+                    if (ai) {
+                      setRandomFact(ai);
+                      setAIFactSource('ai');
+                    } else {
+                      setAIFactSource('preset');
+                    }
+                  }}
+                />
               </Animated.View>
 
             </ScrollView>
 
-            {isSearchFocused && (
-              <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 5 }]}>
-                <TouchableWithoutFeedback onPress={dismissSearch}>
-                  <BlurView
-                    intensity={60}
-                    tint={theme === 'dark' ? 'dark' : 'light'}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </TouchableWithoutFeedback>
-                <TouchableWithoutFeedback onPress={dismissSearch}>
-                  <View style={[StyleSheet.absoluteFill, { backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.1)' }]} />
-                </TouchableWithoutFeedback>
-              </Animated.View>
-            )}
-
-            {/* ── Search bar — bottom animates up to sit just above the result panel ── */}
-            <Animated.View style={{ position: 'absolute', bottom: searchBarBottomAnim, left: 0, right: 0, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.sm, backgroundColor: 'transparent', zIndex: 10 }}>
-              <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
-                <TextInput
-                  style={[
-                    styles.searchInput,
-                    { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
-                  ]}
-                  placeholder="Search medicine info..."
-                  accessibilityLabel="Search medicine info"
-                  placeholderTextColor={colors.subtext}
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  onSubmitEditing={handleSearch}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => {
-                    // Only collapse if a result is about to be shown
-                    setTimeout(() => {
-                      if (!keepFocusedRef.current) {
-                        setIsSearchFocused(false);
-                      }
-                      keepFocusedRef.current = false;
-                    }, 200);
-                  }}
-                  maxLength={100}
-                />
-                <TouchableOpacity
-                  style={[styles.searchButton, { backgroundColor: colors.primary }]}
-                  onPress={handleSearch}
-                  disabled={isSearching || searchText.trim().length < 3}
-                  activeOpacity={0.7}
-                  accessibilityLabel="Search medicine"
-                  accessibilityRole="button"
-                >
-                  {isSearching ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Ionicons name="search" size={22} color="#fff" />
-                  )}
-                </TouchableOpacity>
-              </Animated.View>
-            </Animated.View>
-
-            {/* ── Result panel — slides up from bottom to replace the keyboard ── */}
-            {searchResult && isSearchFocused && (
-              <Animated.View
-                style={[
-                  styles.resultPanel,
-                  {
-                    backgroundColor: colors.card,
-                    minHeight: keyboardHeight,
-                    transform: [{ translateY: resultPanelAnim }],
-                    zIndex: 9,
-                  },
-                ]}
-              >
-                {/* Drag handle */}
-                <View style={styles.resultPanelHandle} />
-
-                {/* Header row */}
-                <View style={styles.searchResultHeader}>
-                  <Ionicons name="medical" size={20} color={colors.primary} />
-                  <Text style={[styles.searchResultTitle, { color: colors.primary, flex: 1 }]}>{searchText}</Text>
-                  <TouchableOpacity
-                    onPress={dismissSearch}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    accessibilityLabel="Close result"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="close-circle" size={22} color={colors.subtext} />
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={[styles.cardSubContent, { color: colors.subtext, marginTop: 8 }]}>{searchResult}</Text>
-              </Animated.View>
-            )}
+            {/* ── AI Search Panel ── */}
+            <AISearchPanel fadeAnim={fadeAnim} />
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
+
+      {/* ── Health Score Explainer Modal (UX-5) ── */}
+      <Modal
+        visible={showScoreModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowScoreModal(false)}
+      >
+        <Pressable style={styles.modalBackdropCentered} onPress={() => setShowScoreModal(false)}>
+          <Animated.View 
+            style={[
+              styles.explainCard, 
+              { 
+                backgroundColor: colors.card, 
+                borderColor: colors.border,
+                borderWidth: 1,
+              }
+            ]}
+          >
+            <View style={styles.explainHeader}>
+              <Text style={[styles.explainTitle, { color: colors.text }]}>Health Score Breakdown</Text>
+              <TouchableOpacity 
+                style={styles.closeButton} 
+                onPress={() => setShowScoreModal(false)}
+                accessibilityLabel="Close modal"
+                accessibilityRole="button"
+              >
+                <Ionicons name="close" size={24} color={colors.subtext} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.explainScroll} 
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={[styles.explainDesc, { color: colors.subtext }]}>
+                Your Health Score is a personalized, real-time metric calculated from various aspects of your health profile and daily habits. Here is how it is weighted:
+              </Text>
+
+              {/* Medication Adherence (22%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.primary}20` }]}>
+                  <Ionicons name="medical" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Medication Adherence</Text>
+                    <Text style={[styles.explainWeight, { color: colors.primary }]}>22%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Measures how consistently you mark your scheduled medicines as taken.
+                  </Text>
+                </View>
+              </View>
+
+              {/* BMI Range (20%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.success}20` }]}>
+                  <Ionicons name="fitness" size={20} color={colors.success} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>BMI Baseline</Text>
+                    <Text style={[styles.explainWeight, { color: colors.success }]}>20%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Based on your height and weight, aligning your metrics to a healthy standard.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Chronic Conditions (12%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.warning}20` }]}>
+                  <Ionicons name="heart" size={20} color={colors.warning} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Chronic Conditions</Text>
+                    <Text style={[styles.explainWeight, { color: colors.warning }]}>12%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Consideration of documented chronic conditions in your overall health status.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Appointments (10%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.primary}20` }]}>
+                  <Ionicons name="calendar" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Appointments</Text>
+                    <Text style={[styles.explainWeight, { color: colors.primary }]}>10%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Reflects compliance and attendance for your scheduled clinical checkups.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Profile Details (10%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.success}20` }]}>
+                  <Ionicons name="person" size={20} color={colors.success} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Profile Completeness</Text>
+                    <Text style={[styles.explainWeight, { color: colors.success }]}>10%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Completing basic vital parameters (blood group, height, age, weight).
+                  </Text>
+                </View>
+              </View>
+
+              {/* Lifestyle: Smoking (10%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.danger}20` }]}>
+                  <Ionicons name="leaf" size={20} color={colors.danger} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Smoking Habits</Text>
+                    <Text style={[styles.explainWeight, { color: colors.danger }]}>10%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Risk factor calculation based on your reported smoking frequency.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Lifestyle: Alcohol (8%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.danger}20` }]}>
+                  <Ionicons name="wine" size={20} color={colors.danger} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Drinking Habits</Text>
+                    <Text style={[styles.explainWeight, { color: colors.danger }]}>8%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Impact score adjustment based on your reported alcohol consumption frequency.
+                  </Text>
+                </View>
+              </View>
+
+              {/* Age Factor (8%) */}
+              <View style={styles.explainRow}>
+                <View style={[styles.explainIconCircle, { backgroundColor: `${colors.primary}20` }]}>
+                  <Ionicons name="hourglass" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.explainTextContent}>
+                  <View style={styles.explainTitleRow}>
+                    <Text style={[styles.explainItemName, { color: colors.text }]}>Age Context</Text>
+                    <Text style={[styles.explainWeight, { color: colors.primary }]}>8%</Text>
+                  </View>
+                  <Text style={[styles.explainItemDesc, { color: colors.subtext }]}>
+                    Physiological context adjustments based on your age segment.
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </>
   );
 }
+
+// ── Sub-components for isolates re-renders ──
+
+const getScoreColor = (score, colors) => {
+  if (score === null || isNaN(score)) return colors.subtext;
+  if (score >= 80) return colors.success;
+  if (score >= 60) return colors.warning;
+  return colors.danger;
+};
+
+const HealthScoreCard = React.memo(({ healthScore, onShowExplainer }) => {
+  const { colors, spacing, fontSize, iconSize } = useTheme();
+  const scoreAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (healthScore !== null) {
+      Animated.timing(scoreAnim, {
+        toValue: healthScore,
+        duration: 1500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [healthScore]);
+
+  const scoreColor = getScoreColor(healthScore, colors);
+
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, padding: spacing.lg }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+        <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 0 }]}>Health Score</Text>
+        <TouchableOpacity
+          onPress={onShowExplainer}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityLabel="How is this calculated?"
+          accessibilityRole="button"
+        >
+          <Ionicons name="information-circle-outline" size={iconSize.md || 22} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+        <IconBadge icon="fitness" size="lg" color={scoreColor} />
+        <Text style={{ flex: 1, textAlign: 'center', fontSize: 36, fontWeight: '500', color: scoreColor }}>
+          {healthScore ?? 'N/A'}{healthScore !== null && '%'}
+        </Text>
+        <View style={{ width: 48, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+          <Ionicons
+            name={healthScore >= 80 ? 'checkmark-circle' : healthScore >= 60 ? 'alert-circle' : 'close-circle'}
+            size={iconSize.sm}
+            color={healthScore >= 80 ? colors.success : healthScore >= 60 ? colors.warning : colors.danger}
+          />
+          <Text style={{ color: colors.subtext, fontSize: fontSize.sm, textAlign: 'right' }}>
+            {healthScore >= 80 ? 'Excellent!' : healthScore >= 60 ? 'Good' : 'Needs attention'}
+          </Text>
+        </View>
+      </View>
+      <View
+        style={[styles.progressBar, { backgroundColor: `${colors.border}40` }]}
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: 100, now: healthScore ?? 0 }}
+        accessibilityLabel={`Health score ${healthScore ?? 0} out of 100`}
+      >
+        <Animated.View
+          style={[
+            styles.progressFill,
+            {
+              backgroundColor: scoreColor,
+              width: scoreAnim.interpolate({
+                inputRange: [0, 100],
+                outputRange: ['0%', '100%'],
+              }),
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+});
+
+const NextDoseWidget = React.memo(({ nextDoseStatus, onMarkAsTaken }) => {
+  const { colors, spacing, radius, fontSize } = useTheme();
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!nextDoseStatus?.isDue) return;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [nextDoseStatus]);
+
+  if (!nextDoseStatus) return null;
+
+  return (
+    <Animated.View
+      style={[
+        styles.card,
+        styles.medicineCard,
+        {
+          backgroundColor: colors.card,
+          transform: [{ scale: nextDoseStatus.isDue ? pulseAnim : 1 }],
+        },
+      ]}
+    >
+      <View style={styles.cardHeader}>
+        <IconBadge icon="medical" size="md" color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>
+            {nextDoseStatus.medicine.name}
+          </Text>
+          <Text style={[styles.cardSubContent, { color: colors.subtext }]}>
+            {nextDoseStatus.isDue
+              ? `Due at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : `Next dose at ${nextDoseStatus.doseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+          </Text>
+        </View>
+        {nextDoseStatus.isDue && (
+          <TouchableOpacity
+            style={{
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+              borderRadius: radius.pill,
+              backgroundColor: colors.primary,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+            onPress={() => onMarkAsTaken(nextDoseStatus.medicine.id)}
+            activeOpacity={0.8}
+            accessibilityLabel={`Take ${nextDoseStatus?.medicine?.name ?? 'medicine'} now`}
+            accessibilityRole="button"
+          >
+            <Ionicons name="checkmark-circle" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: fontSize.sm, fontWeight: '700' }}>Take Now</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </Animated.View>
+  );
+});
+
+const HealthFactCard = React.memo(({ randomFact, aiFactLoading, onRefreshTip }) => {
+  const { colors, spacing, iconSize } = useTheme();
+
+  return (
+    <View style={[styles.card, styles.tipCard, { backgroundColor: colors.card }]}>
+      <View style={styles.tipHeader}>
+        <IconBadge icon="bulb" size="md" color={colors.primary} />
+        <Text style={[styles.tipTitle, { color: colors.text }]}>Health Tip</Text>
+        <TouchableOpacity
+          onPress={onRefreshTip}
+          disabled={aiFactLoading}
+          activeOpacity={0.8}
+          accessibilityLabel="Refresh health tip"
+          accessibilityRole="button"
+          style={{ marginLeft: 'auto', padding: spacing.sm }}
+        >
+          {aiFactLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="refresh" size={iconSize.md} color={colors.primary} />
+          )}
+        </TouchableOpacity>
+      </View>
+      <Text style={[styles.tipContent, { color: colors.subtext }]}>{randomFact}</Text>
+    </View>
+  );
+});
+
+const AISearchPanel = React.memo(({ fadeAnim }) => {
+  const { colors, spacing, theme } = useTheme();
+
+  const [searchText, setSearchText] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(300);
+
+  const resultPanelAnim = useRef(new Animated.Value(400)).current;
+  const searchBarBottomAnim = useRef(new Animated.Value(10)).current;
+  const keepFocusedRef = useRef(false);
+
+  // Track keyboard height so the result panel matches it exactly
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const show = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      resultPanelAnim.setValue(e.endCoordinates.height + 40);
+    });
+    return () => show.remove();
+  }, []);
+
+  // Slide result panel up + move search bar to sit just above it
+  const showResultPanel = useCallback((height) => {
+    Animated.parallel([
+      Animated.spring(resultPanelAnim, {
+        toValue: 0,
+        tension: 68,
+        friction: 12,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchBarBottomAnim, {
+        toValue: height + 8,
+        duration: 280,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [resultPanelAnim, searchBarBottomAnim]);
+
+  // Dismiss: slide panel + search bar back to resting positions, then clear state
+  const dismissSearch = useCallback(() => {
+    Keyboard.dismiss();
+    Animated.parallel([
+      Animated.timing(resultPanelAnim, {
+        toValue: keyboardHeight + 40,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+      Animated.timing(searchBarBottomAnim, {
+        toValue: 10,
+        duration: 260,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      setSearchResult('');
+      setIsSearchFocused(false);
+    });
+  }, [resultPanelAnim, searchBarBottomAnim, keyboardHeight]);
+
+  const handleSearch = useCallback(async () => {
+    if (searchText.trim().length < 3) {
+      Alert.alert('Search Error', 'Please enter at least 3 characters to search.');
+      return;
+    }
+
+    if (isSearching) return;
+
+    setIsSearching(true);
+    setSearchResult('');
+
+    try {
+      const apiTimer = performanceMonitor.startApiCall('gemini', 'POST');
+      const prompt = `Provide a brief, one-paragraph summary for the medicine: "${searchText}". Include its primary use and one or two common side effects. Format it as a simple paragraph.`;
+
+      const summary = await callGemini(prompt);
+
+      // Keep the UI in "focused" mode even after the keyboard closes
+      keepFocusedRef.current = true;
+      setIsSearchFocused(true);
+      setSearchResult(summary);
+
+      // Dismiss keyboard → result panel slides up into the vacated space
+      Keyboard.dismiss();
+      showResultPanel(keyboardHeight);
+
+      logger.info('Medicine search completed', {
+        query: searchText,
+        resultLength: summary.length,
+      });
+      if (apiTimer) performanceMonitor.endApiCall(apiTimer, 200, true);
+    } catch (error) {
+      logger.error('Medicine search failed', error);
+      keepFocusedRef.current = true;
+      setIsSearchFocused(true);
+      setSearchResult("Sorry, we couldn't fetch medicine information at this time. Please try again later.");
+      Keyboard.dismiss();
+      showResultPanel(keyboardHeight);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [searchText, isSearching, keyboardHeight, showResultPanel]);
+
+  return (
+    <>
+      {isSearchFocused && (
+        <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 5 }]}>
+          <TouchableWithoutFeedback onPress={dismissSearch}>
+            <BlurView
+              intensity={60}
+              tint={theme === 'dark' ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          </TouchableWithoutFeedback>
+          <TouchableWithoutFeedback onPress={dismissSearch}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.1)' }]} />
+          </TouchableWithoutFeedback>
+        </Animated.View>
+      )}
+
+      {/* ── Search bar — bottom animates up to sit just above the result panel ── */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          bottom: searchBarBottomAnim,
+          left: 0,
+          right: 0,
+          paddingHorizontal: spacing.md,
+          paddingBottom: spacing.sm,
+          paddingTop: spacing.sm,
+          backgroundColor: 'transparent',
+          zIndex: 10,
+        }}
+      >
+        <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }]}>
+          <TextInput
+            style={[
+              styles.searchInput,
+              { backgroundColor: colors.card, color: colors.text, borderColor: colors.border },
+            ]}
+            placeholder="Search medicine info..."
+            accessibilityLabel="Search medicine info"
+            placeholderTextColor={colors.subtext}
+            value={searchText}
+            onChangeText={setSearchText}
+            onSubmitEditing={handleSearch}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => {
+              // Only collapse if a result is about to be shown
+              setTimeout(() => {
+                if (!keepFocusedRef.current) {
+                  setIsSearchFocused(false);
+                }
+                keepFocusedRef.current = false;
+              }, 200);
+            }}
+            maxLength={100}
+          />
+          <TouchableOpacity
+            style={[styles.searchButton, { backgroundColor: colors.primary }]}
+            onPress={handleSearch}
+            disabled={isSearching || searchText.trim().length < 3}
+            activeOpacity={0.7}
+            accessibilityLabel="Search medicine"
+            accessibilityRole="button"
+          >
+            {isSearching ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="search" size={22} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
+
+      {/* ── Result panel — slides up from bottom to replace the keyboard ── */}
+      {searchResult && isSearchFocused && (
+        <Animated.View
+          style={[
+            styles.resultPanel,
+            {
+              backgroundColor: colors.card,
+              minHeight: keyboardHeight,
+              transform: [{ translateY: resultPanelAnim }],
+              zIndex: 9,
+            },
+          ]}
+        >
+          {/* Drag handle */}
+          <View style={styles.resultPanelHandle} />
+
+          {/* Header row */}
+          <View style={styles.searchResultHeader}>
+            <Ionicons name="medical" size={20} color={colors.primary} />
+            <Text style={[styles.searchResultTitle, { color: colors.primary, flex: 1 }]}>{searchText}</Text>
+            <TouchableOpacity
+              onPress={dismissSearch}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="Close result"
+              accessibilityRole="button"
+            >
+              <Ionicons name="close-circle" size={22} color={colors.subtext} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.cardSubContent, { color: colors.subtext, marginTop: 8 }]}>{searchResult}</Text>
+        </Animated.View>
+      )}
+    </>
+  );
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -1327,5 +1530,81 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 14,
+  },
+  modalBackdropCentered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  explainCard: {
+    width: '90%',
+    maxHeight: '80%',
+    borderRadius: 24,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  explainHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.2)',
+    paddingBottom: 12,
+    marginBottom: 16,
+  },
+  explainTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  explainScroll: {
+    maxHeight: '100%',
+  },
+  explainDesc: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  explainRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 18,
+    gap: 12,
+  },
+  explainIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  explainTextContent: {
+    flex: 1,
+  },
+  explainTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  explainItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  explainWeight: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  explainItemDesc: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
