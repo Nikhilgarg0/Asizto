@@ -11,7 +11,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { DataProvider } from './context/DataContext';
 import Toast from 'react-native-toast-message';
 import * as Notifications from 'expo-notifications';
-import { Alert, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { Alert, TouchableOpacity, View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -25,7 +25,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 
 // Prevent splash screen auto-hide so we can load fonts
-SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.preventAutoHideAsync().catch(() => { });
 
 // NAV-3: deep link config — scheme defined in app.json as 'asizto'
 const linking = {
@@ -34,22 +34,22 @@ const linking = {
     screens: {
       Main: {
         screens: {
-          Dashboard:  'dashboard',
+          Dashboard: 'dashboard',
           Cabinet: {
             screens: {
-              Medicines:    'cabinet/medicines',
+              Medicines: 'cabinet/medicines',
               Appointments: 'cabinet/appointments',
             },
           },
           Emergency: 'emergency',
-          Chatbot:   'chatbot',
-          Profile:   'profile',
+          Chatbot: 'chatbot',
+          Profile: 'profile',
         },
       },
-      AddMedicine:    'add-medicine',
+      AddMedicine: 'add-medicine',
       AddAppointment: 'add-appointment',
       EmergencyContact: 'emergency-contact',
-      Notifications:  'notifications',
+      Notifications: 'notifications',
     },
   },
 };
@@ -82,6 +82,10 @@ import EmergencyContactScreen from './screens/EmergencyContactScreen';
 import Header from './components/customHeader';
 import ErrorBoundary from './components/ErrorBoundary';
 import { navigationRef } from './RootNavigation';
+
+let LogoLight = null, LogoDark = null;
+try { LogoLight = require('./assets/Brandkit/LightLogo.png'); } catch (_) { }
+try { LogoDark = require('./assets/Brandkit/DarkLogo.png'); } catch (_) { }
 
 const DebugNotificationsScreen = __DEV__
   ? require('./screens/DebugNotificationsScreen').default
@@ -180,6 +184,15 @@ function AppContent() {
   const { theme, colors } = useTheme();
   const [user, setUser] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [splashVisible, setSplashVisible] = useState(true);
+  const splashOpacity = React.useRef(new Animated.Value(1)).current;
+  const logoScale = React.useRef(new Animated.Value(0.9)).current;
+
+  useEffect(() => {
+    // Dismiss the native splash screen since the themed React splash overlay is now active
+    SplashScreen.hideAsync().catch(() => { });
+  }, []);
 
   useEffect(() => {
     const unsubscribeNet = NetInfo.addEventListener((state) => {
@@ -191,24 +204,64 @@ function AppContent() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setIsAuthChecking(false);
     }, (error) => {
       console.error('Auth state change error:', error);
       Alert.alert('Authentication Error', 'There was an issue with authentication. Please try again.');
+      setIsAuthChecking(false);
     });
     return unsubscribeAuth;
   }, []);
+
+  useEffect(() => {
+    let timerFinished = false;
+    let authFinished = false;
+
+    const checkAndHide = () => {
+      if (timerFinished && authFinished) {
+        Animated.parallel([
+          Animated.timing(splashOpacity, {
+            toValue: 0,
+            duration: 350,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(logoScale, {
+            toValue: 1.1,
+            duration: 350,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          })
+        ]).start(() => {
+          setSplashVisible(false);
+        });
+      }
+    };
+
+    const timerId = setTimeout(() => {
+      timerFinished = true;
+      checkAndHide();
+    }, 850);
+
+    if (!isAuthChecking) {
+      authFinished = true;
+      checkAndHide();
+    }
+
+    return () => clearTimeout(timerId);
+  }, [isAuthChecking]);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(async response => {
       try {
         const data = (response?.notification?.request?.content?.data) || {};
         const actionId = response.actionIdentifier;
-        const notifId  = response.notification.request.identifier;
+        const notifId = response.notification.request.identifier;
 
         // ── Handle action buttons ───────────────────────────────────────
         if (actionId === NOTIF_ACTION_MARK_TAKEN) {
           // Dismiss the notification from the tray immediately
-          await Notifications.dismissNotificationAsync(notifId).catch(() => {});
+          await Notifications.dismissNotificationAsync(notifId).catch(() => { });
 
           // Write timestamp to Firestore directly — no React context needed
           if (data.medicineId) {
@@ -226,7 +279,7 @@ function AppContent() {
 
         if (actionId === NOTIF_ACTION_IGNORE) {
           // Dismiss the notification from the tray immediately
-          await Notifications.dismissNotificationAsync(notifId).catch(() => {});
+          await Notifications.dismissNotificationAsync(notifId).catch(() => { });
           return;
         }
 
@@ -264,6 +317,8 @@ function AppContent() {
     },
   };
 
+  const logo = theme === 'dark' ? (LogoDark || LogoLight) : (LogoLight || LogoDark);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="auto" />
@@ -278,6 +333,56 @@ function AppContent() {
       <NavigationContainer ref={navigationRef} theme={navigationTheme} linking={linking}>
         {user ? <MainStack /> : <AuthStack />}
       </NavigationContainer>
+
+      {/* ── Custom themed splash overlay ── */}
+      {splashVisible && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              backgroundColor: colors.background,
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 99999,
+              opacity: splashOpacity,
+            }
+          ]}
+        >
+          {logo ? (
+            <Animated.Image
+              source={logo}
+              style={{
+                width: 220,
+                height: 80,
+                transform: [{ scale: logoScale }],
+              }}
+              resizeMode="contain"
+            />
+          ) : (
+            <Animated.View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                transform: [{ scale: logoScale }],
+              }}
+            >
+              <Ionicons name="medkit" size={44} color={colors.primary} />
+              <Text
+                style={{
+                  fontSize: 28,
+                  fontWeight: '900',
+                  letterSpacing: 4,
+                  color: colors.text,
+                }}
+              >
+                ASIZTO
+              </Text>
+            </Animated.View>
+          )}
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -291,11 +396,7 @@ export default function App() {
     Nunito_700Bold,
   });
 
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsLoaded]);
+
 
   if (!fontsLoaded) {
     return null;

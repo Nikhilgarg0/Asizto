@@ -136,9 +136,9 @@ export default function AuthScreen() {
       return false; // let the default back button behavior happen
     };
 
-    BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
     return () => {
-      BackHandler.removeEventListener('hardwareBackPress', handleBackPress);
+      subscription.remove();
     };
   }, [isLogin, signupStep, goTo]);
 
@@ -295,7 +295,17 @@ export default function AuthScreen() {
                   </Text>
                 </View>
 
-                <View style={{ width: 34 }} />
+                {!isLogin && signupStep === 4 ? (
+                  <Pressable
+                    onPress={fromStep4}
+                    style={[s.backBtn, { width: 'auto', paddingHorizontal: 8 }]}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityLabel="Skip health profile step"
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13.5 }}>Skip</Text>
+                  </Pressable>
+                ) : <View style={{ width: 34 }} />}
               </Animated.View>
 
               {/* ── Progress ── */}

@@ -42,228 +42,11 @@ import { useData } from '../context/DataContext';
 import { callGemini } from '../utils/gemini';
 import Toast from 'react-native-toast-message';
 
-const formatTimestamp = (ts) => {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const now = new Date();
-  const oneDay = 24 * 60 * 60 * 1000;
-  const isToday = d.toDateString() === now.toDateString();
-  const yesterday = new Date(now.getTime() - oneDay);
-  const isYesterday = d.toDateString() === yesterday.toDateString();
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  if (isToday) return `Today ${time}`;
-  if (isYesterday) return `Yesterday ${time}`;
-  return d.toLocaleDateString() + ' ' + time;
-};
-
-const dayString = (ts) => {
-  if (!ts) return '';
-  const d = new Date(ts);
-  return d.toDateString();
-};
-
-// Parse markdown-style bold text (*text* or **text**) and return Text components
-const parseMarkdownBold = (text, baseStyle) => {
-  if (!text) return null;
-
-  const parts = [];
-  let currentIndex = 0;
-
-  // Match *text* or **text** patterns (non-greedy)
-  const boldPattern = /(\*\*?)([^*\n]+?)\1/g;
-  let match;
-  let hasMatches = false;
-
-  while ((match = boldPattern.exec(text)) !== null) {
-    hasMatches = true;
-
-    // Add text before the match
-    if (match.index > currentIndex) {
-      const beforeText = text.substring(currentIndex, match.index);
-      if (beforeText) {
-        parts.push(
-          <Text key={`text-${currentIndex}`} style={baseStyle}>
-            {beforeText}
-          </Text>
-        );
-      }
-    }
-
-    // Add the bold text (without the asterisks)
-    parts.push(
-      <Text key={`bold-${match.index}`} style={[baseStyle, { fontWeight: '700' }]}>
-        {match[2]}
-      </Text>
-    );
-
-    currentIndex = match.index + match[0].length;
-  }
-
-  // Add remaining text after the last match
-  if (currentIndex < text.length) {
-    const remainingText = text.substring(currentIndex);
-    if (remainingText) {
-      parts.push(
-        <Text key={`text-${currentIndex}`} style={baseStyle}>
-          {remainingText}
-        </Text>
-      );
-    }
-  }
-
-  // If no matches found, return the original text
-  if (!hasMatches || parts.length === 0) {
-    return <Text style={baseStyle}>{text}</Text>;
-  }
-
-  // Return nested Text components (React Native supports nested Text)
-  return <Text style={baseStyle}>{parts}</Text>;
-};
-
-// Enhanced message component with animations
-const AnimatedMessage = ({ children, delay = 0 }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        delay,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        delay,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        delay,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
-
-  return (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [
-          { translateY: slideAnim },
-          { scale: scaleAnim }
-        ],
-      }}
-    >
-      {children}
-    </Animated.View>
-  );
-};
-
-const AnimatedChatMessage = ({ content, onComplete, msgId, colors, textStyle }) => {
-  const [displayedText, setDisplayedText] = useState('');
-  const [isAnimating, setIsAnimating] = useState(true);
-
-  useEffect(() => {
-    if (!content) {
-      onComplete?.(msgId);
-      return;
-    }
-
-    let index = 0;
-    const text = content;
-    const speed = 15; // milliseconds per character
-
-    const interval = setInterval(() => {
-      if (index < text.length) {
-        setDisplayedText(text.substring(0, index + 1));
-        index++;
-      } else {
-        clearInterval(interval);
-        setIsAnimating(false);
-        onComplete?.(msgId);
-      }
-    }, speed);
-
-    return () => clearInterval(interval);
-  }, [content, msgId, onComplete]);
-
-  const baseStyle = textStyle || { color: colors.text };
-
-  // Parse the displayed text with markdown formatting
-  const formattedText = parseMarkdownBold(displayedText, baseStyle);
-
-  return (
-    <View>
-      {formattedText}
-      {isAnimating && (
-        <Text style={[baseStyle, { opacity: 0.5 }]}>|</Text>
-      )}
-    </View>
-  );
-};
-
-const TypingDots = ({ colors }) => {
-  const a1 = useRef(new Animated.Value(0)).current;
-  const a2 = useRef(new Animated.Value(0)).current;
-  const a3 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loop1 = Animated.loop(
-      Animated.sequence([
-        Animated.timing(a1, { toValue: 1, duration: 360, useNativeDriver: true }),
-        Animated.timing(a1, { toValue: 0.3, duration: 360, useNativeDriver: true }),
-      ])
-    );
-    const loop2 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(120),
-        Animated.timing(a2, { toValue: 1, duration: 360, useNativeDriver: true }),
-        Animated.timing(a2, { toValue: 0.3, duration: 360, useNativeDriver: true }),
-      ])
-    );
-    const loop3 = Animated.loop(
-      Animated.sequence([
-        Animated.delay(240),
-        Animated.timing(a3, { toValue: 1, duration: 360, useNativeDriver: true }),
-        Animated.timing(a3, { toValue: 0.3, duration: 360, useNativeDriver: true }),
-      ])
-    );
-
-    loop1.start();
-    loop2.start();
-    loop3.start();
-
-    return () => {
-      loop1.stop();
-      loop2.stop();
-      loop3.stop();
-    };
-  }, [a1, a2, a3]);
-
-  const dotStyle = (anim) => ({
-    width: 6,
-    height: 6,
-    borderRadius: 6,
-    marginHorizontal: 3,
-    backgroundColor: colors.subtext || '#888',
-    opacity: anim,
-  });
-
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-      <Animated.View style={dotStyle(a1)} />
-      <Animated.View style={dotStyle(a2)} />
-      <Animated.View style={dotStyle(a3)} />
-    </View>
-  );
-};
+import { formatTimestamp, dayString, parseMarkdownBold } from '../components/chatbot/ChatHelpers';
+import AnimatedMessage from '../components/chatbot/AnimatedMessage';
+import AnimatedChatMessage from '../components/chatbot/AnimatedChatMessage';
+import TypingDots from '../components/chatbot/TypingDots';
+import DisclaimerModal from '../components/chatbot/DisclaimerModal';
 
 export default function ChatbotScreen({ route, navigation }) {
   const { colors, spacing, fontSize, iconSize, theme } = useTheme();
@@ -291,9 +74,16 @@ export default function ChatbotScreen({ route, navigation }) {
     }
   }, []);
 
-  const animatedMsgIdsRef = useRef(new Set());
+  const [completedAnimIds, setCompletedAnimIds] = useState(new Set());
   const focusAnim = useRef(new Animated.Value(0)).current;
   const sendScale = useRef(new Animated.Value(1)).current;
+
+  // Clear completed animations when history is cleared
+  useEffect(() => {
+    if (messages.length === 0) {
+      setCompletedAnimIds(new Set());
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (route?.params?.messages) setMessages(route.params.messages);
@@ -500,11 +290,18 @@ export default function ChatbotScreen({ route, navigation }) {
       const userContext = await fetchUserContext();
       // SCALE-1: keep last 20 messages to avoid exceeding Gemini's context window
       const recentMessages = messages.slice(-20);
-      const historyText = recentMessages.length > 1
-        ? recentMessages.slice(0, -1).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n') + '\n\n'
+      const historyText = recentMessages.length > 0
+        ? recentMessages.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n') + '\n\n'
         : '';
       const prompt = `${userContext}${historyText}User Question: ${input}`;
-      const systemInstruction = 'You are Asizto, a helpful AI health assistant. Use the provided user context to give personalized and safe information. Be concise and friendly.';
+      const systemInstruction = 
+        `You are Asizto, a friendly, warm, and conversational AI health assistant. Your goal is to help the user in a casual, supportive, and natural tone, like a knowledgeable health companion or friend.
+
+Use the provided user context (name, age, physical stats, current medications) to personalize your responses. You MUST adhere to the following guidelines:
+1. Tone & Style: Be friendly, a bit casual, warm, and highly conversational. Do not sound robotic, overly formal, or clinical.
+2. No Repetitive Disclaimers: DO NOT include a health disclaimer (such as "I am an AI, not a doctor..." or "Please consult a healthcare professional...") in every single response. The app already displays a prominent Health Disclaimer screen when the user enters the chat, so repeating it is redundant and ruins the conversational experience. Only advise consulting a doctor if the user is presenting high-risk/emergency symptoms.
+3. Natural Context Integration: DO NOT recite the user's entire cabinet list or schedule in every response. Use the user context naturally and dynamically (e.g. refer to their medications only if they ask about them, or if relevant to the query).
+4. Conversational Flow: Address the user by their name (e.g. "Hey Nikhil!" or "Good morning, Nikhil") naturally, but avoid repeating greetings or profile summaries in every turn. Keep answers concise, helpful, and interactive.`;
 
       const botMessageContent = await callGemini(prompt, { systemInstruction });
       const botMessage = { role: 'model', content: botMessageContent, timestamp: Date.now() };
@@ -848,7 +645,8 @@ export default function ChatbotScreen({ route, navigation }) {
     const showDay = !prev || dayString(prev.timestamp) !== dayString(item.timestamp);
     const isSelected = selectedMessageId === item.timestamp;
     const isLastMessage = index === messages.length - 1;
-    const shouldAnimate = !animatedMsgIdsRef.current.has(item.timestamp);
+    const shouldAnimate = !completedAnimIds.has(item.timestamp);
+    const showActions = isSelected || (!isUser && !shouldAnimate);
 
     return (
       <View>
@@ -867,9 +665,11 @@ export default function ChatbotScreen({ route, navigation }) {
                   content={item.content}
                   msgId={item.timestamp}
                   onComplete={() => {
-                    try {
-                      animatedMsgIdsRef.current.add(item.timestamp);
-                    } catch (e) { }
+                    setCompletedAnimIds(prev => {
+                      const next = new Set(prev);
+                      next.add(item.timestamp);
+                      return next;
+                    });
                   }}
                   colors={colors}
                   textStyle={styles.botText}
@@ -886,7 +686,7 @@ export default function ChatbotScreen({ route, navigation }) {
                 </View>
               )}
 
-              {isSelected && (
+              {showActions && (
                 <View style={styles.messageActionsRow}>
                   <Text style={styles.timestampText}>{formatTimestamp(item.timestamp)}</Text>
                   {!isUser && (
@@ -936,41 +736,11 @@ export default function ChatbotScreen({ route, navigation }) {
       <StatusBar barStyle="light-content" />
 
       {/* Disclaimer Modal */}
-      <Modal
+      <DisclaimerModal
         visible={showDisclaimer}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowDisclaimer(false)}
-      >
-        <BlurView intensity={90} tint="dark" style={styles.modalOverlay}>
-          <View style={styles.disclaimerCard}>
-            <View style={styles.disclaimerHeader}>
-              <Text style={styles.disclaimerTitle}>⚕️ Health Disclaimer</Text>
-              <TouchableOpacity
-                onPress={() => setShowDisclaimer(false)}
-                accessibilityLabel="Close disclaimer"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.disclaimerContent}>
-              Hello! I am Asizto, your AI health assistant. I use your profile information to provide personalized responses.{'\n\n'}
-              <Text style={{ fontWeight: '600' }}>Important:</Text> I am not a medical professional. Always consult a qualified healthcare provider for medical advice, diagnosis, or treatment.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.disclaimerButton}
-              onPress={() => setShowDisclaimer(false)}
-              accessibilityLabel="Accept Health disclaimer"
-              accessibilityRole="button"
-            >
-              <Text style={styles.disclaimerButtonText}>I Understand</Text>
-            </TouchableOpacity>
-          </View>
-        </BlurView>
-      </Modal>
+        onClose={() => setShowDisclaimer(false)}
+        colors={colors}
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}

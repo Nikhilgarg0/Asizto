@@ -42,7 +42,7 @@ const STEPS = [
     icon: 'fitness',
     title: 'Track Your Health Score',
     subtitle: 'Your personalised health score improves as you log medicines, appointments, and profile details.',
-    cta: 'Let\'s go!',
+    cta: 'Add Medicine',
   },
 ];
 

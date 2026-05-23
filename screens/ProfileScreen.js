@@ -3,9 +3,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Switch, Alert, ScrollView, TouchableOpacity,
   Modal, Image, TextInput, Platform, Keyboard, Animated,
-  Pressable, KeyboardAvoidingView,
+  Pressable, KeyboardAvoidingView, Dimensions,
 } from 'react-native';
 import Reanimated, { LinearTransition, FadeIn, FadeInDown, FadeOut } from 'react-native-reanimated';
+import * as Animatable from 'react-native-animatable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../firebaseConfig';
 import { signOut, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
@@ -56,6 +57,51 @@ function computeBMIFromMetric(heightCm, weightKg, colors) {
   if (bmi < 30)   return { bmi, category: 'Overweight',  color: warningColor };
                   return { bmi, category: 'Obese',        color: dangerColor };
 }
+
+// iOS grouped-list row
+const ListRow = ({ icon, iconColor, label, value, isLast, accessory }) => {
+  const { colors, theme } = useTheme();
+  const S = createStyles(colors, theme);
+  return (
+    <View style={[S.listRow, isLast && S.listRowLast]}>
+      <View style={[S.listIcon, { backgroundColor: `${iconColor || colors.primary}18` }]}>
+        <Ionicons name={icon} size={17} color={iconColor || colors.primary} />
+      </View>
+      <View style={S.listRowBody}>
+        <Text style={S.listRowLabel}>{label}</Text>
+        {accessory || <Text style={S.listRowValue} numberOfLines={1}>{value || '—'}</Text>}
+      </View>
+    </View>
+  );
+};
+
+// Labeled text input field
+const Field = ({ label, icon, iconColor, children, hint }) => {
+  const { colors, theme } = useTheme();
+  const S = createStyles(colors, theme);
+  return (
+    <View style={S.fieldGroup}>
+      <View style={S.fieldLabelRow}>
+        <Ionicons name={icon} size={14} color={iconColor || colors.primary} />
+        <Text style={S.fieldLabel}>{label}</Text>
+      </View>
+      {children}
+      {hint && <Text style={S.fieldHint}>{hint}</Text>}
+    </View>
+  );
+};
+
+// Grouped section card (iOS grouped style)
+const Section = ({ title, children, accent }) => {
+  const { colors, theme } = useTheme();
+  const S = createStyles(colors, theme);
+  return (
+    <View style={S.section}>
+      {title && <Text style={[S.sectionTitle, accent && { color: accent }]}>{title}</Text>}
+      <View style={S.sectionCard}>{children}</View>
+    </View>
+  );
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────
 export default function ProfileScreen() {
@@ -173,40 +219,7 @@ export default function ProfileScreen() {
     }
   };
 
-  // ── Reusable sub-components ───────────────────────────────────────────
-
-  // iOS grouped-list row
-  const ListRow = ({ icon, iconColor, label, value, isLast, accessory }) => (
-    <View style={[S.listRow, isLast && S.listRowLast]}>
-      <View style={[S.listIcon, { backgroundColor: `${iconColor || colors.primary}18` }]}>
-        <Ionicons name={icon} size={17} color={iconColor || colors.primary} />
-      </View>
-      <View style={S.listRowBody}>
-        <Text style={S.listRowLabel}>{label}</Text>
-        {accessory || <Text style={S.listRowValue} numberOfLines={1}>{value || '—'}</Text>}
-      </View>
-    </View>
-  );
-
-  // Labeled text input field
-  const Field = ({ label, icon, iconColor, children, hint }) => (
-    <View style={S.fieldGroup}>
-      <View style={S.fieldLabelRow}>
-        <Ionicons name={icon} size={14} color={iconColor || colors.primary} />
-        <Text style={S.fieldLabel}>{label}</Text>
-      </View>
-      {children}
-      {hint && <Text style={S.fieldHint}>{hint}</Text>}
-    </View>
-  );
-
-  // Grouped section card (iOS grouped style)
-  const Section = ({ title, children, accent }) => (
-    <View style={S.section}>
-      {title && <Text style={[S.sectionTitle, accent && { color: accent }]}>{title}</Text>}
-      <View style={S.sectionCard}>{children}</View>
-    </View>
-  );
+  // ── Reusable sub-components are now declared at the module level to avoid keyboard-dismissing unmounts ──
 
   const displayH = profileData.height == null ? null
     : units === 'metric' ? `${profileData.height} cm` : `${(profileData.height / 2.54).toFixed(1)} in`;
@@ -466,7 +479,14 @@ export default function ProfileScreen() {
                     mode="date"
                     display="default"
                     maximumDate={new Date()}
-                    onChange={(_, d) => { setShowDatePicker(false); if (d) change('dob', d); }}
+                    onChange={(event, d) => {
+                      if (event.type === 'set') {
+                        setShowDatePicker(false);
+                        if (d) change('dob', d);
+                      } else if (event.type === 'dismissed') {
+                        setShowDatePicker(false);
+                      }
+                    }}
                   />
                 )
               )}
@@ -1053,10 +1073,12 @@ const createStyles = (colors, theme) => {
 
     // ── Delete alert ──────────────────────────────────────────────────
     alertCard: {
-      marginHorizontal: 24, borderRadius: 22, padding: 28,
+      width: Dimensions.get('window').width - 48,
+      maxWidth: 340,
+      borderRadius: 22, padding: 28,
       alignItems: 'center',
       shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.35, shadowRadius: 24, elevation: 16,
+      shadowOpacity: isDark ? 0.35 : 0.15, shadowRadius: 24, elevation: 16,
     },
     alertIconWrap: {
       width: 80, height: 80, borderRadius: 40,

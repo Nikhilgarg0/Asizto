@@ -107,14 +107,22 @@ export function DataProvider({ children }) {
     if (unsubApptsRef.current) return;
     const apptsQuery = query(
       collection(db, 'appointments'),
-      where('userId', '==', uid),
-      orderBy('date', 'asc')
+      where('userId', '==', uid)
     );
     unsubApptsRef.current = onSnapshot(
       apptsQuery,
       (snap) => {
         try {
           const appts = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+          appts.sort((a, b) => {
+            const parseDate = (val) => {
+              if (!val) return new Date(0);
+              if (typeof val.toDate === 'function') return val.toDate();
+              if (val instanceof Date) return val;
+              return new Date(val);
+            };
+            return parseDate(a.date) - parseDate(b.date);
+          });
           setAppointments(appts);
           setErrorAppts(null);
         } catch (err) {
